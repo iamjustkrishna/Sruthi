@@ -18,11 +18,21 @@ pub enum OverlayPosition {
     Field,
 }
 
-#[derive(Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub model: Option<String>,
     pub overlay: OverlayPosition,
+    /// Clean up dictations with the local LLM (when one is installed).
+    pub smart: bool,
+    /// Which LLM to use for Smart formatting.
+    pub llm: Option<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None }
+    }
 }
 
 pub fn app_root() -> PathBuf {

@@ -13,21 +13,27 @@ use cpal::{FromSample, SampleFormat, SizedSample};
 /// Sample rate every speech model in this app expects.
 pub const TARGET_RATE: u32 = 16_000;
 
+/// A live microphone capture. The audio stays readable while recording
+/// (for live transcription) and after `stop()`.
 pub struct Recording {
     stop_tx: mpsc::Sender<()>,
     level: Arc<AtomicU32>,
-    handle: JoinHandle<Result<(Vec<f32>, u32)>>,
+    /// Mono samples at the device's own rate.
+    buffer: Arc<Mutex<Vec<f32>>>,
+    rate: u32,
+    handle: Mutex<Option<JoinHandle<Result<()>>>>,
 }
 
 impl Recording {
     /// Starts capturing mono audio from the default input device.
     pub fn start() -> Result<Self> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
-        let (ready_tx, ready_rx) = mpsc::channel::<()>();
+        let (ready_tx, ready_rx) = mpsc::channel::<u32>();
         let level = Arc::new(AtomicU32::new(0));
-        let level_cb = level.clone();
+        let buffer = Arc::new(Mutex::new(Vec::<f32>::new()));
+        let (level_cb, buffer_cb) = (level.clone(), buffer.clone());
 
-        let handle = thread::spawn(move || -> Result<(Vec<f32>, u32)> {
+        let handle = thread::spawn(move || -> Result<()> {
             let device = cpal::default_host()
                 .default_input_device()
                 .ok_or_else(|| anyhow!("No microphone found"))?;
@@ -35,28 +41,26 @@ impl Recording {
             let rate = supported.sample_rate();
             let channels = supported.channels() as usize;
             let config = supported.config();
-            let buffer = Arc::new(Mutex::new(Vec::<f32>::with_capacity(rate as usize * 30)));
+            buffer_cb.lock().unwrap().reserve(rate as usize * 30);
 
             let stream = match supported.sample_format() {
-                SampleFormat::F32 => build::<f32>(&device, config, channels, buffer.clone(), level_cb.clone())?,
-                SampleFormat::I16 => build::<i16>(&device, config, channels, buffer.clone(), level_cb.clone())?,
-                SampleFormat::U16 => build::<u16>(&device, config, channels, buffer.clone(), level_cb.clone())?,
-                SampleFormat::I32 => build::<i32>(&device, config, channels, buffer.clone(), level_cb.clone())?,
+                SampleFormat::F32 => build::<f32>(&device, config, channels, buffer_cb, level_cb)?,
+                SampleFormat::I16 => build::<i16>(&device, config, channels, buffer_cb, level_cb)?,
+                SampleFormat::U16 => build::<u16>(&device, config, channels, buffer_cb, level_cb)?,
+                SampleFormat::I32 => build::<i32>(&device, config, channels, buffer_cb, level_cb)?,
                 other => bail!("Unsupported microphone sample format: {other:?}"),
             };
             stream.play()?;
-            let _ = ready_tx.send(());
+            let _ = ready_tx.send(rate);
 
             // Blocks until stop() is called (or the Recording is dropped).
             let _ = stop_rx.recv();
             drop(stream);
-
-            let samples = std::mem::take(&mut *buffer.lock().unwrap());
-            Ok((samples, rate))
+            Ok(())
         });
 
         match ready_rx.recv() {
-            Ok(()) => Ok(Self { stop_tx, level, handle }),
+            Ok(rate) => Ok(Self { stop_tx, level, buffer, rate, handle: Mutex::new(Some(handle)) }),
             // The thread exited before the stream started: surface its error.
             Err(_) => match handle.join() {
                 Ok(Err(e)) => Err(e),
@@ -70,14 +74,47 @@ impl Recording {
         self.level.clone()
     }
 
-    /// Stops capturing and returns 16 kHz mono samples.
-    pub fn stop(self) -> Result<Vec<f32>> {
+    /// The device's sample rate.
+    pub fn rate(&self) -> u32 {
+        self.rate
+    }
+
+    /// Number of samples captured so far, at the device rate.
+    pub fn len(&self) -> usize {
+        self.buffer.lock().unwrap().len()
+    }
+
+    /// Samples `from..to` (device-rate indices), converted to 16 kHz.
+    pub fn slice_16k(&self, from: usize, to: usize) -> Vec<f32> {
+        let buf = self.buffer.lock().unwrap();
+        let to = to.min(buf.len());
+        let from = from.min(to);
+        resample(&buf[from..to], self.rate, TARGET_RATE)
+    }
+
+    /// Loudness (RMS) of the last `samples` captured samples.
+    pub fn recent_rms(&self, samples: usize) -> f32 {
+        let buf = self.buffer.lock().unwrap();
+        let tail = &buf[buf.len().saturating_sub(samples)..];
+        if tail.is_empty() {
+            return 0.0;
+        }
+        (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt()
+    }
+
+    /// Stops capturing. The captured audio stays readable.
+    pub fn stop(&self) -> Result<()> {
         let _ = self.stop_tx.send(());
-        let (samples, rate) = self
-            .handle
-            .join()
-            .map_err(|_| anyhow!("Microphone thread panicked"))??;
-        Ok(resample(&samples, rate, TARGET_RATE))
+        if let Some(handle) = self.handle.lock().unwrap().take() {
+            handle.join().map_err(|_| anyhow!("Microphone thread panicked"))??;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for Recording {
+    fn drop(&mut self) {
+        let _ = self.stop();
     }
 }
 

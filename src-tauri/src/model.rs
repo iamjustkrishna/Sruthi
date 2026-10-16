@@ -102,7 +102,7 @@ pub fn find(id: &str) -> Option<&'static ModelInfo> {
     CATALOG.iter().find(|m| m.id == id)
 }
 
-fn models_root() -> PathBuf {
+pub(crate) fn models_root() -> PathBuf {
     crate::settings::app_root().join("models")
 }
 
@@ -246,7 +246,7 @@ fn remote_size(client: &reqwest::blocking::Client, url: &str) -> Result<u64> {
 
 /// Downloads `url` into `dest`, resuming from whatever `dest` already holds.
 /// Retries with backoff when the connection drops or stalls.
-fn fetch_resumable(
+pub(crate) fn fetch_resumable(
     client: &reqwest::blocking::Client,
     url: &str,
     dest: &Path,

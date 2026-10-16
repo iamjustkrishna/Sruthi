@@ -1,6 +1,7 @@
 mod audio;
 mod caret;
 mod format;
+mod live;
 mod model;
 mod paste;
 mod settings;
@@ -8,21 +9,17 @@ mod settings;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use anyhow::anyhow;
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, State, WindowEvent};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
-use transcribe_rs::{SpeechModel, TranscribeOptions};
-
+use format::llm::{self, LlmInfo, LlmServer};
 use settings::OverlayPosition;
 
 const HOTKEY_LABEL: &str = "Ctrl+Shift+Space";
-/// Recordings shorter than this are treated as accidental taps.
-const MIN_SAMPLES: usize = audio::TARGET_RATE as usize * 3 / 10;
 const HISTORY_LIMIT: usize = 50;
 /// How long the pill shows its check mark after the text lands.
 const DONE_LINGER: Duration = Duration::from_millis(650);
@@ -53,6 +50,38 @@ struct ModelEntry {
     installed: bool,
 }
 
+#[derive(Clone, Copy, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum LlmState {
+    /// Smart formatting is switched off.
+    Off,
+    Missing,
+    Downloading,
+    Starting,
+    Ready,
+    Error,
+}
+
+#[derive(Clone, Serialize)]
+struct LlmEntry {
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    size_mb: u32,
+    /// Includes the llama.cpp runtime when it isn't installed yet.
+    download_mb: u32,
+    installed: bool,
+}
+
+#[derive(Clone, Serialize)]
+struct LlmStatus {
+    state: LlmState,
+    detail: Option<String>,
+    active: &'static str,
+    models: Vec<LlmEntry>,
+    downloading: Option<&'static str>,
+}
+
 #[derive(Clone, Serialize)]
 struct Status {
     /// State of the active model.
@@ -63,6 +92,8 @@ struct Status {
     /// Model currently downloading, if any.
     downloading: Option<&'static str>,
     overlay: OverlayPosition,
+    smart: bool,
+    llm: LlmStatus,
     hotkey: &'static str,
     history: Vec<String>,
 }
@@ -90,14 +121,19 @@ struct Inner {
     model_state: ModelState,
     detail: Option<String>,
     history: Vec<String>,
-    recording: Option<audio::Recording>,
+    session: Option<live::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
+    llm_active: &'static LlmInfo,
+    llm_state: LlmState,
+    llm_detail: Option<String>,
+    llm_downloading: Option<&'static str>,
 }
 
 struct AppState {
     inner: Mutex<Inner>,
-    engine: Arc<Mutex<Option<Box<dyn SpeechModel + Send>>>>,
+    engine: live::Engine,
+    formatter: Arc<format::Formatter>,
     /// Bumped every time the pill is shown, so a delayed hide from an
     /// earlier dictation never hides a newer one.
     overlay_generation: AtomicU64,
@@ -112,10 +148,15 @@ impl AppState {
                 model_state: ModelState::Missing,
                 detail: None,
                 history: Vec::new(),
-                recording: None,
+                session: None,
                 busy: false,
+                llm_active: selected_llm(),
+                llm_state: LlmState::Missing,
+                llm_detail: None,
+                llm_downloading: None,
             }),
             engine: Arc::new(Mutex::new(None)),
+            formatter: Arc::new(format::Formatter::default()),
             overlay_generation: AtomicU64::new(0),
         }
     }
@@ -139,6 +180,24 @@ impl AppState {
                 .collect(),
             downloading: inner.downloading,
             overlay: settings::load().overlay,
+            smart: settings::load().smart,
+            llm: LlmStatus {
+                state: inner.llm_state,
+                detail: inner.llm_detail.clone(),
+                active: inner.llm_active.id,
+                models: llm::CATALOG
+                    .iter()
+                    .map(|m| LlmEntry {
+                        id: m.id,
+                        name: m.name,
+                        description: m.description,
+                        size_mb: m.size_mb,
+                        download_mb: m.download_mb(),
+                        installed: m.is_installed() && llm::runtime_installed(),
+                    })
+                    .collect(),
+                downloading: inner.llm_downloading,
+            },
             hotkey: HOTKEY_LABEL,
             history: inner.history.clone(),
         }
@@ -176,6 +235,57 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
                 set_model_state(&app, ModelState::Ready, None);
             }
             Err(e) => set_model_state(&app, ModelState::Error, Some(format!("Couldn't load {}: {e}", info.name))),
+        }
+    });
+}
+
+fn selected_llm() -> &'static LlmInfo {
+    settings::load()
+        .llm
+        .and_then(|id| llm::find(&id))
+        .unwrap_or_else(|| llm::find(llm::DEFAULT_LLM).expect("default LLM in catalog"))
+}
+
+fn set_llm_state(app: &AppHandle, llm_state: LlmState, detail: Option<String>) {
+    {
+        let state = app.state::<AppState>();
+        let mut inner = state.inner.lock().unwrap();
+        inner.llm_state = llm_state;
+        inner.llm_detail = detail;
+    }
+    emit_status(app);
+}
+
+/// Starts or stops llama-server to match the Smart formatting setting and
+/// the chosen model.
+fn sync_llm(app: AppHandle) {
+    let state = app.state::<AppState>();
+    let info = state.inner.lock().unwrap().llm_active;
+    if !settings::load().smart {
+        state.formatter.set_server(None);
+        return set_llm_state(&app, LlmState::Off, None);
+    }
+    if !info.is_installed() || !llm::runtime_installed() {
+        state.formatter.set_server(None);
+        return set_llm_state(&app, LlmState::Missing, None);
+    }
+    if state.formatter.server_model() == Some(info.id) {
+        return set_llm_state(&app, LlmState::Ready, None);
+    }
+    state.formatter.set_server(None);
+    set_llm_state(&app, LlmState::Starting, None);
+    thread::spawn(move || {
+        let started = LlmServer::start(info);
+        let state = app.state::<AppState>();
+        // The user may have switched model or turned Smart off meanwhile.
+        let still_wanted = settings::load().smart && state.inner.lock().unwrap().llm_active.id == info.id;
+        match started {
+            Ok(server) if still_wanted => {
+                state.formatter.set_server(Some(server));
+                set_llm_state(&app, LlmState::Ready, None);
+            }
+            Ok(_) => {} // Dropping it stops the process.
+            Err(e) => set_llm_state(&app, LlmState::Error, Some(format!("Couldn't start {}: {e}", info.name))),
         }
     });
 }
@@ -267,7 +377,7 @@ fn stream_levels(app: &AppHandle, level: Arc<AtomicU32>) {
     let app = app.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(33));
-        if app.state::<AppState>().inner.lock().unwrap().recording.is_none() {
+        if app.state::<AppState>().inner.lock().unwrap().session.is_none() {
             break;
         }
         let value = f32::from_bits(level.load(Ordering::Relaxed));
@@ -288,7 +398,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
         ShortcutState::Pressed => {
             let mut inner = state.inner.lock().unwrap();
             // Holding the key auto-repeats Pressed; ignore everything but the first.
-            if inner.recording.is_some() || inner.busy {
+            if inner.session.is_some() || inner.busy {
                 return;
             }
             if inner.model_state != ModelState::Ready {
@@ -299,14 +409,20 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             match audio::Recording::start() {
                 Ok(rec) => {
                     let level = rec.level();
-                    inner.recording = Some(rec);
+                    let overlay = app.clone();
+                    let on_update: live::OnUpdate = Arc::new(move |text| {
+                        let _ = overlay.emit_to("overlay", "live-text", text);
+                    });
+                    let smart = settings::load().smart;
+                    inner.session =
+                        Some(live::Session::start(rec, state.engine.clone(), state.formatter.clone(), smart, on_update));
                     drop(inner);
                     // Finding the text field can take a moment (UI Automation),
                     // so do it off the main thread; the mic is already running.
                     let app = app.clone();
                     thread::spawn(move || {
                         place_overlay(&app);
-                        if app.state::<AppState>().inner.lock().unwrap().recording.is_none() {
+                        if app.state::<AppState>().inner.lock().unwrap().session.is_none() {
                             return; // Key already released; the pill shows "transcribing" instead.
                         }
                         let _ = app.emit("dictation", Dictation::Recording);
@@ -321,16 +437,16 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             }
         }
         ShortcutState::Released => {
-            let rec = {
+            let session = {
                 let mut inner = state.inner.lock().unwrap();
-                let Some(rec) = inner.recording.take() else { return };
+                let Some(session) = inner.session.take() else { return };
                 inner.busy = true;
-                rec
+                session
             };
             let _ = app.emit("dictation", Dictation::Transcribing);
             let app = app.clone();
             thread::spawn(move || {
-                let result = transcribe_and_paste(&app, rec);
+                let result = transcribe_and_paste(&app, session);
                 app.state::<AppState>().inner.lock().unwrap().busy = false;
                 match result {
                     Ok(text) => {
@@ -346,33 +462,15 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
     }
 }
 
-fn transcribe_and_paste(app: &AppHandle, rec: audio::Recording) -> anyhow::Result<String> {
-    let samples = rec.stop()?;
-    if samples.len() < MIN_SAMPLES {
-        return Ok(String::new());
-    }
-
-    let state = app.state::<AppState>();
-    let started = std::time::Instant::now();
-    let text = {
-        let mut engine = state.engine.lock().unwrap();
-        let model = engine.as_mut().ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
-        model
-            .transcribe(&samples, &TranscribeOptions::default())
-            .map_err(|e| anyhow!("Transcription failed: {e}"))?
-            .text
-            .trim()
-            .to_string()
-    };
-    log::info!(
-        "Transcribed {:.1}s of audio in {} ms",
-        samples.len() as f32 / audio::TARGET_RATE as f32,
-        started.elapsed().as_millis()
-    );
+fn transcribe_and_paste(app: &AppHandle, session: live::Session) -> anyhow::Result<String> {
+    let released = Instant::now();
+    let text = session.finish()?;
+    log::info!("Final text ready {} ms after release", released.elapsed().as_millis());
     if text.is_empty() {
         return Ok(text);
     }
 
+    let state = app.state::<AppState>();
     // The pill can't take focus, so it stays up while the paste lands.
     // Trailing space keeps back-to-back dictations from running together.
     paste::paste_text(&format!("{text} "))?;
@@ -482,6 +580,86 @@ fn set_overlay_position(app: AppHandle, position: OverlayPosition) -> Result<(),
     Ok(())
 }
 
+fn lookup_llm(id: &str) -> Result<&'static LlmInfo, String> {
+    llm::find(id).ok_or_else(|| format!("Unknown model: {id}"))
+}
+
+#[tauri::command]
+fn set_smart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.smart = enabled;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    sync_llm(app);
+    Ok(())
+}
+
+#[tauri::command]
+fn download_llm(app: AppHandle, id: String) -> Result<(), String> {
+    let info = lookup_llm(&id)?;
+    {
+        let state = app.state::<AppState>();
+        let mut inner = state.inner.lock().unwrap();
+        if let Some(other) = inner.llm_downloading {
+            return Err(format!("Already downloading {other}"));
+        }
+        inner.llm_downloading = Some(info.id);
+        if inner.llm_active.id == info.id {
+            inner.llm_state = LlmState::Downloading;
+            inner.llm_detail = None;
+        }
+    }
+    emit_status(&app);
+
+    thread::spawn(move || {
+        let mut last_percent = u64::MAX;
+        let result = info.download(|downloaded, total| {
+            let percent = if total > 0 { downloaded * 100 / total } else { downloaded >> 20 };
+            if percent != last_percent {
+                last_percent = percent;
+                let _ = app.emit("llm-progress", DownloadProgress { id: info.id, downloaded, total });
+            }
+        });
+        app.state::<AppState>().inner.lock().unwrap().llm_downloading = None;
+        match result {
+            Ok(()) => sync_llm(app.clone()),
+            Err(e) => {
+                emit_status(&app);
+                let _ = app.emit("download-error", format!("{} download failed: {e}", info.name));
+            }
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn select_llm(app: AppHandle, id: String) -> Result<(), String> {
+    let info = lookup_llm(&id)?;
+    let mut saved = settings::load();
+    saved.llm = Some(info.id.to_string());
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    app.state::<AppState>().inner.lock().unwrap().llm_active = info;
+    sync_llm(app);
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_llm(app: AppHandle, id: String) -> Result<(), String> {
+    let info = lookup_llm(&id)?;
+    {
+        let state = app.state::<AppState>();
+        let inner = state.inner.lock().unwrap();
+        if inner.llm_active.id == info.id {
+            return Err("Switch to another model before deleting this one".into());
+        }
+        if inner.llm_downloading == Some(info.id) {
+            return Err("Wait for the download to finish".into());
+        }
+    }
+    info.remove().map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -540,8 +718,9 @@ pub fn run() {
 
             let active = app.state::<AppState>().inner.lock().unwrap().active;
             if active.is_installed() {
-                load_model(handle, active);
+                load_model(handle.clone(), active);
             }
+            sync_llm(handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -549,8 +728,18 @@ pub fn run() {
             download_model,
             select_model,
             delete_model,
-            set_overlay_position
+            set_overlay_position,
+            set_smart,
+            download_llm,
+            select_llm,
+            delete_llm
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                // Stop llama-server together with the app.
+                app.state::<AppState>().formatter.set_server(None);
+            }
+        });
 }
