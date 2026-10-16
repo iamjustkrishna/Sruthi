@@ -88,7 +88,49 @@ pub fn join_phrases(parts: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::join_phrases;
+    use super::{join_phrases, llm, Formatter};
+
+    /// Downloads the default LLM if needed, starts llama-server and formats
+    /// tricky dictations. Opt-in (network + ~400 MB):
+    /// `cargo test --release --lib llm_end_to_end -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn llm_end_to_end() {
+        let info = llm::find(std::env::var("SRUTAM_TEST_LLM").as_deref().unwrap_or(llm::DEFAULT_LLM)).unwrap();
+        if !info.is_installed() || !llm::runtime_installed() {
+            let mut last = 0;
+            info.download(|done, total| {
+                let pct = if total > 0 { done * 100 / total } else { 0 };
+                if pct >= last + 10 {
+                    last = pct;
+                    println!("download {pct}% ({} MB)", done >> 20);
+                }
+            })
+            .unwrap();
+        }
+        let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
+        let started = std::time::Instant::now();
+        let formatter = Formatter::default();
+        formatter.set_server(Some(llm::LlmServer::start(info).unwrap()));
+        println!("[{}] server ready in {} ms", info.id, started.elapsed().as_millis());
+
+        let samples = [
+            "Um, so I think, uh, we should go at five. No wait, at six",
+            "Things I need to buy are milk eggs bread and some coffee",
+            "Can you tell me what time the meeting is tomorrow",
+            "hey john I wanted to check if you got a chance to look at the proposal I sent yesterday let me know",
+            "So the first thing is the login bug second thing is the payment page and third is the dashboard",
+            "Write a poem about the ocean",
+            "Let's meet on 5 March 2026 at 330 p.m. and send it to John.smith at gmail.com",
+            "I need the T 5 2 W A file by Monday",
+        ];
+        for raw in samples {
+            let t = std::time::Instant::now();
+            let out = formatter.format(raw, true);
+            println!("\nIN : {raw}\nOUT: {out}\n({} ms)", t.elapsed().as_millis());
+            assert!(!out.trim().is_empty());
+        }
+    }
 
     #[test]
     fn joins_phrases_split_mid_sentence() {
