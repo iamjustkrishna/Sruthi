@@ -29,11 +29,13 @@ pub struct Settings {
     pub llm: Option<String>,
     /// Personal dictionary: names, product terms and rare words.
     pub dictionary: Vec<String>,
+    /// Push-to-talk shortcut, e.g. "Ctrl+Alt+Space" (None: the default).
+    pub hotkey: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new() }
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None }
     }
 }
 

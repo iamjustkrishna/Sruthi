@@ -39,7 +39,22 @@ interface Status {
   };
   dictionary: string[];
   hotkey: string;
-  history: string[];
+  history: HistoryEntry[];
+}
+
+interface HistoryEntry {
+  id: string;
+  time_ms: number;
+  seconds: number;
+  heard: string;
+  text: string;
+}
+
+interface HotkeyOption {
+  hotkey: string;
+  status: "current" | "free" | "taken";
+  note: string;
+  recommended: boolean;
 }
 
 interface DownloadProgress {
@@ -225,17 +240,196 @@ function render(s: Status) {
   });
   renderWords(s.dictionary);
 
+  renderHistory(s.history);
+}
+
+// ---------------------------------------------------------------------------
+// Recent dictations with playable recordings
+
+let player: HTMLAudioElement | null = null;
+let playingId: string | null = null;
+
+function stopPlayback() {
+  if (player) {
+    player.pause();
+    URL.revokeObjectURL(player.src);
+  }
+  player = null;
+  playingId = null;
+  document.querySelectorAll<HTMLButtonElement>(".play").forEach((b) => (b.textContent = "▶"));
+}
+
+async function togglePlay(id: string, button: HTMLButtonElement) {
+  const wasPlaying = playingId === id;
+  stopPlayback();
+  if (wasPlaying) return;
+  try {
+    const bytes = await invoke<ArrayBuffer>("get_recording", { id });
+    const audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })));
+    player = audio;
+    playingId = id;
+    button.textContent = "■";
+    audio.addEventListener("ended", stopPlayback);
+    await audio.play();
+  } catch (e) {
+    stopPlayback();
+    showError(`Couldn't play that recording: ${e}`);
+  }
+}
+
+function when(ms: number) {
+  const d = new Date(ms);
+  const today = new Date();
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toDateString() === today.toDateString() ? `Today ${time}` : `${d.toLocaleDateString()} ${time}`;
+}
+
+function renderHistory(entries: HistoryEntry[]) {
   history.replaceChildren(
-    ...s.history.map((text) => {
+    ...entries.map((e) => {
       const li = document.createElement("li");
-      li.textContent = text;
-      li.title = "Click to copy";
-      li.addEventListener("click", () => navigator.clipboard.writeText(text));
+      li.className = "entry";
+
+      const play = button("▶", () => togglePlay(e.id, play), "ghost play");
+      play.title = "Play recording";
+      play.setAttribute("aria-label", "Play recording");
+      if (playingId === e.id) play.textContent = "■";
+
+      const body = document.createElement("div");
+      body.className = "entry-body";
+      const meta = document.createElement("span");
+      meta.className = "muted small";
+      meta.textContent = `${when(e.time_ms)} · ${e.seconds.toFixed(1)}s`;
+      const text = document.createElement("span");
+      text.className = e.text ? "entry-text" : "entry-text muted";
+      text.textContent = e.text || "(nothing was heard)";
+      if (e.text) {
+        text.title = "Click to copy";
+        text.addEventListener("click", () => navigator.clipboard.writeText(e.text));
+      }
+      body.append(meta, text);
+      // Show the raw transcript when formatting changed it.
+      if (e.heard && e.heard !== e.text) {
+        const heard = document.createElement("span");
+        heard.className = "muted small";
+        heard.textContent = `Heard: ${e.heard}`;
+        body.append(heard);
+      }
+
+      const remove = button("×", () => {
+        if (playingId === e.id) stopPlayback();
+        run("delete_recording", { id: e.id });
+      }, "ghost remove");
+      remove.title = "Delete recording";
+      remove.setAttribute("aria-label", "Delete recording");
+
+      li.append(play, body, remove);
       return li;
     }),
   );
-  historyEmpty.hidden = s.history.length > 0;
+  historyEmpty.hidden = entries.length > 0;
 }
+
+$("open-folder").addEventListener("click", () => run("open_recordings_folder", {}));
+
+// ---------------------------------------------------------------------------
+// Dictation key
+
+const hotkeyChange = $<HTMLButtonElement>("hotkey-change");
+const hotkeyCapture = $("hotkey-capture");
+const hotkeySuggestions = $("hotkey-suggestions");
+const hotkeyError = $("hotkey-error");
+let capturing = false;
+
+const MODIFIER_CODES = ["ControlLeft", "ControlRight", "AltLeft", "AltRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight"];
+
+/** "Ctrl+Alt+D" from a key press; null while only modifiers are held. */
+function comboFrom(e: KeyboardEvent): string | null {
+  if (MODIFIER_CODES.includes(e.code)) return null;
+  const mods: string[] = [];
+  if (e.ctrlKey) mods.push("Ctrl");
+  if (e.altKey) mods.push("Alt");
+  if (e.shiftKey) mods.push("Shift");
+  if (e.metaKey) mods.push("Win");
+  const key = e.code.startsWith("Key") ? e.code.slice(3) : e.code.startsWith("Digit") ? e.code.slice(5) : e.code;
+  return [...mods, key].join("+");
+}
+
+function showHotkeyError(message: string | null) {
+  hotkeyError.hidden = !message;
+  hotkeyError.textContent = message ?? "";
+}
+
+async function saveHotkey(hotkey: string) {
+  showHotkeyError(null);
+  try {
+    await invoke("set_hotkey", { hotkey });
+    stopCapture();
+  } catch (e) {
+    showHotkeyError(String(e));
+  }
+  await loadHotkeyOptions();
+}
+
+function stopCapture() {
+  capturing = false;
+  hotkeyCapture.hidden = true;
+  hotkeyChange.textContent = "Change key";
+}
+
+async function loadHotkeyOptions() {
+  const options = await invoke<HotkeyOption[]>("hotkey_options");
+  $<HTMLUListElement>("hotkey-options").replaceChildren(
+    ...options.map((o) => {
+      const li = document.createElement("li");
+      li.className = `hotkey-option ${o.status}${o.recommended ? " recommended" : ""}`;
+      const key = document.createElement("kbd");
+      key.textContent = o.hotkey;
+      const label = document.createElement("span");
+      label.className = "small";
+      label.textContent =
+        o.status === "current"
+          ? "In use now"
+          : o.status === "taken"
+            ? "Taken by another app"
+            : o.recommended
+              ? "Free · recommended"
+              : o.note
+                ? `Free, but: ${o.note}`
+                : "Free";
+      li.append(key, label);
+      if (o.status === "free") {
+        const use = button("Use", () => saveHotkey(o.hotkey));
+        li.append(use);
+      }
+      return li;
+    }),
+  );
+}
+
+hotkeyChange.addEventListener("click", async () => {
+  if (capturing) {
+    stopCapture();
+    return;
+  }
+  capturing = true;
+  showHotkeyError(null);
+  hotkeyCapture.hidden = false;
+  hotkeySuggestions.hidden = false;
+  hotkeyChange.textContent = "Cancel";
+  await loadHotkeyOptions();
+});
+
+window.addEventListener("keydown", (e) => {
+  if (!capturing) return;
+  e.preventDefault();
+  if (e.code === "Escape" && !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+    stopCapture();
+    return;
+  }
+  const combo = comboFrom(e);
+  if (combo) saveHotkey(combo);
+});
 
 function renderWords(words: string[]) {
   $<HTMLUListElement>("words").replaceChildren(

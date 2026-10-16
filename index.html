@@ -56,6 +56,16 @@
           speak, and let go. The text is typed where your cursor is.
         </p>
         <p class="muted">Closing this window keeps Srutam Dictate running in the system tray.</p>
+
+        <div class="hotkey-row">
+          <button id="hotkey-change" class="ghost">Change key</button>
+          <span class="capture" id="hotkey-capture" hidden>Press the new key combination… <span class="muted small">(Esc to cancel)</span></span>
+        </div>
+        <div id="hotkey-suggestions" class="suggestions" hidden>
+          <p class="muted small">Suggestions, checked against shortcuts other apps have taken on this PC:</p>
+          <ul id="hotkey-options" class="hotkey-options"></ul>
+        </div>
+        <p class="error" id="hotkey-error" hidden></p>
       </section>
 
       <section class="card">
@@ -79,7 +89,11 @@
       </section>
 
       <section class="card">
-        <h2>Recent dictations</h2>
+        <div class="card-head">
+          <h2>Recent dictations</h2>
+          <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
+        </div>
+        <p class="muted small">Every recording is kept on this PC. Play one to hear what the app heard.</p>
         <ul id="history" class="history"></ul>
         <p class="muted" id="history-empty">Nothing yet.</p>
       </section>

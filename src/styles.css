@@ -318,21 +318,108 @@ kbd {
 
 .history {
   list-style: none;
-  margin: 0;
+  margin: 8px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 260px;
+  max-height: 360px;
   overflow-y: auto;
 }
-.history li {
-  padding: 8px 10px;
+
+.entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 8px 8px 6px;
   border-radius: 8px;
   background: var(--bg);
-  cursor: pointer;
-  overflow-wrap: anywhere;
 }
-.history li:hover {
-  outline: 1px solid var(--border);
+.entry-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.entry-text {
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.entry .play {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  flex-shrink: 0;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.entry .remove {
+  padding: 0 8px;
+  border: 0;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.small-btn {
+  font-size: 0.82rem;
+  padding: 4px 10px;
+}
+
+/* Dictation key */
+.hotkey-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.capture {
+  font-weight: 600;
+  color: var(--accent);
+}
+.suggestions {
+  margin-top: 10px;
+}
+.hotkey-options {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hotkey-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.hotkey-option kbd {
+  min-width: 120px;
+  text-align: center;
+}
+.hotkey-option span {
+  flex: 1;
+  color: var(--muted);
+}
+.hotkey-option button {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+.hotkey-option.recommended {
+  border-color: var(--ok);
+}
+.hotkey-option.recommended span {
+  color: var(--ok);
+  font-weight: 600;
+}
+.hotkey-option.current {
+  border-color: var(--accent);
+}
+.hotkey-option.taken {
+  opacity: 0.55;
 }

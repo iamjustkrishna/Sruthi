@@ -5,6 +5,7 @@ mod enhance;
 mod format;
 mod model;
 mod paste;
+mod recordings;
 mod settings;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -16,11 +17,12 @@ use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, State, WindowEvent};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use format::llm::{self, LlmInfo, LlmServer};
 use settings::OverlayPosition;
 
-const HOTKEY_LABEL: &str = "Ctrl+Shift+Space";
+/// Push-to-talk key when the user hasn't picked one.
+const DEFAULT_HOTKEY: &str = "Ctrl+Shift+Space";
 const HISTORY_LIMIT: usize = 50;
 /// How long the pill shows its check mark after the text lands.
 const DONE_LINGER: Duration = Duration::from_millis(650);
@@ -96,8 +98,8 @@ struct Status {
     smart: bool,
     llm: LlmStatus,
     dictionary: Vec<String>,
-    hotkey: &'static str,
-    history: Vec<String>,
+    hotkey: String,
+    history: Vec<recordings::Entry>,
 }
 
 /// Payload of the `dictation` event, which drives the overlay pill.
@@ -122,7 +124,7 @@ struct Inner {
     downloading: Option<&'static str>,
     model_state: ModelState,
     detail: Option<String>,
-    history: Vec<String>,
+    history: Vec<recordings::Entry>,
     session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
@@ -149,7 +151,7 @@ impl AppState {
                 downloading: None,
                 model_state: ModelState::Missing,
                 detail: None,
-                history: Vec::new(),
+                history: recordings::load().into_iter().take(HISTORY_LIMIT).collect(),
                 session: None,
                 busy: false,
                 llm_active: selected_llm(),
@@ -201,7 +203,7 @@ impl AppState {
                     .collect(),
                 downloading: inner.llm_downloading,
             },
-            hotkey: HOTKEY_LABEL,
+            hotkey: current_hotkey(),
             history: inner.history.clone(),
         }
     }
@@ -469,21 +471,28 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
 
 fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow::Result<String> {
     let released = Instant::now();
-    let text = session.finish()?;
+    let outcome = session.finish()?;
     log::info!("Final text ready {} ms after release", released.elapsed().as_millis());
-    if text.is_empty() {
-        return Ok(text);
+
+    if !outcome.text.is_empty() {
+        // The pill can't take focus, so it stays up while the paste lands.
+        // Trailing space keeps back-to-back dictations from running together.
+        paste::paste_text(&format!("{} ", outcome.text))?;
     }
 
-    let state = app.state::<AppState>();
-    // The pill can't take focus, so it stays up while the paste lands.
-    // Trailing space keeps back-to-back dictations from running together.
-    paste::paste_text(&format!("{text} "))?;
-
-    let mut inner = state.inner.lock().unwrap();
-    inner.history.insert(0, text.clone());
-    inner.history.truncate(HISTORY_LIMIT);
-    Ok(text)
+    // Keep the recording (even when nothing was heard, to help tune).
+    if !outcome.audio.is_empty() {
+        match recordings::add(&outcome.audio, &outcome.heard, &outcome.text) {
+            Ok(entry) => {
+                let state = app.state::<AppState>();
+                let mut inner = state.inner.lock().unwrap();
+                inner.history.insert(0, entry);
+                inner.history.truncate(HISTORY_LIMIT);
+            }
+            Err(e) => log::warn!("Couldn't save the recording: {e}"),
+        }
+    }
+    Ok(outcome.text)
 }
 
 fn lookup(id: &str) -> Result<&'static model::ModelInfo, String> {
@@ -702,6 +711,133 @@ fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
     Ok(())
 }
 
+fn current_hotkey() -> String {
+    settings::load().hotkey.unwrap_or_else(|| DEFAULT_HOTKEY.to_string())
+}
+
+/// Parses "Ctrl+Alt+D" style labels ("Win" means the Windows key).
+fn parse_hotkey(label: &str) -> Result<Shortcut, String> {
+    let normalized = label
+        .split('+')
+        .map(|part| match part.trim() {
+            "Win" => "Super",
+            other => other,
+        })
+        .collect::<Vec<_>>()
+        .join("+");
+    normalized.parse::<Shortcut>().map_err(|_| format!("\"{label}\" isn't a valid shortcut"))
+}
+
+#[tauri::command]
+fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+    let new = parse_hotkey(&hotkey)?;
+    if new.mods.is_empty() && !hotkey_ok_alone(&hotkey) {
+        return Err("Add Ctrl, Alt, Shift or Win, or pick a key like F9 or Pause".into());
+    }
+    let old_label = current_hotkey();
+    if old_label == hotkey {
+        return Ok(());
+    }
+    let shortcuts = app.global_shortcut();
+    if let Ok(old) = parse_hotkey(&old_label) {
+        let _ = shortcuts.unregister(old);
+    }
+    if shortcuts.register(new).is_err() {
+        // Taken by another app: put the old one back.
+        if let Ok(old) = parse_hotkey(&old_label) {
+            let _ = shortcuts.register(old);
+        }
+        return Err(format!("{hotkey} is already used by another app. Try another one."));
+    }
+    let mut saved = settings::load();
+    saved.hotkey = Some(hotkey);
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
+/// Keys that work as a push-to-talk key without modifiers.
+fn hotkey_ok_alone(label: &str) -> bool {
+    matches!(label, "Pause" | "ScrollLock" | "Insert") || (label.starts_with('F') && label[1..].parse::<u8>().is_ok())
+}
+
+/// Shortcuts worth suggesting, with what else commonly uses them.
+const HOTKEY_CANDIDATES: &[(&str, &str)] = &[
+    ("Ctrl+Alt+Space", ""),
+    ("Alt+Shift+Space", ""),
+    ("Ctrl+Alt+D", ""),
+    ("Ctrl+Shift+Space", "Parameter hints in VS Code and other editors"),
+    ("Ctrl+Alt+V", "Paste special in some apps"),
+    ("Ctrl+Shift+D", "Bookmark all tabs in Chrome and Edge"),
+    ("Ctrl+Space", "Autocomplete in editors; input switching on some PCs"),
+    ("Alt+Space", "Window menu in Windows; PowerToys Run"),
+    ("F9", "Debuggers, refresh in Outlook"),
+    ("Pause", "Rarely used, but missing on many laptops"),
+];
+
+#[derive(Clone, Serialize)]
+struct HotkeyOption {
+    hotkey: &'static str,
+    /// "current", "free" or "taken" (registered by another app).
+    status: &'static str,
+    /// Apps that commonly use it ("" when nothing common does).
+    note: &'static str,
+    recommended: bool,
+}
+
+/// Checks each candidate by briefly trying to register it: Windows refuses
+/// shortcuts another app has registered. (Shortcuts apps handle only while
+/// focused can't be detected, hence the notes.)
+#[tauri::command]
+fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
+    let current = current_hotkey();
+    let shortcuts = app.global_shortcut();
+    let mut options: Vec<HotkeyOption> = HOTKEY_CANDIDATES
+        .iter()
+        .map(|&(hotkey, note)| {
+            let status = if hotkey == current {
+                "current"
+            } else {
+                match parse_hotkey(hotkey) {
+                    Ok(shortcut) if shortcuts.register(shortcut).is_ok() => {
+                        let _ = shortcuts.unregister(shortcut);
+                        "free"
+                    }
+                    _ => "taken",
+                }
+            };
+            HotkeyOption { hotkey, status, note, recommended: false }
+        })
+        .collect();
+    // Recommend the first three that are free and not commonly used.
+    for option in options.iter_mut().filter(|o| o.status == "free" && o.note.is_empty()).take(3) {
+        option.recommended = true;
+    }
+    options
+}
+
+#[tauri::command]
+fn get_recording(id: String) -> Result<tauri::ipc::Response, String> {
+    recordings::read_wav(&id).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
+    recordings::remove(&id).map_err(|e| e.to_string())?;
+    app.state::<AppState>().inner.lock().unwrap().history.retain(|e| e.id != id);
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn open_recordings_folder() -> Result<(), String> {
+    let folder = recordings::folder();
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    let opener = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
+    std::process::Command::new(opener).arg(&folder).spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -717,9 +853,16 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
 
-            let shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space);
-            if let Err(e) = app.global_shortcut().register(shortcut) {
-                set_model_state(&handle, ModelState::Error, Some(format!("Couldn't register {HOTKEY_LABEL}: {e}")));
+            let hotkey = current_hotkey();
+            let registered = parse_hotkey(&hotkey)
+                .map_err(|e| e.to_string())
+                .and_then(|shortcut| app.global_shortcut().register(shortcut).map_err(|e| e.to_string()));
+            if let Err(e) = registered {
+                set_model_state(
+                    &handle,
+                    ModelState::Error,
+                    Some(format!("Couldn't use {hotkey} as the dictation key ({e}). Pick another one below.")),
+                );
             }
 
             let open = MenuItem::with_id(app, "open", "Open Srutam Dictate", true, None::<&str>)?;
@@ -782,7 +925,12 @@ pub fn run() {
             select_llm,
             delete_llm,
             add_word,
-            remove_word
+            remove_word,
+            set_hotkey,
+            hotkey_options,
+            get_recording,
+            delete_recording,
+            open_recordings_folder
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -792,4 +940,26 @@ pub fn run() {
                 app.state::<AppState>().formatter.set_server(None);
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{hotkey_ok_alone, parse_hotkey, HOTKEY_CANDIDATES};
+
+    #[test]
+    fn parses_hotkey_labels_from_the_ui() {
+        for label in ["Ctrl+Shift+Space", "Ctrl+Alt+D", "Alt+Shift+Space", "Win+Alt+K", "Ctrl+Alt+1", "F9", "Pause"] {
+            assert!(parse_hotkey(label).is_ok(), "{label}");
+        }
+        for (label, _) in HOTKEY_CANDIDATES {
+            assert!(parse_hotkey(label).is_ok(), "{label}");
+        }
+        assert!(parse_hotkey("Ctrl+Nope").is_err());
+    }
+
+    #[test]
+    fn only_some_keys_work_alone() {
+        assert!(hotkey_ok_alone("F9") && hotkey_ok_alone("Pause"));
+        assert!(!hotkey_ok_alone("D") && !hotkey_ok_alone("Space"));
+    }
 }

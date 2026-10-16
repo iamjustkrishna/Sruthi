@@ -29,36 +29,45 @@ impl Session {
         Self { recording, engine, formatter, smart, words }
     }
 
-    /// Stops recording and returns the final, formatted text.
-    pub fn finish(self) -> Result<String> {
+    /// Stops recording, transcribes and formats. Recordings shorter than
+    /// an accidental tap come back with no audio.
+    pub fn finish(self) -> Result<Outcome> {
         self.recording.stop()?;
         let audio = self.recording.slice_16k(0, self.recording.len());
         if (audio.len() as f32) / (TARGET_RATE as f32) < MIN_DICTATION_SECS {
-            return Ok(String::new());
+            return Ok(Outcome::default());
         }
         // Boost quiet speech; skip the model entirely when nothing was said.
-        let Some(audio) = enhance::prepare(&audio) else {
+        let Some(prepared) = enhance::prepare(&audio) else {
             log::info!("No speech in recording");
-            return Ok(String::new());
+            return Ok(Outcome { audio, ..Outcome::default() });
         };
 
-        let raw = {
+        let heard = {
             let mut engine = self.engine.lock().unwrap();
             let model = engine.as_mut().ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
             model
-                .transcribe(&audio, &TranscribeOptions::default())
+                .transcribe(&prepared, &TranscribeOptions::default())
                 .map_err(|e| anyhow!("Transcription failed: {e}"))?
                 .text
                 .trim()
                 .to_string()
         };
-        if raw.is_empty() {
-            return Ok(raw);
-        }
-        let formatted = self.formatter.format(&raw, self.smart, &self.words);
+        let text = if heard.is_empty() { String::new() } else { self.formatter.format(&heard, self.smart, &self.words) };
         // Local debug log only (stdout in dev builds); helps tune the rules.
-        log::info!("Heard:  {raw:?}");
-        log::info!("Pasted: {formatted:?}");
-        Ok(formatted)
+        log::info!("Heard:  {heard:?}");
+        log::info!("Pasted: {text:?}");
+        Ok(Outcome { audio, heard, text })
     }
+}
+
+/// Result of one dictation.
+#[derive(Default)]
+pub struct Outcome {
+    /// The original 16 kHz recording (not boosted), empty for accidental taps.
+    pub audio: Vec<f32>,
+    /// What the speech model heard.
+    pub heard: String,
+    /// The formatted text to paste (empty when nothing was heard).
+    pub text: String,
 }
