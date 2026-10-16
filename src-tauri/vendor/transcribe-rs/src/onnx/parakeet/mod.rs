@@ -50,6 +50,12 @@ const SUBSAMPLING_FACTOR: usize = 8;
 const WINDOW_SIZE: f32 = 0.01;
 const MAX_TOKENS_PER_STEP: usize = 10;
 
+/// SRUTAM PATCH: a letter from a script other than Latin (ASCII, Latin-1
+/// and Latin Extended are allowed).
+fn is_non_latin_letter(c: char) -> bool {
+    c.is_alphabetic() && !c.is_ascii() && !('\u{00C0}'..='\u{024F}').contains(&c)
+}
+
 /// SRUTAM PATCH: duration logits closer than this to the best count as a tie.
 const DURATION_TIE_MARGIN: f32 = 1.0;
 
@@ -116,6 +122,9 @@ pub struct ParakeetModel {
     vocab_size: usize,
     /// SRUTAM PATCH: the user's dictionary, boosted while decoding.
     hotwords: Option<hotwords::Hotwords>,
+    /// SRUTAM PATCH: per token, whether it contains letters outside the
+    /// Latin alphabet (empty = no restriction).
+    non_latin: Vec<bool>,
 }
 
 impl ParakeetModel {
@@ -153,6 +162,7 @@ impl ParakeetModel {
             blank_idx,
             vocab_size,
             hotwords: None,
+            non_latin: Vec::new(),
         })
     }
 
@@ -391,7 +401,20 @@ impl ParakeetModel {
                     .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, _)| idx)
             };
-            let mut token = argmax(vocab_logits).map(|i| i as i32).unwrap_or(self.blank_idx);
+            // SRUTAM PATCH: with Latin-only on, tokens in other scripts
+            // can never win.
+            let mut token = if self.non_latin.is_empty() {
+                argmax(vocab_logits)
+            } else {
+                vocab_logits
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !self.non_latin.get(*i).copied().unwrap_or(false))
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|(i, _)| i)
+            }
+            .map(|i| i as i32)
+            .unwrap_or(self.blank_idx);
             // SRUTAM PATCH: hotword boosting. Pieces that start or continue
             // a dictionary word get a bonus; a new word may not override a
             // confident blank, so boosting can't invent words in silence.
@@ -508,6 +531,10 @@ impl ParakeetModel {
 impl SpeechModel for ParakeetModel {
     fn capabilities(&self) -> ModelCapabilities {
         CAPABILITIES
+    }
+
+    fn set_latin_only(&mut self, on: bool) {
+        self.non_latin = if on { self.vocab.iter().map(|t| t.chars().any(is_non_latin_letter)).collect() } else { Vec::new() };
     }
 
     fn set_hotwords(&mut self, words: &[String]) {
@@ -770,6 +797,9 @@ mod srutam_patch_tests {
         assert_eq!(smallest_close_duration(&[-3.8, 7.0, 8.3, -3.8, -4.3]), 2);
         assert_eq!(smallest_close_duration(&[-5.8, 3.4, 8.4, 11.6, 15.9]), 4);
         assert_eq!(smallest_close_duration(&[]), 0);
+        // Latin-only decoding blocks Cyrillic/Greek, keeps accented Latin.
+        assert!(super::is_non_latin_letter('Ш') && super::is_non_latin_letter('λ'));
+        assert!(!super::is_non_latin_letter('é') && !super::is_non_latin_letter('a') && !super::is_non_latin_letter('5'));
         // A near-tie with "stay" moves forward instead of looping.
         assert_eq!(smallest_close_duration(&[8.2, 8.5, 3.0, 1.0, 0.0]), 1);
         // "Stay" still wins when it's the clear best.

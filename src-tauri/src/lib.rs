@@ -258,6 +258,9 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
         match loaded {
             Ok(mut m) => {
                 m.set_hotwords(&settings::load().dictionary);
+                // Dictation is English: never switch to Cyrillic or Greek
+                // (Parakeet V3 wrote "Srutam" as "Шутом").
+                m.set_latin_only(true);
                 *state.engine.lock().unwrap() = Some(m);
                 set_model_state(&app, ModelState::Ready, None);
             }

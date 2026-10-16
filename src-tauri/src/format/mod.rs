@@ -36,7 +36,7 @@ impl Formatter {
         let server = self.server.lock().unwrap();
         let Some(server) = server.as_ref() else { return ruled };
         let started = std::time::Instant::now();
-        match server.clean_up(&ruled) {
+        match server.clean_up(&ruled, words) {
             Ok(out) if llm::faithful(&ruled, &out) => {
                 log::info!("LLM clean-up in {} ms", started.elapsed().as_millis());
                 dictionary::apply(&out, words)

@@ -173,6 +173,11 @@ pub trait SpeechModel: Send {
     /// Engines without hotword support ignore this.
     fn set_hotwords(&mut self, _words: &[String]) {}
 
+    /// SRUTAM PATCH: only write Latin-alphabet text (multilingual models
+    /// sometimes switch script mid-dictation, e.g. English heard as
+    /// Cyrillic). Engines without support ignore this.
+    fn set_latin_only(&mut self, _on: bool) {}
+
     /// Default leading silence in milliseconds for this engine.
     ///
     /// Override to set a non-zero default. For example, Parakeet returns 250

@@ -24,6 +24,11 @@ Changes are marked `SRUTAM PATCH` in `src/onnx/parakeet/mod.rs`:
    gentle values stay; the app's sound-alike correction does most of the
    work.
 
+4. **Latin-only decoding** (`SpeechModel::set_latin_only`). Parakeet V3 is
+   multilingual and sometimes wrote English speech in Cyrillic (the name
+   "Srutam" came out as "Шутом"). With it on, tokens containing letters
+   outside the Latin alphabet (ASCII, Latin-1, Latin Extended) never win.
+
 Set `SRUTAM_TDT_DEBUG=1` to print every emitted token with its logits.
 
 Also: `ort` is pinned to `=2.0.0-rc.12`, since rc.14 changed the session

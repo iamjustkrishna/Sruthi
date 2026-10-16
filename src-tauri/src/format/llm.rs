@@ -180,7 +180,7 @@ impl LlmServer {
         };
         server.wait_ready(Duration::from_secs(90))?;
         // Warm up so the first real dictation isn't slow.
-        let _ = server.clean_up("hello world");
+        let _ = server.clean_up("hello world", &[]);
         Ok(server)
     }
 
@@ -197,10 +197,20 @@ impl LlmServer {
         bail!("llama-server didn't start in time")
     }
 
-    /// Returns the cleaned-up version of `text`.
-    pub fn clean_up(&self, text: &str) -> Result<String> {
+    /// Returns the cleaned-up version of `text`. `glossary` is the user's
+    /// dictionary: names and terms to spell exactly as given when the
+    /// dictation clearly means them.
+    pub fn clean_up(&self, text: &str, glossary: &[String]) -> Result<String> {
         let words = text.split_whitespace().count();
-        let mut messages = vec![json!({ "role": "system", "content": SYSTEM_PROMPT })];
+        let mut system = SYSTEM_PROMPT.to_string();
+        if !glossary.is_empty() {
+            system.push_str(&format!(
+                " The speaker often uses these names and terms; when the dictation means one of them \
+                 (even if it was misheard as similar-sounding words), spell it exactly like this: {}.",
+                glossary.join(", ")
+            ));
+        }
+        let mut messages = vec![json!({ "role": "system", "content": system })];
         for (input, output) in EXAMPLES {
             messages.push(json!({ "role": "user", "content": input }));
             messages.push(json!({ "role": "assistant", "content": output }));

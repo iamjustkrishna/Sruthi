@@ -431,6 +431,7 @@ mod tests {
 
         let mut model = info.load().unwrap();
         model.set_hotwords(&hotwords);
+        model.set_latin_only(true);
         for file in files {
             let mut samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
             // SRUTAM_TEST_ENHANCE=1 runs the same speech check and boost as

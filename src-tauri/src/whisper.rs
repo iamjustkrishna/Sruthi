@@ -122,6 +122,9 @@ fn audio_ctx(seconds: f32) -> u32 {
 
 pub struct WhisperCli {
     threads: usize,
+    /// The user's dictionary as a hint ("initial prompt"), the way Wispr
+    /// biases its models: Whisper then spells those words as given.
+    prompt: Option<String>,
 }
 
 impl WhisperCli {
@@ -131,7 +134,7 @@ impl WhisperCli {
         }
         // Leave a couple of cores for the rest of the system.
         let threads = std::thread::available_parallelism().map(|n| n.get().saturating_sub(2).max(4)).unwrap_or(4);
-        Ok(Self { threads })
+        Ok(Self { threads, prompt: None })
     }
 
     fn run(&self, samples: &[f32]) -> Result<String> {
@@ -149,6 +152,9 @@ impl WhisperCli {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        if let Some(prompt) = &self.prompt {
+            cmd.arg("--prompt").arg(prompt);
+        }
         crate::process::hide_window(&mut cmd);
         let child = cmd.spawn().context("Couldn't start whisper.cpp")?;
         crate::process::kill_with_app(&child);
@@ -160,8 +166,17 @@ impl WhisperCli {
         }
         let text = String::from_utf8_lossy(&output.stdout);
         let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
-        Ok(drop_repeated_sentences(&joined))
+        let text = drop_repeated_sentences(&joined);
+        Ok(if echoes_prompt(&text, self.prompt.as_deref()) { String::new() } else { text })
     }
+}
+
+/// On short or silent clips Whisper can return its prompt instead of what
+/// was said. A one-word prompt can't be told apart from saying that word,
+/// so only multi-word prompts are checked.
+fn echoes_prompt(text: &str, prompt: Option<&str>) -> bool {
+    let norm = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    prompt.is_some_and(|p| p.contains(',') && !text.is_empty() && norm(text) == norm(p))
 }
 
 /// On short clips Whisper often says the same sentence twice ("Don't you
@@ -193,6 +208,12 @@ fn drop_repeated_sentences(text: &str) -> String {
 impl SpeechModel for WhisperCli {
     fn capabilities(&self) -> ModelCapabilities {
         CAPABILITIES
+    }
+
+    fn set_hotwords(&mut self, words: &[String]) {
+        let words: Vec<&str> = words.iter().map(|w| w.trim()).filter(|w| !w.is_empty()).collect();
+        // Just the words: a label like "Glossary:" got echoed back on short clips.
+        self.prompt = (!words.is_empty()).then(|| format!("{}.", words.join(", ")));
     }
 
     fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
@@ -228,11 +249,13 @@ const MIN_SPEECH_SECS: f32 = 0.4;
 pub struct Hybrid {
     fast: Box<dyn SpeechModel + Send>,
     slow: WhisperCli,
+    /// The user's dictionary, to spot misheard dictionary words.
+    words: Vec<String>,
 }
 
 impl Hybrid {
     pub fn new(fast: Box<dyn SpeechModel + Send>, slow: WhisperCli) -> Self {
-        Self { fast, slow }
+        Self { fast, slow, words: Vec::new() }
     }
 }
 
@@ -243,13 +266,23 @@ impl SpeechModel for Hybrid {
 
     fn set_hotwords(&mut self, words: &[String]) {
         self.fast.set_hotwords(words);
+        self.slow.set_hotwords(words);
+        self.words = words.to_vec();
+    }
+
+    fn set_latin_only(&mut self, on: bool) {
+        self.fast.set_latin_only(on);
     }
 
     fn transcribe_raw(&mut self, samples: &[f32], options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
         // `transcribe` (not `_raw`) keeps Parakeet's own silence padding.
         let fast = self.fast.transcribe(samples, options)?;
         let speech = speech_seconds(samples);
-        if !needs_second_opinion(&fast.text, speech) {
+        // Whisper also gets a say when Parakeet's words sound close to, but
+        // not quite like, a dictionary word: with the dictionary as its
+        // prompt, Whisper heard "Srutam" where Parakeet wrote "Shop".
+        let near_miss = crate::format::dictionary::has_near_miss(&fast.text, &self.words);
+        if !near_miss && !needs_second_opinion(&fast.text, speech) {
             return Ok(fast);
         }
         log::info!("Hybrid: Parakeet heard {:?} in {speech:.1}s of speech; asking Whisper", fast.text);
@@ -319,6 +352,14 @@ mod tests {
         );
         assert_eq!(drop_repeated_sentences("Yes. No. Yes."), "Yes. No. Yes.");
         assert_eq!(drop_repeated_sentences("No trailing stop"), "No trailing stop");
+    }
+
+    #[test]
+    fn prompt_echoes_are_dropped() {
+        let prompt = Some("Srutam, Kubernetes.");
+        assert!(echoes_prompt("Srutam, Kubernetes.", prompt));
+        assert!(!echoes_prompt("Srutam is the best.", prompt));
+        assert!(!echoes_prompt("Srutam.", Some("Srutam.")));
     }
 
     #[test]
