@@ -152,7 +152,7 @@ body[data-align="center"] .pill {
   max-width: 200px;
 }
 
-/* Live words as you speak, and the final text when done */
+/* The final text, shown briefly with the check mark */
 .live {
   max-width: 380px;
   overflow: hidden;

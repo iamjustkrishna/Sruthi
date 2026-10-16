@@ -1,7 +1,7 @@
 mod audio;
 mod caret;
+mod dictation;
 mod format;
-mod live;
 mod model;
 mod paste;
 mod settings;
@@ -121,7 +121,7 @@ struct Inner {
     model_state: ModelState,
     detail: Option<String>,
     history: Vec<String>,
-    session: Option<live::Session>,
+    session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
     llm_active: &'static LlmInfo,
@@ -132,7 +132,7 @@ struct Inner {
 
 struct AppState {
     inner: Mutex<Inner>,
-    engine: live::Engine,
+    engine: dictation::Engine,
     formatter: Arc<format::Formatter>,
     /// Bumped every time the pill is shown, so a delayed hide from an
     /// earlier dictation never hides a newer one.
@@ -409,13 +409,9 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             match audio::Recording::start() {
                 Ok(rec) => {
                     let level = rec.level();
-                    let overlay = app.clone();
-                    let on_update: live::OnUpdate = Arc::new(move |text| {
-                        let _ = overlay.emit_to("overlay", "live-text", text);
-                    });
                     let smart = settings::load().smart;
                     inner.session =
-                        Some(live::Session::start(rec, state.engine.clone(), state.formatter.clone(), smart, on_update));
+                        Some(dictation::Session::start(rec, state.engine.clone(), state.formatter.clone(), smart));
                     drop(inner);
                     // Finding the text field can take a moment (UI Automation),
                     // so do it off the main thread; the mic is already running.
@@ -462,7 +458,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
     }
 }
 
-fn transcribe_and_paste(app: &AppHandle, session: live::Session) -> anyhow::Result<String> {
+fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow::Result<String> {
     let released = Instant::now();
     let text = session.finish()?;
     log::info!("Final text ready {} ms after release", released.elapsed().as_millis());

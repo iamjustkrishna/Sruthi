@@ -110,10 +110,6 @@ listen<Dictation>("dictation", ({ payload }) => {
   }
 });
 
-listen<string>("live-text", ({ payload }) => {
-  if (pill.dataset.phase === "recording" || pill.dataset.phase === "transcribing") setLive(payload);
-});
-
 listen<number>("audio-level", ({ payload }) => {
   target = normalize(payload);
 });

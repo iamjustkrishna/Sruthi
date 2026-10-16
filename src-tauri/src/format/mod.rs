@@ -50,45 +50,9 @@ impl Formatter {
     }
 }
 
-/// Words that usually continue a sentence. A phrase that starts with one
-/// was most likely split mid-sentence at a pause.
-const CONTINUATIONS: &[&str] = &[
-    "and", "but", "or", "so", "because", "which", "that", "to", "with", "of", "for", "then", "than", "if", "when",
-    "while", "as", "in", "on", "at", "by", "from", "the", "a", "an", "is", "are", "was", "were",
-];
-
-/// Joins phrases transcribed separately (split at pauses), undoing the full
-/// stop the model put at a pause that was really mid-sentence.
-pub fn join_phrases(parts: &[String]) -> String {
-    let mut out = String::new();
-    for part in parts.iter().map(|p| p.trim_matches(' ')).filter(|p| !p.trim().is_empty()) {
-        if out.is_empty() {
-            out.push_str(part);
-            continue;
-        }
-        let first_word: String = part.chars().take_while(|c| c.is_alphabetic()).collect::<String>().to_lowercase();
-        let continues = CONTINUATIONS.contains(&first_word.as_str()) && out.ends_with('.') && !out.ends_with("..");
-        if continues {
-            out.pop();
-            out.push(' ');
-            let mut chars = part.chars();
-            if let Some(c) = chars.next() {
-                out.extend(c.to_lowercase());
-                out.push_str(chars.as_str());
-            }
-        } else {
-            if !out.ends_with('\n') {
-                out.push(' ');
-            }
-            out.push_str(part);
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{join_phrases, llm, Formatter};
+    use super::{llm, Formatter};
 
     /// Downloads the default LLM if needed, starts llama-server and formats
     /// tricky dictations. Opt-in (network + ~400 MB):
@@ -130,23 +94,5 @@ mod tests {
             println!("\nIN : {raw}\nOUT: {out}\n({} ms)", t.elapsed().as_millis());
             assert!(!out.trim().is_empty());
         }
-    }
-
-    #[test]
-    fn joins_phrases_split_mid_sentence() {
-        let parts = vec!["I want to go to the market.".to_string(), "And buy some milk.".to_string()];
-        assert_eq!(join_phrases(&parts), "I want to go to the market and buy some milk.");
-    }
-
-    #[test]
-    fn keeps_real_sentence_breaks() {
-        let parts = vec!["The meeting is at 5.".to_string(), "Please be on time.".to_string()];
-        assert_eq!(join_phrases(&parts), "The meeting is at 5. Please be on time.");
-    }
-
-    #[test]
-    fn keeps_new_lines() {
-        let parts = vec!["Dear team,\n".to_string(), "Thanks.".to_string()];
-        assert_eq!(join_phrases(&parts), "Dear team,\nThanks.");
     }
 }

@@ -74,11 +74,6 @@ impl Recording {
         self.level.clone()
     }
 
-    /// The device's sample rate.
-    pub fn rate(&self) -> u32 {
-        self.rate
-    }
-
     /// Number of samples captured so far, at the device rate.
     pub fn len(&self) -> usize {
         self.buffer.lock().unwrap().len()
@@ -90,16 +85,6 @@ impl Recording {
         let to = to.min(buf.len());
         let from = from.min(to);
         resample(&buf[from..to], self.rate, TARGET_RATE)
-    }
-
-    /// Loudness (RMS) of the last `samples` captured samples.
-    pub fn recent_rms(&self, samples: usize) -> f32 {
-        let buf = self.buffer.lock().unwrap();
-        let tail = &buf[buf.len().saturating_sub(samples)..];
-        if tail.is_empty() {
-            return 0.0;
-        }
-        (tail.iter().map(|s| s * s).sum::<f32>() / tail.len() as f32).sqrt()
     }
 
     /// Stops capturing. The captured audio stays readable.
