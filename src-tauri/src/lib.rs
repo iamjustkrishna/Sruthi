@@ -233,7 +233,8 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
             return;
         }
         match loaded {
-            Ok(m) => {
+            Ok(mut m) => {
+                m.set_hotwords(&settings::load().dictionary);
                 *state.engine.lock().unwrap() = Some(m);
                 set_model_state(&app, ModelState::Ready, None);
             }
@@ -667,6 +668,13 @@ fn delete_llm(app: AppHandle, id: String) -> Result<(), String> {
 /// Max length of a dictionary entry; longer is almost certainly a mistake.
 const MAX_WORD_LEN: usize = 60;
 
+/// Lets the speech model favour dictionary words while decoding.
+fn set_hotwords(app: &AppHandle, words: &[String]) {
+    if let Some(model) = app.state::<AppState>().engine.lock().unwrap().as_mut() {
+        model.set_hotwords(words);
+    }
+}
+
 #[tauri::command]
 fn add_word(app: AppHandle, word: String) -> Result<(), String> {
     let word = word.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -678,6 +686,7 @@ fn add_word(app: AppHandle, word: String) -> Result<(), String> {
         saved.dictionary.push(word);
         saved.dictionary.sort_by_key(|w| w.to_lowercase());
         settings::save(&saved).map_err(|e| e.to_string())?;
+        set_hotwords(&app, &saved.dictionary);
     }
     emit_status(&app);
     Ok(())
@@ -688,6 +697,7 @@ fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
     let mut saved = settings::load();
     saved.dictionary.retain(|w| w != &word);
     settings::save(&saved).map_err(|e| e.to_string())?;
+    set_hotwords(&app, &saved.dictionary);
     emit_status(&app);
     Ok(())
 }

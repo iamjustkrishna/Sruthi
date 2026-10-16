@@ -169,6 +169,10 @@ pub trait SpeechModel: Send {
     /// Report this model's capabilities.
     fn capabilities(&self) -> ModelCapabilities;
 
+    /// SRUTAM PATCH: words to favour while decoding (names, rare words).
+    /// Engines without hotword support ignore this.
+    fn set_hotwords(&mut self, _words: &[String]) {}
+
     /// Default leading silence in milliseconds for this engine.
     ///
     /// Override to set a non-zero default. For example, Parakeet returns 250

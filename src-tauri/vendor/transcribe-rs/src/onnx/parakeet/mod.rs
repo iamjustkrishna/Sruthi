@@ -6,6 +6,8 @@ use ort::value::TensorRef;
 use regex::Regex;
 use std::path::Path;
 
+mod hotwords;
+
 use super::session;
 use super::Quantization;
 use crate::decode::tokens::load_vocab;
@@ -112,6 +114,8 @@ pub struct ParakeetModel {
     vocab: Vec<String>,
     blank_idx: i32,
     vocab_size: usize,
+    /// SRUTAM PATCH: the user's dictionary, boosted while decoding.
+    hotwords: Option<hotwords::Hotwords>,
 }
 
 impl ParakeetModel {
@@ -148,6 +152,7 @@ impl ParakeetModel {
             vocab,
             blank_idx,
             vocab_size,
+            hotwords: None,
         })
     }
 
@@ -359,6 +364,8 @@ impl ParakeetModel {
 
         let mut t = 0;
         let mut emitted_tokens = 0;
+        // SRUTAM PATCH: hotwords currently in progress (prefix-tree nodes).
+        let mut active_hotwords: Vec<usize> = Vec::new();
 
         while t < encodings_len {
             let encoder_step = encodings.slice(ndarray::s![t, ..]);
@@ -384,7 +391,21 @@ impl ParakeetModel {
                     .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, _)| idx)
             };
-            let token = argmax(vocab_logits).map(|i| i as i32).unwrap_or(self.blank_idx);
+            let mut token = argmax(vocab_logits).map(|i| i as i32).unwrap_or(self.blank_idx);
+            // SRUTAM PATCH: hotword boosting. Pieces that start or continue
+            // a dictionary word get a bonus; a new word may not override a
+            // confident blank, so boosting can't invent words in silence.
+            if let Some(hot) = self.hotwords.as_ref().filter(|h| !h.is_empty()) {
+                let mut best = vocab_logits.get(token as usize).copied().unwrap_or(f32::NEG_INFINITY);
+                for (candidate, bonus) in hot.boosts(&active_hotwords, token != self.blank_idx) {
+                    if let Some(&logit) = vocab_logits.get(candidate as usize) {
+                        if logit + bonus > best {
+                            best = logit + bonus;
+                            token = candidate;
+                        }
+                    }
+                }
+            }
             // SRUTAM PATCH: TDT models also predict how many encoder frames
             // to skip (durations 0..=4). The upstream loop ignored this and
             // stayed on the same frame until a blank, so repeated letters
@@ -411,6 +432,9 @@ impl ParakeetModel {
                 tokens.push(token);
                 timestamps.push(t);
                 emitted_tokens += 1;
+                if let Some(hot) = &self.hotwords {
+                    active_hotwords = hot.advance(&active_hotwords, token);
+                }
             }
 
             if step > 0 {
@@ -484,6 +508,10 @@ impl ParakeetModel {
 impl SpeechModel for ParakeetModel {
     fn capabilities(&self) -> ModelCapabilities {
         CAPABILITIES
+    }
+
+    fn set_hotwords(&mut self, words: &[String]) {
+        self.hotwords = if words.is_empty() { None } else { Some(hotwords::Hotwords::new(words, &self.vocab)) };
     }
 
     fn default_leading_silence_ms(&self) -> u32 {

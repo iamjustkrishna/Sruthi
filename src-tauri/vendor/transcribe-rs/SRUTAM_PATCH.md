@@ -15,6 +15,15 @@ Changes are marked `SRUTAM PATCH` in `src/onnx/parakeet/mod.rs`:
    frame") is only used when it clearly wins, since choosing it on a tie
    lets the decoder loop on quiet audio.
 
+3. **Hotword boosting** (`src/onnx/parakeet/hotwords.rs`, plus a default
+   no-op `SpeechModel::set_hotwords` in `src/lib.rs`). Dictionary words
+   are split into vocabulary pieces in a prefix tree; while decoding,
+   pieces that start (+1.0) or continue (+2.5) a word get a logit bonus. A
+   new word may not override a confident blank. Doubling the bonuses fixed
+   one more word but distorted others ("Srutam" -> "Sruutam"), so the
+   gentle values stay; the app's sound-alike correction does most of the
+   work.
+
 Set `SRUTAM_TDT_DEBUG=1` to print every emitted token with its logits.
 
 Also: `ort` is pinned to `=2.0.0-rc.12`, since rc.14 changed the session

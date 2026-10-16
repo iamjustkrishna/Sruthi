@@ -351,7 +351,14 @@ mod tests {
         // adds hiss, then runs it through the same boost dictation uses.
         let gain: Option<f32> = std::env::var("SRUTAM_TEST_GAIN").ok().and_then(|g| g.parse().ok());
 
+        // SRUTAM_TEST_HOTWORDS="Tauri,Kubernetes" boosts those words while
+        // decoding and shows the dictionary correction on top.
+        let hotwords: Vec<String> = std::env::var("SRUTAM_TEST_HOTWORDS")
+            .map(|w| w.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+            .unwrap_or_default();
+
         let mut model = info.load().unwrap();
+        model.set_hotwords(&hotwords);
         for file in files {
             let mut samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
             if let Some(gain) = gain {
@@ -375,6 +382,9 @@ mod tests {
             println!("[{id}] {} ({:.1}s audio, {} ms)
   raw:   {text}
   rules: {}", file.file_name().unwrap().to_string_lossy(), samples.len() as f32 / 16000.0, started.elapsed().as_millis(), crate::format::rules::apply(&text));
+            if !hotwords.is_empty() {
+                println!("  dict:  {}", crate::format::dictionary::apply(&text, &hotwords));
+            }
             assert!(!text.trim().is_empty());
         }
     }
