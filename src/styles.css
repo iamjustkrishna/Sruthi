@@ -367,6 +367,21 @@ kbd {
   padding: 4px 10px;
 }
 
+/* A label with a description and a switch on the right */
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+}
+.setting-row > span {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Dictation key */
 .hotkey-row {
   display: flex;

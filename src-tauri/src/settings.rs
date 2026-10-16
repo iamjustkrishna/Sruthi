@@ -31,11 +31,13 @@ pub struct Settings {
     pub dictionary: Vec<String>,
     /// Push-to-talk shortcut, e.g. "Ctrl+Alt+Space" (None: the default).
     pub hotkey: Option<String>,
+    /// Keep the microphone open so recording starts instantly.
+    pub instant_mic: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None }
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true }
     }
 }
 

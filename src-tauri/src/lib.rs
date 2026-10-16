@@ -99,6 +99,7 @@ struct Status {
     llm: LlmStatus,
     dictionary: Vec<String>,
     hotkey: String,
+    instant_mic: bool,
     history: Vec<recordings::Entry>,
 }
 
@@ -136,6 +137,8 @@ struct Inner {
 
 struct AppState {
     inner: Mutex<Inner>,
+    /// Always-ready microphone (None when instant start is off or failed).
+    mic: Mutex<Option<Arc<audio::Mic>>>,
     engine: dictation::Engine,
     formatter: Arc<format::Formatter>,
     /// Bumped every time the pill is shown, so a delayed hide from an
@@ -146,6 +149,7 @@ struct AppState {
 impl AppState {
     fn new() -> Self {
         Self {
+            mic: Mutex::new(None),
             inner: Mutex::new(Inner {
                 active: model::selected_model(),
                 downloading: None,
@@ -204,6 +208,7 @@ impl AppState {
                 downloading: inner.llm_downloading,
             },
             hotkey: current_hotkey(),
+            instant_mic: settings::load().instant_mic,
             history: inner.history.clone(),
         }
     }
@@ -293,6 +298,33 @@ fn sync_llm(app: AppHandle) {
             Ok(_) => {} // Dropping it stops the process.
             Err(e) => set_llm_state(&app, LlmState::Error, Some(format!("Couldn't start {}: {e}", info.name))),
         }
+    });
+}
+
+/// Opens or closes the always-ready microphone to match the setting.
+fn sync_mic(app: AppHandle) {
+    let wanted = settings::load().instant_mic;
+    let state = app.state::<AppState>();
+    if !wanted {
+        if let Some(mic) = state.mic.lock().unwrap().take() {
+            mic.stop();
+        }
+        return;
+    }
+    if state.mic.lock().unwrap().is_some() {
+        return;
+    }
+    thread::spawn(move || match audio::Mic::start() {
+        Ok(mic) => {
+            let state = app.state::<AppState>();
+            if settings::load().instant_mic {
+                *state.mic.lock().unwrap() = Some(mic);
+            } else {
+                mic.stop();
+            }
+        }
+        // Dictation still works, opening the mic on each key press.
+        Err(e) => log::warn!("Couldn't keep the microphone ready ({e}); will open it per dictation"),
     });
 }
 
@@ -412,7 +444,13 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 show_main(app);
                 return;
             }
-            match audio::Recording::start() {
+            // Instant from the always-ready mic; otherwise open it now.
+            let mic = state.mic.lock().unwrap().clone();
+            let started = match mic {
+                Some(mic) => Ok(mic.record()),
+                None => audio::Recording::start(),
+            };
+            match started {
                 Ok(rec) => {
                     let level = rec.level();
                     let saved = settings::load();
@@ -729,6 +767,16 @@ fn parse_hotkey(label: &str) -> Result<Shortcut, String> {
 }
 
 #[tauri::command]
+fn set_instant_mic(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.instant_mic = enabled;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    sync_mic(app.clone());
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
     let new = parse_hotkey(&hotkey)?;
     if new.mods.is_empty() && !hotkey_ok_alone(&hotkey) {
@@ -911,7 +959,8 @@ pub fn run() {
             if active.is_installed() {
                 load_model(handle.clone(), active);
             }
-            sync_llm(handle);
+            sync_llm(handle.clone());
+            sync_mic(handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -928,6 +977,7 @@ pub fn run() {
             remove_word,
             set_hotkey,
             hotkey_options,
+            set_instant_mic,
             get_recording,
             delete_recording,
             open_recordings_folder
@@ -936,8 +986,12 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                // Stop llama-server together with the app.
-                app.state::<AppState>().formatter.set_server(None);
+                // Stop llama-server together with the app, and close the mic.
+                let state = app.state::<AppState>();
+                state.formatter.set_server(None);
+                if let Some(mic) = state.mic.lock().unwrap().take() {
+                    mic.stop();
+                }
             }
         });
 }

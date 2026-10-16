@@ -39,6 +39,7 @@ interface Status {
   };
   dictionary: string[];
   hotkey: string;
+  instant_mic: boolean;
   history: HistoryEntry[];
 }
 
@@ -239,6 +240,7 @@ function render(s: Status) {
     input.checked = input.value === s.overlay;
   });
   renderWords(s.dictionary);
+  $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
 
   renderHistory(s.history);
 }
@@ -461,6 +463,9 @@ $<HTMLFormElement>("word-form").addEventListener("submit", async (e) => {
 });
 
 smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartToggle.checked }));
+
+const instantToggle = $<HTMLInputElement>("instant-toggle");
+instantToggle.addEventListener("change", () => run("set_instant_mic", { enabled: instantToggle.checked }));
 
 document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
   input.addEventListener("change", () => {

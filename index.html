@@ -57,6 +57,20 @@
         </p>
         <p class="muted">Closing this window keeps Srutam Dictate running in the system tray.</p>
 
+        <div class="setting-row">
+          <span>
+            <strong>Instant start</strong>
+            <span class="muted small">
+              Keeps the microphone ready so nothing you say is cut off, including a word spoken as you press the key.
+              Windows shows its microphone icon while the app runs; audio is only kept while you hold the key.
+            </span>
+          </span>
+          <label class="switch" title="Instant start">
+            <input type="checkbox" id="instant-toggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
         <div class="hotkey-row">
           <button id="hotkey-change" class="ghost">Change key</button>
           <span class="capture" id="hotkey-capture" hidden>Press the new key combination… <span class="muted small">(Esc to cancel)</span></span>
