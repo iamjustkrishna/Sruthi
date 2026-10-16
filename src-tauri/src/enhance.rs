@@ -9,12 +9,14 @@ use crate::audio::TARGET_RATE;
 const FRAME: usize = TARGET_RATE as usize / 50;
 /// Normal speaking level (RMS, about -22 dBFS).
 const TARGET_RMS: f32 = 0.08;
-/// At most +32 dB, enough for a whisper without turning hiss into a roar.
-const MAX_GAIN: f32 = 40.0;
+/// At most +38 dB: real whispers on this laptop peaked around 0.001-0.005.
+const MAX_GAIN: f32 = 80.0;
 /// A frame this many times louder than the noise floor counts as speech.
-const SPEECH_OVER_NOISE: f32 = 2.5;
-/// Frames quieter than this are room noise, however quiet the room.
-const MIN_SPEECH_RMS: f32 = 0.0015;
+const SPEECH_OVER_NOISE: f32 = 2.0;
+/// Frames quieter than this never count as speech (about -74 dBFS). Kept
+/// tiny on purpose: an earlier 0.0015 threw away real whispers that were
+/// thousands of times louder than the (gated, near-zero) background.
+const MIN_SPEECH_RMS: f32 = 0.0002;
 /// Less speech than this (in frames, 120 ms) means nothing was said.
 const MIN_SPEECH_FRAMES: usize = 6;
 /// Rumble and DC below this frequency are removed.
@@ -112,6 +114,19 @@ mod tests {
         let out = prepare(&speechlike(0.004, 1.0)).expect("speech detected");
         let level = speech_level(&out);
         assert!((0.05..=0.11).contains(&level), "level {level}");
+    }
+
+    /// Real whispers measured 0.001-0.005 RMS over a background of ~0
+    /// (the mic gates silence); they must count as speech.
+    #[test]
+    fn whisper_over_silent_background_is_kept() {
+        let mut audio = vec![0.0f32; TARGET_RATE as usize];
+        let whisper: Vec<f32> = (0..TARGET_RATE as usize)
+            .map(|i| 0.0015 * std::f32::consts::SQRT_2 * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / TARGET_RATE as f32).sin())
+            .collect();
+        audio.extend(whisper);
+        audio.extend(vec![0.0f32; TARGET_RATE as usize]);
+        assert!(prepare(&audio).is_some());
     }
 
     #[test]
