@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
+type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
 
 interface ModelEntry {
   id: string;
@@ -12,6 +13,15 @@ interface ModelEntry {
   installed: boolean;
 }
 
+interface LlmEntry {
+  id: string;
+  name: string;
+  description: string;
+  size_mb: number;
+  download_mb: number;
+  installed: boolean;
+}
+
 interface Status {
   model: ModelState;
   detail: string | null;
@@ -19,6 +29,14 @@ interface Status {
   models: ModelEntry[];
   downloading: string | null;
   overlay: "bottom" | "field";
+  smart: boolean;
+  llm: {
+    state: LlmState;
+    detail: string | null;
+    active: string;
+    models: LlmEntry[];
+    downloading: string | null;
+  };
   hotkey: string;
   history: string[];
 }
@@ -35,6 +53,9 @@ const badge = $("model-badge");
 const modelText = $("model-text");
 const modelList = $<HTMLUListElement>("models");
 const modelError = $("model-error");
+const llmText = $("llm-text");
+const llmList = $<HTMLUListElement>("llms");
+const smartToggle = $<HTMLInputElement>("smart-toggle");
 const history = $<HTMLUListElement>("history");
 const historyEmpty = $("history-empty");
 
@@ -46,8 +67,17 @@ const STATE_COPY: Record<ModelState, [string, string]> = {
   error: ["Error", "Something went wrong."],
 };
 
+const LLM_COPY: Record<LlmState, string> = {
+  off: "Off. Numbers, dates, codes and spoken punctuation are still cleaned up instantly.",
+  missing: "Download a small AI model to remove filler words, fix self-corrections and format lists. Runs offline.",
+  downloading: "Downloading the formatting model…",
+  starting: "Starting the formatting model…",
+  ready: "On. Each phrase is polished by a local AI model as you speak.",
+  error: "Something went wrong.",
+};
+
 let status: Status | null = null;
-let progress: DownloadProgress | null = null;
+const progress: Record<string, DownloadProgress> = {};
 
 function formatMb(bytes: number) {
   return `${Math.round(bytes / 1_048_576)} MB`;
@@ -58,10 +88,10 @@ function showError(message: string | null) {
   modelError.textContent = message ?? "";
 }
 
-async function run(command: string, id: string) {
+async function run(command: string, args: Record<string, unknown>) {
   showError(null);
   try {
-    await invoke(command, { id });
+    await invoke(command, args);
   } catch (e) {
     showError(String(e));
   }
@@ -75,56 +105,106 @@ function button(label: string, onClick: () => void, variant = "") {
   return b;
 }
 
+interface RowOptions {
+  id: string;
+  name: string;
+  description: string;
+  meta: string;
+  installed: boolean;
+  active: boolean;
+  downloading: string | null;
+  sizeMb: number;
+  commands: { download: string; use: string; remove: string };
+}
+
+/** One row of a model list: name and details, plus Download / Use / Delete. */
+function modelRow(o: RowOptions) {
+  const li = document.createElement("li");
+  li.className = "model";
+  li.dataset.active = String(o.active && o.installed);
+
+  const info = document.createElement("div");
+  info.className = "model-info";
+  info.innerHTML = `<strong></strong><span class="muted"></span><span class="muted small"></span>`;
+  info.children[0].textContent = o.name;
+  info.children[1].textContent = o.description;
+  info.children[2].textContent = o.meta;
+
+  const actions = document.createElement("div");
+  actions.className = "model-actions";
+  const p = progress[o.id];
+
+  if (o.downloading === o.id) {
+    const pct = p && p.total > 0 ? (p.downloaded / p.total) * 100 : 0;
+    const bar = document.createElement("div");
+    bar.className = "progress";
+    bar.innerHTML = `<div class="progress-bar" style="width:${pct}%"></div>`;
+    const label = document.createElement("span");
+    label.className = "muted small";
+    label.textContent = p ? `${formatMb(p.downloaded)}${p.total ? ` of ${formatMb(p.total)}` : ""}` : "Starting…";
+    actions.append(bar, label);
+  } else if (!o.installed) {
+    const b = button("Download", () => run(o.commands.download, { id: o.id }));
+    b.disabled = o.downloading !== null;
+    actions.append(b);
+  } else if (o.active) {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "In use";
+    actions.append(tag);
+  } else {
+    actions.append(
+      button("Use", () => run(o.commands.use, { id: o.id })),
+      button(
+        "Delete",
+        () => {
+          if (confirm(`Delete ${o.name} (${o.sizeMb} MB) from this PC?`)) run(o.commands.remove, { id: o.id });
+        },
+        "ghost",
+      ),
+    );
+  }
+
+  li.append(info, actions);
+  return li;
+}
+
 function renderModels(s: Status) {
   modelList.replaceChildren(
-    ...s.models.map((m) => {
-      const li = document.createElement("li");
-      li.className = "model";
-      li.dataset.active = String(m.id === s.active);
+    ...s.models.map((m) =>
+      modelRow({
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        meta: `${m.languages} · ${m.size_mb} MB`,
+        installed: m.installed,
+        active: m.id === s.active,
+        downloading: s.downloading,
+        sizeMb: m.size_mb,
+        commands: { download: "download_model", use: "select_model", remove: "delete_model" },
+      }),
+    ),
+  );
+}
 
-      const info = document.createElement("div");
-      info.className = "model-info";
-      info.innerHTML = `<strong></strong><span class="muted"></span><span class="muted small"></span>`;
-      info.children[0].textContent = m.name;
-      info.children[1].textContent = m.description;
-      info.children[2].textContent = `${m.languages} · ${m.size_mb} MB`;
-
-      const actions = document.createElement("div");
-      actions.className = "model-actions";
-
-      if (s.downloading === m.id) {
-        const pct = progress?.id === m.id && progress.total > 0 ? (progress.downloaded / progress.total) * 100 : 0;
-        const bar = document.createElement("div");
-        bar.className = "progress";
-        bar.innerHTML = `<div class="progress-bar" style="width:${pct}%"></div>`;
-        const label = document.createElement("span");
-        label.className = "muted small";
-        label.textContent =
-          progress?.id === m.id
-            ? `${formatMb(progress.downloaded)}${progress.total ? ` of ${formatMb(progress.total)}` : ""}`
-            : "Starting…";
-        actions.append(bar, label);
-      } else if (!m.installed) {
-        const b = button("Download", () => run("download_model", m.id));
-        b.disabled = s.downloading !== null;
-        actions.append(b);
-      } else if (m.id === s.active) {
-        const tag = document.createElement("span");
-        tag.className = "tag";
-        tag.textContent = "In use";
-        actions.append(tag);
-      } else {
-        actions.append(
-          button("Use", () => run("select_model", m.id)),
-          button("Delete", () => {
-            if (confirm(`Delete ${m.name} (${m.size_mb} MB) from this PC?`)) run("delete_model", m.id);
-          }, "ghost"),
-        );
-      }
-
-      li.append(info, actions);
-      return li;
-    }),
+function renderLlms(s: Status) {
+  smartToggle.checked = s.smart;
+  llmText.textContent = s.llm.detail ?? LLM_COPY[s.llm.state];
+  llmList.hidden = !s.smart;
+  llmList.replaceChildren(
+    ...s.llm.models.map((m) =>
+      modelRow({
+        id: m.id,
+        name: m.name,
+        description: m.description,
+        meta: m.installed ? `${m.size_mb} MB` : `${m.download_mb} MB download`,
+        installed: m.installed,
+        active: m.id === s.llm.active,
+        downloading: s.llm.downloading,
+        sizeMb: m.size_mb,
+        commands: { download: "download_llm", use: "select_llm", remove: "delete_llm" },
+      }),
+    ),
   );
 }
 
@@ -138,6 +218,7 @@ function render(s: Status) {
     s.detail ?? (s.model === "ready" && active ? `${active.name} · ${text}` : text);
   $("hotkey").textContent = s.hotkey;
   renderModels(s);
+  renderLlms(s);
   document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
     input.checked = input.value === s.overlay;
   });
@@ -154,16 +235,22 @@ function render(s: Status) {
   historyEmpty.hidden = s.history.length > 0;
 }
 
+smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartToggle.checked }));
+
 document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
   input.addEventListener("change", () => {
-    if (input.checked) invoke("set_overlay_position", { position: input.value }).catch((e) => showError(String(e)));
+    if (input.checked) run("set_overlay_position", { position: input.value });
   });
 });
 
 listen<Status>("status-changed", (e) => render(e.payload));
 listen<DownloadProgress>("download-progress", (e) => {
-  progress = e.payload;
+  progress[e.payload.id] = e.payload;
   if (status) renderModels(status);
+});
+listen<DownloadProgress>("llm-progress", (e) => {
+  progress[e.payload.id] = e.payload;
+  if (status) renderLlms(status);
 });
 listen<string>("download-error", (e) => showError(e.payload));
 

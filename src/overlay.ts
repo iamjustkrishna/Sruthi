@@ -12,6 +12,22 @@ const pill = document.getElementById("pill")!;
 const mark = document.getElementById("mark")!;
 const wave = document.getElementById("wave")!;
 const label = document.getElementById("label")!;
+const live = document.getElementById("live")!;
+
+/** Fits text into the pill by keeping the end (the newest words). */
+const LIVE_CHARS = 54;
+function tail(text: string) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= LIVE_CHARS) return flat;
+  const cut = flat.slice(-LIVE_CHARS);
+  const space = cut.indexOf(" ");
+  return "…" + (space > 0 && space < 12 ? cut.slice(space + 1) : cut);
+}
+
+function setLive(text: string) {
+  live.textContent = tail(text);
+  pill.classList.toggle("has-text", live.textContent !== "");
+}
 
 const bars = Array.from({ length: BAR_COUNT }, (_, i) => {
   const bar = document.createElement("i");
@@ -73,6 +89,7 @@ listen<Dictation>("dictation", ({ payload }) => {
       mark.style.setProperty("--level", "0");
       bars.forEach((b) => (b.style.transform = ""));
       label.textContent = "";
+      setLive("");
       enter();
       break;
     case "transcribing":
@@ -81,13 +98,20 @@ listen<Dictation>("dictation", ({ payload }) => {
       label.textContent = "";
       break;
     case "done":
-      label.textContent = payload.text ? "Done" : "";
+      // Show the final, formatted text for a moment.
+      setLive(payload.text);
+      label.textContent = "";
       break;
     case "error":
+      setLive("");
       label.textContent = payload.message;
       if (!isShowing()) enter();
       break;
   }
+});
+
+listen<string>("live-text", ({ payload }) => {
+  if (pill.dataset.phase === "recording" || pill.dataset.phase === "transcribing") setLive(payload);
 });
 
 listen<number>("audio-level", ({ payload }) => {

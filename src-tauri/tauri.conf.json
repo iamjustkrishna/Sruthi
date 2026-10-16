@@ -24,7 +24,7 @@
         "label": "overlay",
         "title": "Srutam Dictate overlay",
         "url": "overlay.html",
-        "width": 300,
+        "width": 560,
         "height": 48,
         "decorations": false,
         "transparent": true,

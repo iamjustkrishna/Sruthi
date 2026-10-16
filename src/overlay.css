@@ -151,6 +151,30 @@ body[data-align="center"] .pill {
   text-overflow: ellipsis;
   max-width: 200px;
 }
+
+/* Live words as you speak, and the final text when done */
+.live {
+  max-width: 380px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--blue-50);
+  animation: text-in 0.16s ease-out;
+}
+.live:empty {
+  display: none;
+}
+/* With text showing, a shorter waveform leaves room for the words */
+.pill.has-text .wave i:nth-child(n + 9) {
+  display: none;
+}
+.pill[data-phase="done"].has-text .live {
+  color: #d1fae5;
+}
+@keyframes text-in {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
 .label:empty {
   display: none;
 }

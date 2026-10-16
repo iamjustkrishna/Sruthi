@@ -705,6 +705,12 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // The pill's window is wider than the pill; let clicks pass
+            // through its transparent area to the app underneath.
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                let _ = overlay.set_ignore_cursor_events(true);
+            }
+
             // Closing the window keeps dictation running in the tray.
             if let Some(main) = app.get_webview_window("main") {
                 let w = main.clone();
