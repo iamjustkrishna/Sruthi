@@ -338,11 +338,22 @@ mod tests {
         let info = find(&id).expect("model in catalog");
         assert!(info.is_installed(), "{id} isn't installed");
 
-        let samples = transcribe_rs::audio::read_wav_samples(Path::new(&wav)).unwrap();
+        // A directory runs every .wav in it, in name order.
+        let path = Path::new(&wav);
+        let mut files: Vec<PathBuf> = if path.is_dir() {
+            fs::read_dir(path).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "wav")).collect()
+        } else {
+            vec![path.to_path_buf()]
+        };
+        files.sort();
+
         let mut model = info.load().unwrap();
-        let started = std::time::Instant::now();
-        let text = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
-        println!("[{id}] {:.1}s audio in {} ms: {text}", samples.len() as f32 / 16000.0, started.elapsed().as_millis());
-        assert!(text.to_lowercase().contains("test"));
+        for file in files {
+            let samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
+            let started = std::time::Instant::now();
+            let text = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
+            println!("[{id}] {} ({:.1}s audio, {} ms): {text}", file.file_name().unwrap().to_string_lossy(), samples.len() as f32 / 16000.0, started.elapsed().as_millis());
+            assert!(!text.trim().is_empty());
+        }
     }
 }

@@ -38,6 +38,7 @@ enigo = "0.6"
 # Model download
 reqwest = { version = "0.13", features = ["blocking"] }
 tar = "0.4"
+regex = "1"
 flate2 = "1"
 dirs = "7"
 

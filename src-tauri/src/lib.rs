@@ -1,5 +1,6 @@
 mod audio;
 mod caret;
+mod format;
 mod model;
 mod paste;
 mod settings;
