@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Srutam Dictate</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Srutam Dictate</h1>
+        <p class="tagline">Offline voice typing. Your audio never leaves this PC.</p>
+      </header>
+
+      <section class="card" id="model-card">
+        <div class="card-head">
+          <h2>Speech model</h2>
+          <span class="badge" id="model-badge">…</span>
+        </div>
+        <p class="muted" id="model-text">Checking…</p>
+        <ul class="models" id="models"></ul>
+        <p class="error" id="model-error" hidden></p>
+      </section>
+
+      <section class="card">
+        <h2>How to dictate</h2>
+        <p>
+          Click into any text box, then <strong>hold <kbd id="hotkey">Ctrl+Shift+Space</kbd></strong>,
+          speak, and let go. The text is typed where your cursor is.
+        </p>
+        <p class="muted">Closing this window keeps Srutam Dictate running in the system tray.</p>
+      </section>
+
+      <section class="card">
+        <h2>Where the pill appears</h2>
+        <div class="choices" id="overlay-choices">
+          <label class="choice">
+            <input type="radio" name="overlay" value="bottom" />
+            <span>
+              <strong>Bottom center</strong>
+              <span class="muted small">Always in the same spot, just above the taskbar.</span>
+            </span>
+          </label>
+          <label class="choice">
+            <input type="radio" name="overlay" value="field" />
+            <span>
+              <strong>Under the text field</strong>
+              <span class="muted small">Right where the words will go. Uses bottom center in apps that don't report their text field.</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Recent dictations</h2>
+        <ul id="history" class="history"></ul>
+        <p class="muted" id="history-empty">Nothing yet.</p>
+      </section>
+    </main>
+  </body>
+</html>

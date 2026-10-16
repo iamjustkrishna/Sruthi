@@ -1,0 +1,261 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+body[data-align="center"] {
+  justify-content: center;
+}
+
+/* Srutam brand blues, sampled from the logo */
+.pill {
+  --blue-50: #eaf2ff;
+  --blue-300: #7fb2ff;
+  --blue-500: #2f7bff;
+  --blue-700: #1746d6;
+  --ink: rgba(9, 14, 32, 0.9);
+  --ok: #34d399;
+  --warn: #fbbf24;
+
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px 0 4px;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 60%),
+    var(--ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(127, 178, 255, 0.22),
+    0 6px 18px rgba(8, 20, 60, 0.35);
+  backdrop-filter: blur(12px);
+  color: var(--blue-50);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transform-origin: 20px center;
+}
+body[data-align="center"] .pill {
+  transform-origin: center;
+}
+
+/* ---------- Logo mark ---------- */
+.mark {
+  --level: 0;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.logo {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  /* Breathes with your voice */
+  transform: scale(calc(1 + var(--level) * 0.16));
+  transition: transform 0.08s linear, filter 0.2s ease;
+  filter: drop-shadow(0 0 calc(2px + var(--level) * 8px) rgba(47, 123, 255, 0.85));
+}
+
+/* Glow ring that swells with voice level */
+.halo {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(47, 123, 255, 0.45), rgba(47, 123, 255, 0) 70%);
+  transform: scale(calc(0.9 + var(--level) * 0.6));
+  opacity: calc(0.35 + var(--level) * 0.65);
+  transition: transform 0.08s linear, opacity 0.08s linear;
+}
+
+/* Arc loader shown while transcribing */
+.spinner {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(127, 178, 255, 0) 0deg, var(--blue-300) 300deg, rgba(127, 178, 255, 0) 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 61%);
+  mask: radial-gradient(circle, transparent 58%, #000 61%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Success badge that pops on the logo */
+.badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 15px;
+  height: 15px;
+  transform: scale(0);
+}
+.badge circle {
+  fill: var(--ok);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.badge path {
+  fill: none;
+  stroke: #062b1f;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 18;
+  stroke-dashoffset: 18;
+}
+
+/* ---------- Waveform + label ---------- */
+.body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.wave {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+.wave i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--blue-300), var(--blue-500) 55%, var(--blue-700));
+  transform: scaleY(0.14);
+  transition: transform 0.07s linear;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.label:empty {
+  display: none;
+}
+
+/* ---------- Phases ---------- */
+.pill[data-phase="transcribing"] .spinner {
+  opacity: 1;
+  animation: spin 0.9s linear infinite;
+}
+.pill[data-phase="transcribing"] .logo {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.pill[data-phase="transcribing"] .wave i {
+  transition: none;
+  animation: ripple 1s ease-in-out infinite;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+.pill[data-phase="done"] .wave {
+  display: none;
+}
+.pill[data-phase="done"] .badge {
+  animation: badge-pop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.4) forwards;
+}
+.pill[data-phase="done"] .badge path {
+  animation: draw 0.3s 0.12s ease-out forwards;
+}
+.pill[data-phase="done"] .halo {
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.45), rgba(52, 211, 153, 0) 70%);
+  opacity: 0.8;
+}
+
+.pill[data-phase="error"] .wave {
+  display: none;
+}
+.pill[data-phase="error"] .halo {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.5), rgba(251, 191, 36, 0) 70%);
+  opacity: 0.9;
+}
+.pill[data-phase="error"] .label {
+  color: #fde68a;
+}
+
+/* ---------- Enter / exit: logo pops, then the pill unfurls ---------- */
+.pill.enter {
+  animation: pill-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.15) forwards;
+}
+.pill.enter .logo {
+  animation: logo-in 0.34s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+.pill.enter .body {
+  animation: body-in 0.3s 0.06s ease-out both;
+}
+.pill.exit {
+  animation: pill-out 0.17s ease-in forwards;
+}
+
+@keyframes pill-in {
+  from { opacity: 0; transform: translateY(5px) scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pill-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(3px) scale(0.85); }
+}
+@keyframes logo-in {
+  0%   { transform: scale(0.4) rotate(-25deg); }
+  70%  { transform: scale(1.12) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+@keyframes body-in {
+  from { opacity: 0; clip-path: inset(0 100% 0 0); }
+  to   { opacity: 1; clip-path: inset(0 0 0 0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  50% { transform: scale(0.92); }
+}
+@keyframes ripple {
+  0%, 100% { transform: scaleY(0.16); }
+  50%      { transform: scaleY(0.75); }
+}
+@keyframes badge-pop {
+  from { transform: scale(0); }
+  to   { transform: scale(1); }
+}
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill.enter,
+  .pill.exit,
+  .pill.enter .logo,
+  .pill.enter .body,
+  .pill[data-phase="transcribing"] .spinner,
+  .pill[data-phase="transcribing"] .logo,
+  .pill[data-phase="transcribing"] .wave i {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+  .logo,
+  .halo {
+    transform: none;
+  }
+}
