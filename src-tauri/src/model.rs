@@ -347,9 +347,29 @@ mod tests {
         };
         files.sort();
 
+        // SRUTAM_TEST_GAIN=0.02 simulates quiet speech: scales the audio and
+        // adds hiss, then runs it through the same boost dictation uses.
+        let gain: Option<f32> = std::env::var("SRUTAM_TEST_GAIN").ok().and_then(|g| g.parse().ok());
+
         let mut model = info.load().unwrap();
         for file in files {
-            let samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
+            let mut samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
+            if let Some(gain) = gain {
+                let mut seed = 7u32;
+                for s in &mut samples {
+                    seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+                    *s = *s * gain + ((seed >> 16) as f32 / 32_768.0 - 1.0) * 0.0004;
+                }
+                let quiet = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
+                println!("  quiet, no boost: {quiet}");
+                samples = match crate::enhance::prepare(&samples) {
+                    Some(boosted) => boosted,
+                    None => {
+                        println!("  boost: no speech detected");
+                        continue;
+                    }
+                };
+            }
             let started = std::time::Instant::now();
             let text = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
             println!("[{id}] {} ({:.1}s audio, {} ms)

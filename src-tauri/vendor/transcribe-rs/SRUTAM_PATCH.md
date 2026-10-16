@@ -9,9 +9,13 @@ Changes are marked `SRUTAM PATCH` in `src/onnx/parakeet/mod.rs`:
    blank, so repeated characters in spoken codes were emitted many times:
    "T four four A A B C" became `T44AAAAAAAAAAABC`. The loop now advances by
    the predicted duration, like NeMo / onnx-asr greedy TDT decoding.
-2. **Near-tie durations take the smaller skip** (within 0.5 logits). With
-   the int8 model, a too-big skip could jump over a repeated character
-   ("eleventh" came out as `1th`); a smaller skip is always safe.
+2. **Near-tie durations take the smaller forward skip** (within 1.0
+   logits). With the int8 model a too-big skip could jump over a repeated
+   character ("eleventh" came out as `1th`). Duration 0 ("stay on this
+   frame") is only used when it clearly wins, since choosing it on a tie
+   lets the decoder loop on quiet audio.
+
+Set `SRUTAM_TDT_DEBUG=1` to print every emitted token with its logits.
 
 Also: `ort` is pinned to `=2.0.0-rc.12`, since rc.14 changed the session
 API and breaks this version.

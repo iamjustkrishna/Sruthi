@@ -49,13 +49,26 @@ const WINDOW_SIZE: f32 = 0.01;
 const MAX_TOKENS_PER_STEP: usize = 10;
 
 /// SRUTAM PATCH: duration logits closer than this to the best count as a tie.
-const DURATION_TIE_MARGIN: f32 = 0.5;
+const DURATION_TIE_MARGIN: f32 = 1.0;
 
-/// SRUTAM PATCH: the smallest TDT duration whose logit is within
+/// SRUTAM PATCH: the smallest forward TDT duration whose logit is within
 /// `DURATION_TIE_MARGIN` of the best one (0 when there are no durations).
+/// Duration 0 ("stay on this frame") is only used when it clearly wins:
+/// picking it on a near-tie lets the decoder loop on quiet audio.
 fn smallest_close_duration(logits: &[f32]) -> usize {
-    let best = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    logits.iter().position(|&v| v >= best - DURATION_TIE_MARGIN).unwrap_or(0)
+    let Some(best_idx) = logits
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+    else {
+        return 0;
+    };
+    if best_idx == 0 {
+        return 0;
+    }
+    let best = logits[best_idx];
+    (1..logits.len()).find(|&i| logits[i] >= best - DURATION_TIE_MARGIN).unwrap_or(best_idx)
 }
 
 static DECODE_SPACE_RE: Lazy<Result<Regex, regex::Error>> =
@@ -383,6 +396,15 @@ impl ParakeetModel {
             // out as "1th"), while a smaller one costs nothing because the
             // decoder state already holds the token just emitted.
             let step = smallest_close_duration(duration_logits);
+            if std::env::var_os("SRUTAM_TDT_DEBUG").is_some() {
+                let blank_logit = vocab_logits.get(self.blank_idx as usize).copied().unwrap_or(0.0);
+                let tok_logit = vocab_logits.get(token as usize).copied().unwrap_or(0.0);
+                eprintln!(
+                    "t={t:>3} tok={:>8?} tok_logit={tok_logit:.1} blank={blank_logit:.1} step={step} durs={:?}",
+                    self.vocab.get(token as usize),
+                    duration_logits.iter().map(|v| (v * 10.0).round() / 10.0).collect::<Vec<_>>()
+                );
+            }
 
             if token != self.blank_idx {
                 prev_state = new_state;
@@ -720,5 +742,9 @@ mod srutam_patch_tests {
         assert_eq!(smallest_close_duration(&[-3.8, 7.0, 8.3, -3.8, -4.3]), 2);
         assert_eq!(smallest_close_duration(&[-5.8, 3.4, 8.4, 11.6, 15.9]), 4);
         assert_eq!(smallest_close_duration(&[]), 0);
+        // A near-tie with "stay" moves forward instead of looping.
+        assert_eq!(smallest_close_duration(&[8.2, 8.5, 3.0, 1.0, 0.0]), 1);
+        // "Stay" still wins when it's the clear best.
+        assert_eq!(smallest_close_duration(&[9.0, 5.0, 3.0, 1.0, 0.0]), 0);
     }
 }

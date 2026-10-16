@@ -9,7 +9,7 @@ use std::sync::LazyLock;
 use regex::{Captures, Regex};
 
 pub fn apply(text: &str) -> String {
-    let mut s = text.trim().to_string();
+    let mut s = collapse_loops(text.trim());
     s = remove_fillers(&s);
     s = voice_commands(&s);
     s = number_words(&s);
@@ -33,6 +33,47 @@ fn split_punct(token: &str) -> (&str, &str, &str) {
         .map(|i| i + token[i..].chars().next().unwrap().len_utf8())
         .unwrap_or(start);
     (&token[..start], &token[start..end], &token[end..])
+}
+
+// ---------------------------------------------------------------------------
+// Hallucination loops
+
+/// Longest phrase (in words) checked for runaway repetition.
+const MAX_LOOP_WORDS: usize = 8;
+
+/// Speech models sometimes get stuck repeating a phrase on quiet or odd
+/// audio ("a little bit of a little bit of a little bit of …"). A phrase
+/// repeated 3+ times in a row (a single word 4+ times) is kept once.
+/// Natural doubles like "very very" are left alone.
+fn collapse_loops(s: &str) -> String {
+    let words: Vec<&str> = s.split(' ').filter(|w| !w.is_empty()).collect();
+    let key = |w: &str| split_punct(w).1.to_lowercase();
+    let keys: Vec<String> = words.iter().map(|w| key(w)).collect();
+
+    let mut out: Vec<&str> = Vec::with_capacity(words.len());
+    let mut i = 0;
+    'outer: while i < words.len() {
+        for n in (1..=MAX_LOOP_WORDS).rev() {
+            let min_repeats = if n == 1 { 4 } else { 3 };
+            if i + n * min_repeats > words.len() || keys[i..i + n].iter().all(String::is_empty) {
+                continue;
+            }
+            let mut repeats = 1;
+            while i + (repeats + 1) * n <= words.len()
+                && keys[i + repeats * n..i + (repeats + 1) * n] == keys[i..i + n]
+            {
+                repeats += 1;
+            }
+            if repeats >= min_repeats {
+                out.extend_from_slice(&words[i..i + n]);
+                i += repeats * n;
+                continue 'outer;
+            }
+        }
+        out.push(words[i]);
+        i += 1;
+    }
+    out.join(" ")
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +628,18 @@ mod tests {
         );
         assert_eq!(apply("My vehicle number is T52WA"), "My vehicle number is T52WA");
         assert_eq!(apply("Revenue grew by 12.5% this quarter."), "Revenue grew by 12.5% this quarter.");
+    }
+
+    #[test]
+    fn hallucination_loops() {
+        // Real output on quiet audio.
+        assert_eq!(
+            apply("And I would love to get a little bit of a little bit of a little bit of a little bit of a case."),
+            "And I would love to get a little bit of a case."
+        );
+        assert_eq!(apply("I really really want this"), "I really really want this");
+        assert_eq!(apply("no no no no no stop"), "No stop");
+        assert_eq!(apply("go go go"), "Go go go");
     }
 
     #[test]

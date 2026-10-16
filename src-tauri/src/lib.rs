@@ -1,6 +1,7 @@
 mod audio;
 mod caret;
 mod dictation;
+mod enhance;
 mod format;
 mod model;
 mod paste;

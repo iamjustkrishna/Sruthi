@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use transcribe_rs::{SpeechModel, TranscribeOptions};
 
 use crate::audio::{Recording, TARGET_RATE};
+use crate::enhance;
 use crate::format::Formatter;
 
 pub type Engine = Arc<Mutex<Option<Box<dyn SpeechModel + Send>>>>;
@@ -33,6 +34,11 @@ impl Session {
         if (audio.len() as f32) / (TARGET_RATE as f32) < MIN_DICTATION_SECS {
             return Ok(String::new());
         }
+        // Boost quiet speech; skip the model entirely when nothing was said.
+        let Some(audio) = enhance::prepare(&audio) else {
+            log::info!("No speech in recording");
+            return Ok(String::new());
+        };
 
         let raw = {
             let mut engine = self.engine.lock().unwrap();
