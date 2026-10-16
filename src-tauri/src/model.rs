@@ -352,7 +352,9 @@ mod tests {
             let samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
             let started = std::time::Instant::now();
             let text = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
-            println!("[{id}] {} ({:.1}s audio, {} ms): {text}", file.file_name().unwrap().to_string_lossy(), samples.len() as f32 / 16000.0, started.elapsed().as_millis());
+            println!("[{id}] {} ({:.1}s audio, {} ms)
+  raw:   {text}
+  rules: {}", file.file_name().unwrap().to_string_lossy(), samples.len() as f32 / 16000.0, started.elapsed().as_millis(), crate::format::rules::apply(&text));
             assert!(!text.trim().is_empty());
         }
     }

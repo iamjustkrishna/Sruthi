@@ -47,6 +47,10 @@ impl Session {
         if raw.is_empty() {
             return Ok(raw);
         }
-        Ok(self.formatter.format(&raw, self.smart))
+        let formatted = self.formatter.format(&raw, self.smart);
+        // Local debug log only (stdout in dev builds); helps tune the rules.
+        log::info!("Heard:  {raw:?}");
+        log::info!("Pasted: {formatted:?}");
+        Ok(formatted)
     }
 }
