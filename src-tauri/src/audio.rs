@@ -7,59 +7,64 @@
 //! - [`Recording::start`] opens the microphone for one recording only. On
 //!   this machine that took 150–200 ms, enough to lose the first syllable.
 //!
-//! cpal streams are not `Send`, so every stream lives on its own thread.
+//! On Windows, audio comes from WASAPI in raw mode (see `wasapi.rs`), which
+//! skips driver effects that turned whispers into silence. Elsewhere, cpal.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::{self, TryRecvError};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Result};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, SampleFormat, SizedSample};
+use anyhow::{anyhow, Result};
 
 /// Sample rate every speech model in this app expects.
 pub const TARGET_RATE: u32 = 16_000;
 
 /// Audio kept from just before the key press.
 const PRE_ROLL_SECS: f32 = 0.5;
-/// How often the always-ready mic checks it still works and is the default.
-const HEALTH_CHECK: Duration = Duration::from_secs(2);
+/// How often the always-ready mic checks the default microphone.
+const DEVICE_CHECK: Duration = Duration::from_secs(2);
+/// Wait before reopening a microphone that failed.
+const RETRY_DELAY: Duration = Duration::from_secs(2);
+/// Below this loudness (RMS) a whole recording is digital silence: the
+/// microphone delivers no sound at all (dead, unplugged, or muted in
+/// hardware). Even a quiet room reads well above it in raw mode.
+pub const DEAD_MIC_RMS: f32 = 1e-5;
 
-/// Receives mono samples from a stream callback.
-type Sink = Arc<dyn Fn(&[f32]) + Send + Sync>;
-
-/// Identifies a device across calls (to notice the default mic changing).
-fn device_key(device: &cpal::Device) -> String {
-    device.id().map(|id| format!("{id:?}")).unwrap_or_else(|_| device.to_string())
+/// Captures mono audio from `device` (None: the system default) until
+/// `keep_going` returns false.
+fn capture(
+    device: Option<&str>,
+    ready: &mut dyn FnMut(u32, &str),
+    sink: &mut dyn FnMut(&[f32]),
+    keep_going: &mut dyn FnMut() -> bool,
+) -> Result<()> {
+    #[cfg(windows)]
+    {
+        crate::wasapi::capture(device, ready, sink, keep_going)
+    }
+    #[cfg(not(windows))]
+    {
+        cpal_capture::capture(device, ready, sink, keep_going)
+    }
 }
 
-fn default_device_key() -> Option<String> {
-    cpal::default_host().default_input_device().map(|d| device_key(&d))
+/// Name of the system's default microphone.
+pub fn default_device_name() -> Option<String> {
+    #[cfg(windows)]
+    {
+        crate::wasapi::default_device_name()
+    }
+    #[cfg(not(windows))]
+    {
+        cpal_capture::default_device_name()
+    }
 }
 
-/// Opens the default microphone on the calling thread. Returns the playing
-/// stream, its sample rate and the device key.
-fn open_default(sink: Sink, level: Arc<AtomicU32>, failed: Arc<AtomicBool>) -> Result<(cpal::Stream, u32, String)> {
-    let device = cpal::default_host()
-        .default_input_device()
-        .ok_or_else(|| anyhow!("No microphone found"))?;
-    let key = device_key(&device);
-    let supported = device.default_input_config()?;
-    let rate = supported.sample_rate();
-    let channels = supported.channels() as usize;
-    let config = supported.config();
-    let stream = match supported.sample_format() {
-        SampleFormat::F32 => build::<f32>(&device, config, channels, sink, level, failed)?,
-        SampleFormat::I16 => build::<i16>(&device, config, channels, sink, level, failed)?,
-        SampleFormat::U16 => build::<u16>(&device, config, channels, sink, level, failed)?,
-        SampleFormat::I32 => build::<i32>(&device, config, channels, sink, level, failed)?,
-        other => bail!("Unsupported microphone sample format: {other:?}"),
-    };
-    stream.play()?;
-    Ok((stream, rate, key))
+pub fn rms(samples: &[f32]) -> f32 {
+    (samples.iter().map(|s| s * s).sum::<f32>() / samples.len().max(1) as f32).sqrt()
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +80,7 @@ pub struct Mic {
 #[derive(Default)]
 struct MicState {
     rate: u32,
+    device: String,
     /// The last `PRE_ROLL_SECS` of audio while nobody is recording.
     pre_roll: VecDeque<f32>,
     /// Where samples go while a recording is running.
@@ -82,9 +88,9 @@ struct MicState {
 }
 
 impl Mic {
-    /// Opens the default microphone and keeps it ready. Fails if no
-    /// microphone can be opened right now.
-    pub fn start() -> Result<Arc<Self>> {
+    /// Opens `device` (None: the system default, followed when it changes)
+    /// and keeps it ready. Fails if it can't be opened right now.
+    pub fn start(device: Option<String>) -> Result<Arc<Self>> {
         let mic = Arc::new(Self {
             state: Mutex::new(MicState::default()),
             level: Arc::new(AtomicU32::new(0)),
@@ -94,7 +100,7 @@ impl Mic {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
         let weak = Arc::downgrade(&mic);
-        let handle = thread::spawn(move || keep_open(weak, stop_rx, ready_tx));
+        let handle = thread::spawn(move || keep_open(weak, device, stop_rx, ready_tx));
         *mic.stop_tx.lock().unwrap() = Some(stop_tx);
         *mic.thread.lock().unwrap() = Some(handle);
         match ready_rx.recv() {
@@ -114,7 +120,13 @@ impl Mic {
         samples.reserve(state.rate as usize * 30);
         let buffer = Arc::new(Mutex::new(samples));
         state.target = Some(buffer.clone());
-        Recording { level: self.level.clone(), buffer, rate: state.rate, source: Source::Shared(self.clone()) }
+        Recording {
+            level: self.level.clone(),
+            buffer,
+            rate: state.rate,
+            device: state.device.clone(),
+            source: Source::Shared(self.clone()),
+        }
     }
 
     /// Closes the microphone.
@@ -126,6 +138,7 @@ impl Mic {
     }
 
     fn push(&self, samples: &[f32]) {
+        self.level.store(rms(samples).to_bits(), Ordering::Relaxed);
         let mut state = self.state.lock().unwrap();
         if let Some(target) = &state.target {
             target.lock().unwrap().extend_from_slice(samples);
@@ -148,63 +161,67 @@ impl Mic {
         self.state.lock().unwrap().target.is_some()
     }
 
-    fn reset(&self, rate: u32) {
+    fn reset(&self, rate: u32, device: &str) {
         let mut state = self.state.lock().unwrap();
         state.rate = rate;
+        state.device = device.to_string();
         state.pre_roll.clear();
     }
 }
 
-/// The always-ready mic's thread: keeps a stream open, reopening it when
-/// it fails or when the default microphone changes (between recordings).
-fn keep_open(mic: Weak<Mic>, stop_rx: mpsc::Receiver<()>, ready_tx: mpsc::Sender<Result<(), String>>) {
+/// The always-ready mic's thread: keeps capturing, reopening the device
+/// after errors, and following the system default when it changes
+/// (between recordings) unless a specific device was chosen.
+fn keep_open(mic: Weak<Mic>, device: Option<String>, stop_rx: mpsc::Receiver<()>, ready_tx: mpsc::Sender<Result<(), String>>) {
     let mut ready_tx = Some(ready_tx);
     loop {
-        let Some(level) = mic.upgrade().map(|m| m.level.clone()) else { return };
-        let sink: Sink = {
-            let mic = mic.clone();
-            Arc::new(move |samples: &[f32]| {
+        let mut stopped = false;
+        let opened = std::cell::RefCell::new(String::new());
+        let mut last_check = Instant::now();
+        let result = capture(
+            device.as_deref(),
+            &mut |rate, name| {
+                *opened.borrow_mut() = name.to_string();
                 if let Some(m) = mic.upgrade() {
-                    m.push(samples);
-                }
-            })
-        };
-        let failed = Arc::new(AtomicBool::new(false));
-        match open_default(sink, level, failed.clone()) {
-            Ok((stream, rate, device)) => {
-                if let Some(m) = mic.upgrade() {
-                    m.reset(rate);
+                    m.reset(rate, name);
                 }
                 if let Some(tx) = ready_tx.take() {
                     let _ = tx.send(Ok(()));
                 }
-                log::info!("Microphone ready ({rate} Hz)");
-                loop {
-                    match stop_rx.recv_timeout(HEALTH_CHECK) {
-                        Err(RecvTimeoutError::Timeout) => {}
-                        _ => return, // Stopped: dropping the stream closes the mic.
-                    }
-                    if failed.load(Ordering::Relaxed) {
-                        log::warn!("Microphone stopped working; reopening");
-                        break;
-                    }
+                log::info!("Microphone ready: {name} ({rate} Hz)");
+            },
+            &mut |samples| {
+                if let Some(m) = mic.upgrade() {
+                    m.push(samples);
+                }
+            },
+            &mut || {
+                if !matches!(stop_rx.try_recv(), Err(TryRecvError::Empty)) {
+                    stopped = true;
+                    return false;
+                }
+                if device.is_none() && last_check.elapsed() >= DEVICE_CHECK {
+                    last_check = Instant::now();
                     let busy = mic.upgrade().is_some_and(|m| m.recording());
-                    if !busy && default_device_key().is_some_and(|key| key != device) {
+                    if !busy && default_device_name().is_some_and(|d| d != *opened.borrow()) {
                         log::info!("Default microphone changed; switching");
-                        break;
+                        return false;
                     }
                 }
-                drop(stream);
+                true
+            },
+        );
+        if stopped {
+            return;
+        }
+        if let Err(e) = result {
+            if let Some(tx) = ready_tx.take() {
+                let _ = tx.send(Err(e.to_string()));
+                return;
             }
-            Err(e) => {
-                if let Some(tx) = ready_tx.take() {
-                    let _ = tx.send(Err(e.to_string()));
-                    return;
-                }
-                log::warn!("Couldn't reopen the microphone ({e}); retrying");
-                if !matches!(stop_rx.recv_timeout(HEALTH_CHECK), Err(RecvTimeoutError::Timeout)) {
-                    return;
-                }
+            log::warn!("Microphone stopped working ({e}); retrying");
+            if !matches!(stop_rx.recv_timeout(RETRY_DELAY), Err(mpsc::RecvTimeoutError::Timeout)) {
+                return;
             }
         }
     }
@@ -219,6 +236,8 @@ pub struct Recording {
     /// Mono samples at the device's own rate.
     buffer: Arc<Mutex<Vec<f32>>>,
     rate: u32,
+    /// Which microphone it came from.
+    device: String,
     source: Source,
 }
 
@@ -230,34 +249,41 @@ enum Source {
 }
 
 impl Recording {
-    /// Opens the default microphone just for this recording.
-    pub fn start() -> Result<Self> {
+    /// Opens `device` (None: the system default) just for this recording.
+    pub fn start(device: Option<String>) -> Result<Self> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<(u32, String), String>>();
         let level = Arc::new(AtomicU32::new(0));
         let buffer = Arc::new(Mutex::new(Vec::<f32>::new()));
         let (level_cb, buffer_cb) = (level.clone(), buffer.clone());
 
         let thread = thread::spawn(move || {
-            let sink: Sink = Arc::new(move |samples: &[f32]| buffer_cb.lock().unwrap().extend_from_slice(samples));
-            match open_default(sink, level_cb, Arc::new(AtomicBool::new(false))) {
-                Ok((stream, rate, _)) => {
-                    let _ = ready_tx.send(Ok(rate));
-                    // Blocks until stop() is called (or the Recording is dropped).
-                    let _ = stop_rx.recv();
-                    drop(stream);
-                }
-                Err(e) => {
-                    let _ = ready_tx.send(Err(e.to_string()));
-                }
+            let mut ready_tx = Some(ready_tx);
+            let result = capture(
+                device.as_deref(),
+                &mut |rate, name| {
+                    if let Some(tx) = ready_tx.take() {
+                        let _ = tx.send(Ok((rate, name.to_string())));
+                    }
+                },
+                &mut |samples| {
+                    level_cb.store(rms(samples).to_bits(), Ordering::Relaxed);
+                    buffer_cb.lock().unwrap().extend_from_slice(samples);
+                },
+                // Runs until stop() is called (or the Recording is dropped).
+                &mut || matches!(stop_rx.try_recv(), Err(TryRecvError::Empty)),
+            );
+            if let (Err(e), Some(tx)) = (result, ready_tx.take()) {
+                let _ = tx.send(Err(e.to_string()));
             }
         });
 
         match ready_rx.recv() {
-            Ok(Ok(rate)) => Ok(Self {
+            Ok(Ok((rate, device))) => Ok(Self {
                 level,
                 buffer,
                 rate,
+                device,
                 source: Source::Own { stop_tx, thread: Mutex::new(Some(thread)) },
             }),
             Ok(Err(e)) => Err(anyhow!(e)),
@@ -268,6 +294,11 @@ impl Recording {
     /// Live input loudness (RMS of the latest buffer, 0.0–1.0) for meters.
     pub fn level(&self) -> Arc<AtomicU32> {
         self.level.clone()
+    }
+
+    /// Which microphone this came from.
+    pub fn device(&self) -> &str {
+        &self.device
     }
 
     /// Number of samples captured so far, at the device rate.
@@ -304,42 +335,87 @@ impl Drop for Recording {
     }
 }
 
-fn build<T>(
-    device: &cpal::Device,
-    config: cpal::StreamConfig,
-    channels: usize,
-    sink: Sink,
-    level: Arc<AtomicU32>,
-    failed: Arc<AtomicBool>,
-) -> Result<cpal::Stream>
-where
-    T: SizedSample,
-    f32: FromSample<T>,
-{
-    let mut mono: Vec<f32> = Vec::new();
-    let stream = device.build_input_stream(
-        config,
-        move |data: &[T], _: &cpal::InputCallbackInfo| {
-            // Downmix each frame to mono by averaging its channels.
-            mono.clear();
-            mono.extend(
-                data.chunks(channels)
-                    .map(|frame| frame.iter().map(|s| f32::from_sample_(*s)).sum::<f32>() / channels as f32),
-            );
-            if !mono.is_empty() {
-                let rms = (mono.iter().map(|s| s * s).sum::<f32>() / mono.len() as f32).sqrt();
-                level.store(rms.to_bits(), Ordering::Relaxed);
+// ---------------------------------------------------------------------------
+// cpal capture (macOS / Linux)
+
+#[cfg(not(windows))]
+mod cpal_capture {
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use anyhow::{anyhow, bail, Result};
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use cpal::{FromSample, SampleFormat, SizedSample};
+
+    pub fn default_device_name() -> Option<String> {
+        cpal::default_host().default_input_device().map(|d| d.to_string())
+    }
+
+    pub fn capture(
+        device: Option<&str>,
+        ready: &mut dyn FnMut(u32, &str),
+        sink: &mut dyn FnMut(&[f32]),
+        keep_going: &mut dyn FnMut() -> bool,
+    ) -> Result<()> {
+        let host = cpal::default_host();
+        let device = match device {
+            None => host.default_input_device(),
+            Some(want) => host.input_devices()?.find(|d| d.to_string() == want),
+        }
+        .ok_or_else(|| anyhow!("No microphone found"))?;
+        let supported = device.default_input_config()?;
+        let rate = supported.sample_rate();
+        let channels = supported.channels() as usize;
+        let queue = Arc::new(Mutex::new(Vec::<f32>::new()));
+        let failed = Arc::new(Mutex::new(None::<String>));
+        let stream = match supported.sample_format() {
+            SampleFormat::F32 => build::<f32>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
+            SampleFormat::I16 => build::<i16>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
+            SampleFormat::U16 => build::<u16>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
+            SampleFormat::I32 => build::<i32>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
+            other => bail!("Unsupported microphone sample format: {other:?}"),
+        };
+        stream.play()?;
+        ready(rate, &device.to_string());
+        while keep_going() {
+            std::thread::sleep(Duration::from_millis(10));
+            if let Some(e) = failed.lock().unwrap().take() {
+                bail!(e);
             }
-            sink(&mono);
-        },
-        move |err| {
-            log::error!("Microphone stream error: {err}");
-            failed.store(true, Ordering::Relaxed);
-        },
-        None,
-    )?;
-    Ok(stream)
+            let chunk = std::mem::take(&mut *queue.lock().unwrap());
+            if !chunk.is_empty() {
+                sink(&chunk);
+            }
+        }
+        Ok(())
+    }
+
+    fn build<T>(
+        device: &cpal::Device,
+        config: cpal::StreamConfig,
+        channels: usize,
+        queue: Arc<Mutex<Vec<f32>>>,
+        failed: Arc<Mutex<Option<String>>>,
+    ) -> Result<cpal::Stream>
+    where
+        T: SizedSample,
+        f32: FromSample<T>,
+    {
+        Ok(device.build_input_stream(
+            config,
+            move |data: &[T], _: &cpal::InputCallbackInfo| {
+                queue.lock().unwrap().extend(
+                    data.chunks(channels)
+                        .map(|frame| frame.iter().map(|s| f32::from_sample_(*s)).sum::<f32>() / channels as f32),
+                );
+            },
+            move |err| *failed.lock().unwrap() = Some(err.to_string()),
+            None,
+        )?)
+    }
 }
+
+// ---------------------------------------------------------------------------
 
 /// Converts `input` from `from` Hz to `to` Hz. When downsampling, a box filter
 /// the width of the ratio runs first so high frequencies don't alias into the
@@ -410,7 +486,7 @@ mod tests {
             stop_tx: Mutex::new(None),
             thread: Mutex::new(None),
         });
-        mic.reset(rate);
+        mic.reset(rate, "test");
         mic
     }
 
@@ -423,6 +499,7 @@ mod tests {
         assert_eq!(rec.len(), 500);
         // The newest audio is what survives.
         assert_eq!(rec.buffer.lock().unwrap()[499], 0.2);
+        assert_eq!(rec.device(), "test");
     }
 
     #[test]
@@ -440,8 +517,8 @@ mod tests {
 
 #[cfg(test)]
 mod latency {
-    /// Opens the real microphone and prints how long it takes before audio
-    /// arrives, on demand vs always-ready:
+    /// Opens the real default microphone and prints how long recording
+    /// takes to start, on demand vs always-ready:
     /// `cargo test --lib mic_start -- --ignored --nocapture`
     #[test]
     #[ignore]
@@ -450,21 +527,22 @@ mod latency {
         use std::time::{Duration, Instant};
         for attempt in 1..=3 {
             let pressed = Instant::now();
-            let rec = Recording::start().expect("microphone");
+            let rec = Recording::start(None).expect("microphone");
             let opened = pressed.elapsed();
             while rec.len() == 0 && pressed.elapsed() < Duration::from_secs(3) {
                 std::thread::sleep(Duration::from_millis(1));
             }
-            println!("on demand, attempt {attempt}: stream open {} ms, first audio {} ms", opened.as_millis(), pressed.elapsed().as_millis());
+            println!("on demand, attempt {attempt}: open {} ms, first audio {} ms", opened.as_millis(), pressed.elapsed().as_millis());
             rec.stop().unwrap();
         }
 
-        let mic = Mic::start().expect("microphone");
+        let mic = Mic::start(None).expect("microphone");
         std::thread::sleep(Duration::from_millis(800)); // let the pre-roll fill
         let pressed = Instant::now();
         let rec = mic.record();
         println!(
-            "always-ready: recording started in {} us, already holding {} ms of audio from before the press",
+            "always-ready ({}): started in {} us, holding {} ms from before the press",
+            rec.device(),
             pressed.elapsed().as_micros(),
             rec.len() as u64 * 1000 / rec.rate as u64
         );

@@ -33,11 +33,13 @@ pub struct Settings {
     pub hotkey: Option<String>,
     /// Keep the microphone open so recording starts instantly.
     pub instant_mic: bool,
+    /// Microphone to record from (None: Windows' default).
+    pub microphone: Option<String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true }
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None }
     }
 }
 

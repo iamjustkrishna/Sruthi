@@ -40,7 +40,20 @@ interface Status {
   dictionary: string[];
   hotkey: string;
   instant_mic: boolean;
+  microphone: string | null;
+  microphones: string[];
+  default_microphone: string | null;
+  mic_warning: string | null;
   history: HistoryEntry[];
+}
+
+interface MicProbe {
+  name: string;
+  is_default: boolean;
+  level: number;
+  working: boolean;
+  volume: number;
+  muted: boolean;
 }
 
 interface HistoryEntry {
@@ -241,6 +254,7 @@ function render(s: Status) {
   });
   renderWords(s.dictionary);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
+  renderMicrophones(s);
 
   renderHistory(s.history);
 }
@@ -333,6 +347,77 @@ function renderHistory(entries: HistoryEntry[]) {
 }
 
 $("open-folder").addEventListener("click", () => run("open_recordings_folder", {}));
+
+// ---------------------------------------------------------------------------
+// Microphone
+
+const micSelect = $<HTMLSelectElement>("mic-select");
+const DEFAULT_MIC = "";
+
+function renderMicrophones(s: Status) {
+  const options = [
+    new Option(`Windows default${s.default_microphone ? ` (${s.default_microphone})` : ""}`, DEFAULT_MIC),
+    ...s.microphones.map((name) => new Option(name, name)),
+  ];
+  micSelect.replaceChildren(...options);
+  micSelect.value = s.microphone ?? DEFAULT_MIC;
+
+  const warning = $("mic-warning");
+  warning.hidden = !s.mic_warning;
+  $("mic-warning-text").textContent = s.mic_warning ?? "";
+}
+
+micSelect.addEventListener("change", () =>
+  run("set_microphone", { name: micSelect.value === DEFAULT_MIC ? null : micSelect.value }),
+);
+
+async function checkMicrophones() {
+  const statusLine = $("mic-check-status");
+  statusLine.hidden = false;
+  statusLine.textContent = "Listening to each microphone for a second… (stay quiet or talk normally)";
+  $<HTMLButtonElement>("mic-check").disabled = true;
+  try {
+    const probes = await invoke<MicProbe[]>("probe_microphones");
+    const working = probes.filter((p) => p.working && !p.muted);
+    statusLine.textContent = working.length
+      ? `${working.length} of ${probes.length} microphones receive sound.`
+      : "None of your microphones receive any sound. Check that one is connected and not muted.";
+    $<HTMLUListElement>("mic-probes").replaceChildren(
+      ...probes.map((p) => {
+        const li = document.createElement("li");
+        li.className = `mic-probe ${p.working && !p.muted ? "ok" : "dead"}`;
+        const info = document.createElement("div");
+        info.className = "model-info";
+        const name = document.createElement("strong");
+        name.textContent = p.name + (p.is_default ? " (Windows default)" : "");
+        const detail = document.createElement("span");
+        detail.className = "small";
+        detail.textContent = p.muted
+          ? "Muted in Windows"
+          : p.working
+            ? `Receiving sound · volume ${Math.round(p.volume * 100)}%`
+            : "No sound at all: unplugged, switched off, or a virtual device";
+        info.append(name, detail);
+        li.append(info);
+        const chosen = (status?.microphone ?? DEFAULT_MIC) === p.name;
+        if (p.working && !p.muted && !chosen) {
+          li.append(button("Use", () => run("set_microphone", { name: p.name })));
+        }
+        return li;
+      }),
+    );
+  } catch (e) {
+    statusLine.textContent = `Couldn't check microphones: ${e}`;
+  } finally {
+    $<HTMLButtonElement>("mic-check").disabled = false;
+  }
+}
+
+$("mic-check").addEventListener("click", checkMicrophones);
+$("mic-warning-check").addEventListener("click", () => {
+  $("mic-check").scrollIntoView({ behavior: "smooth", block: "center" });
+  checkMicrophones();
+});
 
 // ---------------------------------------------------------------------------
 // Dictation key

@@ -33,14 +33,19 @@ impl Session {
     /// an accidental tap come back with no audio.
     pub fn finish(self) -> Result<Outcome> {
         self.recording.stop()?;
+        let device = self.recording.device().to_string();
         let audio = self.recording.slice_16k(0, self.recording.len());
         if (audio.len() as f32) / (TARGET_RATE as f32) < MIN_DICTATION_SECS {
-            return Ok(Outcome::default());
+            return Ok(Outcome { device, ..Outcome::default() });
+        }
+        // Digital silence: the microphone itself delivers nothing.
+        if crate::audio::rms(&audio) < crate::audio::DEAD_MIC_RMS {
+            return Ok(Outcome { device, dead_mic: true, ..Outcome::default() });
         }
         // Boost quiet speech; skip the model entirely when nothing was said.
         let Some(prepared) = enhance::prepare(&audio) else {
             log::info!("No speech in recording");
-            return Ok(Outcome { audio, ..Outcome::default() });
+            return Ok(Outcome { audio, device, ..Outcome::default() });
         };
 
         let heard = {
@@ -57,7 +62,7 @@ impl Session {
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {heard:?}");
         log::info!("Pasted: {text:?}");
-        Ok(Outcome { audio, heard, text })
+        Ok(Outcome { audio, heard, text, device, dead_mic: false })
     }
 }
 
@@ -70,4 +75,8 @@ pub struct Outcome {
     pub heard: String,
     /// The formatted text to paste (empty when nothing was heard).
     pub text: String,
+    /// The microphone it was recorded from.
+    pub device: String,
+    /// The microphone delivered no sound at all.
+    pub dead_mic: bool,
 }

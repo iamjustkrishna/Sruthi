@@ -3,10 +3,13 @@ mod caret;
 mod dictation;
 mod enhance;
 mod format;
+mod mic_check;
 mod model;
 mod paste;
 mod recordings;
 mod settings;
+#[cfg(windows)]
+mod wasapi;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -100,6 +103,11 @@ struct Status {
     dictionary: Vec<String>,
     hotkey: String,
     instant_mic: bool,
+    microphone: Option<String>,
+    microphones: Vec<String>,
+    default_microphone: Option<String>,
+    /// Shown in the main window when the microphone delivers no sound.
+    mic_warning: Option<String>,
     history: Vec<recordings::Entry>,
 }
 
@@ -126,6 +134,7 @@ struct Inner {
     model_state: ModelState,
     detail: Option<String>,
     history: Vec<recordings::Entry>,
+    mic_warning: Option<String>,
     session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
@@ -156,6 +165,7 @@ impl AppState {
                 model_state: ModelState::Missing,
                 detail: None,
                 history: recordings::load().into_iter().take(HISTORY_LIMIT).collect(),
+                mic_warning: None,
                 session: None,
                 busy: false,
                 llm_active: selected_llm(),
@@ -209,6 +219,10 @@ impl AppState {
             },
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
+            microphone: settings::load().microphone,
+            microphones: list_microphone_names(),
+            default_microphone: audio::default_device_name(),
+            mic_warning: inner.mic_warning.clone(),
             history: inner.history.clone(),
         }
     }
@@ -314,7 +328,7 @@ fn sync_mic(app: AppHandle) {
     if state.mic.lock().unwrap().is_some() {
         return;
     }
-    thread::spawn(move || match audio::Mic::start() {
+    thread::spawn(move || match audio::Mic::start(settings::load().microphone) {
         Ok(mic) => {
             let state = app.state::<AppState>();
             if settings::load().instant_mic {
@@ -448,7 +462,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             let mic = state.mic.lock().unwrap().clone();
             let started = match mic {
                 Some(mic) => Ok(mic.record()),
-                None => audio::Recording::start(),
+                None => audio::Recording::start(settings::load().microphone),
             };
             match started {
                 Ok(rec) => {
@@ -512,6 +526,20 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     let outcome = session.finish()?;
     log::info!("Final text ready {} ms after release", released.elapsed().as_millis());
 
+    let state = app.state::<AppState>();
+    if outcome.dead_mic {
+        let warning = format!(
+            "No sound is coming from \"{}\". Choose another microphone in Srutam Dictate.",
+            outcome.device
+        );
+        state.inner.lock().unwrap().mic_warning = Some(warning.clone());
+        emit_status(app);
+        anyhow::bail!(warning);
+    }
+    if state.inner.lock().unwrap().mic_warning.take().is_some() {
+        emit_status(app);
+    }
+
     if !outcome.text.is_empty() {
         // The pill can't take focus, so it stays up while the paste lands.
         // Trailing space keeps back-to-back dictations from running together.
@@ -522,7 +550,6 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     if !outcome.audio.is_empty() {
         match recordings::add(&outcome.audio, &outcome.heard, &outcome.text) {
             Ok(entry) => {
-                let state = app.state::<AppState>();
                 let mut inner = state.inner.lock().unwrap();
                 inner.history.insert(0, entry);
                 inner.history.truncate(HISTORY_LIMIT);
@@ -766,6 +793,79 @@ fn parse_hotkey(label: &str) -> Result<Shortcut, String> {
     normalized.parse::<Shortcut>().map_err(|_| format!("\"{label}\" isn't a valid shortcut"))
 }
 
+fn list_microphone_names() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        wasapi::device_names()
+    }
+    #[cfg(not(windows))]
+    {
+        Vec::new()
+    }
+}
+
+/// Closes and reopens the always-ready mic (after a settings change).
+fn restart_mic(app: &AppHandle) {
+    if let Some(mic) = app.state::<AppState>().mic.lock().unwrap().take() {
+        mic.stop();
+    }
+    sync_mic(app.clone());
+}
+
+#[tauri::command]
+fn set_microphone(app: AppHandle, name: Option<String>) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.microphone = name;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    app.state::<AppState>().inner.lock().unwrap().mic_warning = None;
+    restart_mic(&app);
+    emit_status(&app);
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+struct MicProbe {
+    name: String,
+    is_default: bool,
+    /// Background level heard in one second (raw capture).
+    level: f32,
+    /// Receives any sound at all.
+    working: bool,
+    volume: f32,
+    muted: bool,
+}
+
+/// Listens to each microphone for a second (raw capture) to show which
+/// ones actually receive sound. A working mic always picks up some room
+/// noise; a dead one delivers exact silence.
+#[tauri::command]
+async fn probe_microphones() -> Vec<MicProbe> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let default = audio::default_device_name();
+        let info = mic_check::microphones();
+        list_microphone_names()
+            .into_iter()
+            .map(|name| {
+                #[cfg(windows)]
+                let level = wasapi::probe(&name, 1.0).map(|(rms, _)| rms).unwrap_or(0.0);
+                #[cfg(not(windows))]
+                let level = 0.0;
+                let details = info.iter().find(|m| m.name == name);
+                MicProbe {
+                    is_default: default.as_deref() == Some(name.as_str()),
+                    working: level >= audio::DEAD_MIC_RMS,
+                    level,
+                    volume: details.map(|m| m.volume).unwrap_or(1.0),
+                    muted: details.is_some_and(|m| m.muted),
+                    name,
+                }
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
+}
+
 #[tauri::command]
 fn set_instant_mic(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut saved = settings::load();
@@ -978,6 +1078,8 @@ pub fn run() {
             set_hotkey,
             hotkey_options,
             set_instant_mic,
+            set_microphone,
+            probe_microphones,
             get_recording,
             delete_recording,
             open_recordings_folder

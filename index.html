@@ -14,6 +14,21 @@
         <p class="tagline">Offline voice typing. Your audio never leaves this PC.</p>
       </header>
 
+      <section class="card warning" id="mic-warning" hidden>
+        <p id="mic-warning-text"></p>
+        <button id="mic-warning-check">Check microphones</button>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Microphone</h2>
+          <button id="mic-check" class="ghost small-btn">Check microphones</button>
+        </div>
+        <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
+        <p class="muted small" id="mic-check-status" hidden></p>
+        <ul id="mic-probes" class="mic-probes"></ul>
+      </section>
+
       <section class="card" id="model-card">
         <div class="card-head">
           <h2>Speech model</h2>
