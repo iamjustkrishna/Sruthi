@@ -104,20 +104,27 @@ fn close_spelling(a: &str, b: &str) -> bool {
     edits <= allowed + 0.01
 }
 
-/// True when some 1-3 word stretch sounds *close to* a dictionary entry
-/// without matching it ("Shruton", "Shop" for "Srutam"): a sign the speech
-/// model misheard a dictionary word, worth a second opinion. Text the
+/// Dictations longer than this never count as near misses: in sentences,
+/// short names "sound close" to ordinary phrases ("Hansi" ~ "is a"), and
+/// every false alarm costs seconds of Whisper.
+const NEAR_MISS_MAX_WORDS: usize = 4;
+/// Entries need at least this many sounds to be near-missed reliably.
+const NEAR_MISS_MIN_KEY: usize = 5;
+
+/// True when a very short dictation sounds *close to* a dictionary entry
+/// without matching it ("Shruton" for "Srutam"): a sign the speech model
+/// misheard a dictionary word, worth a second opinion. Text the
 /// dictionary can already fix doesn't count.
 pub fn has_near_miss(text: &str, dictionary: &[String]) -> bool {
-    let entries: Vec<String> = dictionary.iter().map(|e| sound_key(e)).filter(|k| k.len() >= 4).collect();
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    if words.is_empty() || words.len() > NEAR_MISS_MAX_WORDS {
+        return false;
+    }
+    let entries: Vec<String> =
+        dictionary.iter().map(|e| sound_key(e)).filter(|k| k.len() >= NEAR_MISS_MIN_KEY).collect();
     if entries.is_empty() || apply(text, dictionary) != text {
         return false;
     }
-    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
-    // A lone mangled name is the typical case in very short dictations, so
-    // they get a looser test; in sentences only near-identical sounds count.
-    let short = words.len() <= 3;
-    let (min_score, min_length) = if short { (0.6, 0.6) } else { (0.75, 0.75) };
     (0..words.len()).any(|i| {
         (1..=3.min(words.len() - i)).any(|n| {
             let joined: String = words[i..i + n].iter().map(|w| letters(w)).collect();
@@ -125,12 +132,17 @@ pub fn has_near_miss(text: &str, dictionary: &[String]) -> bool {
             entries.iter().any(|entry| {
                 let length = key.len() as f32 / entry.len() as f32;
                 let score = match_score(&key, entry);
-                (min_length..=1.0 / min_length).contains(&length)
-                    && score >= min_score - 1e-4
-                    && score < threshold(entry)
+                (0.6..=1.67).contains(&length) && score >= 0.65 && score < threshold(entry)
             })
         })
     })
+}
+
+/// True when `text` contains one of the dictionary words (after fixing
+/// sound-alikes), i.e. a second opinion actually found a name.
+pub fn mentions_entry(text: &str, dictionary: &[String]) -> bool {
+    let fixed = apply(text, dictionary).to_lowercase();
+    dictionary.iter().any(|e| !e.trim().is_empty() && fixed.contains(&e.trim().to_lowercase()))
 }
 
 /// Letters spelled out one by one ("S-R U T A M", "S R U T A M") that
@@ -364,14 +376,34 @@ mod tests {
     fn near_misses_are_spotted() {
         let d = vec!["Srutam".to_string()];
         // Real Parakeet outputs for "Srutam" that sound-matching can't fix.
-        // ("Shop." is too far off to tell from the real word, so it isn't.)
-        for heard in ["Shruton", "Shoot up. It's gonna be the best."] {
-            assert!(has_near_miss(heard, &d), "{heard}");
-        }
+        assert!(has_near_miss("Shruton", &d));
+        // Too far off to tell from the real word, or a whole sentence (not
+        // worth seconds of Whisper; the dictionary and AI clean-up handle it).
+        assert!(!has_near_miss("Shop.", &d));
+        assert!(!has_near_miss("Shoot up. It's gonna be the best.", &d));
         // Already matched, or nothing like it.
         assert!(!has_near_miss("Shoot them.", &d));
         assert!(!has_near_miss("The meeting is at five tomorrow.", &d));
         assert!(!has_near_miss("I went to the shop and bought some stamps today.", &d));
+    }
+
+    #[test]
+    fn sentences_never_trigger_near_misses() {
+        // The user's real dictionary and dictations that wrongly sent
+        // everything to Whisper (8 s each) before this rule.
+        let d: Vec<String> = ["Ajay", "Hansi", "Jagjeet", "Jeena", "Mahendra", "Raghav", "Renu", "Srutam"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        for text in [
+            "There is a very thin line between what is possible and what's not possible, but that line is now faded a lot.",
+            "I want you to note down two points. Number one point.",
+            "Do you know who is uh Raj?",
+            "Right.",
+        ] {
+            assert!(!has_near_miss(text, &d), "{text}");
+        }
+        assert!(has_near_miss("Shruton", &d));
     }
 
     #[test]
@@ -385,5 +417,34 @@ mod tests {
     #[test]
     fn empty_dictionary_changes_nothing() {
         assert_eq!(apply("anything at all", &[]), "anything at all");
+    }
+}
+
+#[cfg(test)]
+mod near_miss_debug {
+    /// Prints which spans count as near misses in real sentences:
+    /// `cargo test --lib near_miss_debug -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn show_triggers() {
+        let dict: Vec<String> = std::env::var("SRUTAM_TEST_DICT").unwrap_or_default().split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        for text in [
+            "There is a very thin line between what is possible and what's not possible, but that line is now faded a lot.",
+            "I want you to note down two points. Number one point. We have to go to the party. Number two, we have to go in the car.",
+            "Do you know who is uh Raj?",
+            "Right.",
+        ] {
+            let words: Vec<&str> = text.split(' ').collect();
+            let mut hits = Vec::new();
+            for i in 0..words.len() {
+                for n in 1..=3.min(words.len() - i) {
+                    let span = words[i..i + n].join(" ");
+                    if super::has_near_miss(&span, &dict) {
+                        hits.push(span);
+                    }
+                }
+            }
+            println!("{} -> near_miss={} spans={:?}", text, super::has_near_miss(text, &dict), hits);
+        }
     }
 }

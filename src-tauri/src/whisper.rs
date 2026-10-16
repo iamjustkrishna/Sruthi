@@ -120,6 +120,12 @@ fn audio_ctx(seconds: f32) -> u32 {
     if rounded >= FULL_AUDIO_CTX { 0 } else { rounded.max(MIN_AUDIO_CTX) }
 }
 
+/// Longest a Whisper run may take: about 1 s to load, ~1.5x the audio to
+/// process on this CPU, and slack.
+fn time_budget(seconds: f32) -> Duration {
+    Duration::from_secs_f32((5.0 + seconds * 1.5).min(45.0))
+}
+
 pub struct WhisperCli {
     threads: usize,
     /// The user's dictionary as a hint ("initial prompt"), the way Wispr
@@ -132,15 +138,17 @@ impl WhisperCli {
         if !is_installed() {
             return Err(anyhow!("Whisper turbo isn't downloaded"));
         }
-        // Leave a couple of cores for the rest of the system.
-        let threads = std::thread::available_parallelism().map(|n| n.get().saturating_sub(2).max(4)).unwrap_or(4);
+        // One thread per physical core: on a 6-core/12-thread CPU, 6
+        // threads took 4.2 s where 10 took 8.0 s (SMT threads just contend).
+        let threads = std::thread::available_parallelism().map(|n| (n.get() / 2).max(4)).unwrap_or(4);
         Ok(Self { threads, prompt: None })
     }
 
     fn run(&self, samples: &[f32]) -> Result<String> {
         let wav = root().join(format!("dictation-{}.wav", std::process::id()));
         fs::write(&wav, crate::recordings::encode_wav(samples))?;
-        let ctx = audio_ctx(samples.len() as f32 / TARGET_RATE as f32);
+        let seconds = samples.len() as f32 / TARGET_RATE as f32;
+        let ctx = audio_ctx(seconds);
 
         let mut cmd = Command::new(cli_path());
         cmd.arg("-m")
@@ -148,6 +156,10 @@ impl WhisperCli {
             .arg("-f")
             .arg(&wav)
             .args(["-l", "en", "-nt", "-np", "-t", &self.threads.to_string(), "-ac", &ctx.to_string()])
+            // Greedy decoding, no temperature retries: ~3.6 s instead of
+            // 4-8 s on short whispers, with the same text. Retries mostly
+            // re-ran hallucination loops.
+            .args(["-bs", "1", "-bo", "1", "-nf"])
             .current_dir(runtime_dir())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -156,15 +168,34 @@ impl WhisperCli {
             cmd.arg("--prompt").arg(prompt);
         }
         crate::process::hide_window(&mut cmd);
-        let child = cmd.spawn().context("Couldn't start whisper.cpp")?;
+        let mut child = cmd.spawn().context("Couldn't start whisper.cpp")?;
         crate::process::kill_with_app(&child);
-        let output = child.wait_with_output();
+
+        // A run past its budget is stuck repeating itself ("Shrutam.
+        // Shrutam. ..." until the window ends): stop it and fall back.
+        let deadline = std::time::Instant::now() + time_budget(seconds);
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break Some(status);
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        };
         let _ = fs::remove_file(&wav);
-        let output = output?;
-        if !output.status.success() {
-            return Err(anyhow!("whisper.cpp failed ({})", output.status));
+        let status = status.ok_or_else(|| anyhow!("Whisper took too long ({seconds:.1}s of audio)"))?;
+        if !status.success() {
+            return Err(anyhow!("whisper.cpp failed ({status})"));
         }
-        let text = String::from_utf8_lossy(&output.stdout);
+        let mut stdout = String::new();
+        if let Some(mut out) = child.stdout.take() {
+            use std::io::Read;
+            out.read_to_string(&mut stdout)?;
+        }
+        let text = stdout;
         let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
         let text = drop_repeated_sentences(&joined);
         Ok(if echoes_prompt(&text, self.prompt.as_deref()) { String::new() } else { text })
@@ -281,13 +312,21 @@ impl SpeechModel for Hybrid {
         // Whisper also gets a say when Parakeet's words sound close to, but
         // not quite like, a dictionary word: with the dictionary as its
         // prompt, Whisper heard "Srutam" where Parakeet wrote "Shop".
-        let near_miss = crate::format::dictionary::has_near_miss(&fast.text, &self.words);
-        if !near_miss && !needs_second_opinion(&fast.text, speech) {
+        let missed_words = needs_second_opinion(&fast.text, speech);
+        let near_miss = !missed_words && crate::format::dictionary::has_near_miss(&fast.text, &self.words);
+        if !missed_words && !near_miss {
             return Ok(fast);
         }
         log::info!("Hybrid: Parakeet heard {:?} in {speech:.1}s of speech; asking Whisper", fast.text);
         let slow = self.slow.transcribe_raw(samples, options)?;
-        Ok(if slow.text.trim().is_empty() { fast } else { slow })
+        let use_slow = if missed_words {
+            !slow.text.trim().is_empty()
+        } else {
+            // Asked about a possible name: only worth it if Whisper found one
+            // (on "Right." it answered "Aja, Aja." after hearing "Ajay").
+            crate::format::dictionary::mentions_entry(&slow.text, &self.words)
+        };
+        Ok(if use_slow { slow } else { fast })
     }
 }
 

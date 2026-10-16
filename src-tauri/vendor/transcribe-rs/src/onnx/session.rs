@@ -173,6 +173,11 @@ fn build_session(
 
     builder = builder.with_parallel_execution(use_parallel)?;
 
+    // SRUTAM PATCH: don't let idle worker threads spin on the CPU after a
+    // run. Right after Parakeet, spinning threads halved the speed of the
+    // Whisper fallback (8-11 s instead of ~4 s) and of the local LLM.
+    builder = builder.with_intra_op_spinning(false)?.with_inter_op_spinning(false)?;
+
     if requires_sequential_session() {
         builder = builder.with_memory_pattern(false)?;
     }
