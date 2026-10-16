@@ -2,6 +2,7 @@
 //! then (in Smart mode) a small local LLM, with a guard that falls back to
 //! the rules output if the LLM drifts from what was said.
 
+pub mod dictionary;
 pub mod llm;
 pub mod rules;
 
@@ -25,8 +26,10 @@ impl Formatter {
         self.server.lock().unwrap().as_ref().map(|s| s.model_id)
     }
 
-    pub fn format(&self, raw: &str, smart: bool) -> String {
-        let ruled = rules::apply(raw);
+    /// Dictionary words are fixed first (so rules see the right words) and
+    /// again after the LLM, in case it "corrected" a name back.
+    pub fn format(&self, raw: &str, smart: bool, words: &[String]) -> String {
+        let ruled = rules::apply(&dictionary::apply(raw, words));
         if !smart || ruled.split_whitespace().count() < SMART_MIN_WORDS {
             return ruled;
         }
@@ -36,7 +39,7 @@ impl Formatter {
         match server.clean_up(&ruled) {
             Ok(out) if llm::faithful(&ruled, &out) => {
                 log::info!("LLM clean-up in {} ms", started.elapsed().as_millis());
-                out
+                dictionary::apply(&out, words)
             }
             Ok(out) => {
                 log::warn!("LLM output drifted from the dictation, using rules output instead: {out:?}");
@@ -90,7 +93,7 @@ mod tests {
         ];
         for raw in samples {
             let t = std::time::Instant::now();
-            let out = formatter.format(raw, true);
+            let out = formatter.format(raw, true, &[]);
             println!("\nIN : {raw}\nOUT: {out}\n({} ms)", t.elapsed().as_millis());
             assert!(!out.trim().is_empty());
         }

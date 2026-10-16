@@ -95,6 +95,7 @@ struct Status {
     overlay: OverlayPosition,
     smart: bool,
     llm: LlmStatus,
+    dictionary: Vec<String>,
     hotkey: &'static str,
     history: Vec<String>,
 }
@@ -182,6 +183,7 @@ impl AppState {
             downloading: inner.downloading,
             overlay: settings::load().overlay,
             smart: settings::load().smart,
+            dictionary: settings::load().dictionary,
             llm: LlmStatus {
                 state: inner.llm_state,
                 detail: inner.llm_detail.clone(),
@@ -410,9 +412,14 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             match audio::Recording::start() {
                 Ok(rec) => {
                     let level = rec.level();
-                    let smart = settings::load().smart;
-                    inner.session =
-                        Some(dictation::Session::start(rec, state.engine.clone(), state.formatter.clone(), smart));
+                    let saved = settings::load();
+                    inner.session = Some(dictation::Session::start(
+                        rec,
+                        state.engine.clone(),
+                        state.formatter.clone(),
+                        saved.smart,
+                        saved.dictionary,
+                    ));
                     drop(inner);
                     // Finding the text field can take a moment (UI Automation),
                     // so do it off the main thread; the mic is already running.
@@ -657,6 +664,34 @@ fn delete_llm(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Max length of a dictionary entry; longer is almost certainly a mistake.
+const MAX_WORD_LEN: usize = 60;
+
+#[tauri::command]
+fn add_word(app: AppHandle, word: String) -> Result<(), String> {
+    let word = word.split_whitespace().collect::<Vec<_>>().join(" ");
+    if word.is_empty() || word.len() > MAX_WORD_LEN {
+        return Err(format!("Enter a word or short phrase (up to {MAX_WORD_LEN} characters)"));
+    }
+    let mut saved = settings::load();
+    if !saved.dictionary.iter().any(|w| w.eq_ignore_ascii_case(&word)) {
+        saved.dictionary.push(word);
+        saved.dictionary.sort_by_key(|w| w.to_lowercase());
+        settings::save(&saved).map_err(|e| e.to_string())?;
+    }
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.dictionary.retain(|w| w != &word);
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -735,7 +770,9 @@ pub fn run() {
             set_smart,
             download_llm,
             select_llm,
-            delete_llm
+            delete_llm,
+            add_word,
+            remove_word
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

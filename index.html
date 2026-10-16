@@ -37,6 +37,19 @@
       </section>
 
       <section class="card">
+        <h2>Dictionary</h2>
+        <p class="muted small">
+          Names, product terms and rare words. When something you say sounds like one of these, it's spelled exactly
+          this way.
+        </p>
+        <form class="word-form" id="word-form">
+          <input id="word-input" type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Srutam" maxlength="60" autocomplete="off" />
+          <button type="submit">Add</button>
+        </form>
+        <ul class="words" id="words"></ul>
+      </section>
+
+      <section class="card">
         <h2>How to dictate</h2>
         <p>
           Click into any text box, then <strong>hold <kbd id="hotkey">Ctrl+Shift+Space</kbd></strong>,

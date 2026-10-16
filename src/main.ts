@@ -37,6 +37,7 @@ interface Status {
     models: LlmEntry[];
     downloading: string | null;
   };
+  dictionary: string[];
   hotkey: string;
   history: string[];
 }
@@ -222,6 +223,7 @@ function render(s: Status) {
   document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
     input.checked = input.value === s.overlay;
   });
+  renderWords(s.dictionary);
 
   history.replaceChildren(
     ...s.history.map((text) => {
@@ -234,6 +236,35 @@ function render(s: Status) {
   );
   historyEmpty.hidden = s.history.length > 0;
 }
+
+function renderWords(words: string[]) {
+  $<HTMLUListElement>("words").replaceChildren(
+    ...words.map((word) => {
+      const li = document.createElement("li");
+      li.className = "word";
+      const text = document.createElement("span");
+      text.textContent = word;
+      const remove = document.createElement("button");
+      remove.className = "ghost remove";
+      remove.textContent = "×";
+      remove.title = `Remove ${word}`;
+      remove.setAttribute("aria-label", `Remove ${word}`);
+      remove.addEventListener("click", () => run("remove_word", { word }));
+      li.append(text, remove);
+      return li;
+    }),
+  );
+}
+
+const wordInput = $<HTMLInputElement>("word-input");
+$<HTMLFormElement>("word-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const word = wordInput.value.trim();
+  if (!word) return;
+  await run("add_word", { word });
+  wordInput.value = "";
+  wordInput.focus();
+});
 
 smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartToggle.checked }));
 

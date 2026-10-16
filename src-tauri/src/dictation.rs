@@ -20,11 +20,13 @@ pub struct Session {
     engine: Engine,
     formatter: Arc<Formatter>,
     smart: bool,
+    /// The user's dictionary at the time the key was pressed.
+    words: Vec<String>,
 }
 
 impl Session {
-    pub fn start(recording: Recording, engine: Engine, formatter: Arc<Formatter>, smart: bool) -> Self {
-        Self { recording, engine, formatter, smart }
+    pub fn start(recording: Recording, engine: Engine, formatter: Arc<Formatter>, smart: bool, words: Vec<String>) -> Self {
+        Self { recording, engine, formatter, smart, words }
     }
 
     /// Stops recording and returns the final, formatted text.
@@ -53,7 +55,7 @@ impl Session {
         if raw.is_empty() {
             return Ok(raw);
         }
-        let formatted = self.formatter.format(&raw, self.smart);
+        let formatted = self.formatter.format(&raw, self.smart, &self.words);
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {raw:?}");
         log::info!("Pasted: {formatted:?}");
