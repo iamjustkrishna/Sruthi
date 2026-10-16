@@ -13,6 +13,8 @@ use transcribe_rs::onnx::parakeet::ParakeetModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
 
+use crate::whisper;
+
 pub const DEFAULT_MODEL: &str = "parakeet-v3";
 
 /// A read that returns nothing for this long counts as a stalled connection.
@@ -24,6 +26,10 @@ enum Engine {
     Parakeet,
     MoonshineBase,
     MoonshineStreaming,
+    /// whisper.cpp command-line tool (see whisper.rs).
+    Whisper,
+    /// Parakeet V3 first, Whisper turbo when Parakeet clearly missed speech.
+    Hybrid,
 }
 
 enum Source {
@@ -31,6 +37,10 @@ enum Source {
     Archive(&'static str),
     /// Individual files: (url, file name inside the model directory).
     Files(&'static [(&'static str, &'static str)]),
+    /// whisper.cpp tools + model, managed by whisper.rs.
+    Whisper,
+    /// Made of other entries; downloads whichever parts are missing.
+    Parts,
 }
 
 pub struct ModelInfo {
@@ -60,6 +70,26 @@ pub const CATALOG: &[ModelInfo] = &[
         dir_name: "parakeet-tdt-0.6b-v3-int8",
         engine: Engine::Parakeet,
         source: Source::Archive("https://blob.handy.computer/parakeet-v3-int8.tar.gz"),
+    },
+    ModelInfo {
+        id: "hybrid",
+        name: "Hybrid: Parakeet + Whisper",
+        description: "Parakeet's speed for normal speech; whispers and missed words get a second pass with Whisper turbo (a few seconds).",
+        languages: "English",
+        size_mb: 478 + whisper::RUNTIME_MB + whisper::MODEL_MB,
+        dir_name: "",
+        engine: Engine::Hybrid,
+        source: Source::Parts,
+    },
+    ModelInfo {
+        id: "whisper-turbo",
+        name: "Whisper Large v3 Turbo",
+        description: "Best with whispers, accents and rare words, but slow on this PC's CPU: about 3-5 s per dictation.",
+        languages: "English",
+        size_mb: whisper::RUNTIME_MB + whisper::MODEL_MB,
+        dir_name: "",
+        engine: Engine::Whisper,
+        source: Source::Whisper,
     },
     ModelInfo {
         id: "parakeet-v2",
@@ -102,6 +132,18 @@ pub fn find(id: &str) -> Option<&'static ModelInfo> {
     CATALOG.iter().find(|m| m.id == id)
 }
 
+fn parakeet_v3() -> &'static ModelInfo {
+    find("parakeet-v3").expect("parakeet-v3 in catalog")
+}
+
+/// Ids of entries that `id` is built from (deleting those would break it).
+pub fn parts_of(id: &str) -> &'static [&'static str] {
+    match id {
+        "hybrid" => &["parakeet-v3", "whisper-turbo"],
+        _ => &[],
+    }
+}
+
 pub(crate) fn models_root() -> PathBuf {
     crate::settings::app_root().join("models")
 }
@@ -112,7 +154,11 @@ impl ModelInfo {
     }
 
     pub fn is_installed(&self) -> bool {
-        has_required_files(self.engine, &self.dir())
+        match self.engine {
+            Engine::Whisper => whisper::is_installed(),
+            Engine::Hybrid => parakeet_v3().is_installed() && whisper::is_installed(),
+            _ => has_required_files(self.engine, &self.dir()),
+        }
     }
 
     pub fn load(&self) -> Result<Box<dyn SpeechModel + Send>> {
@@ -127,11 +173,18 @@ impl ModelInfo {
                 let threads = thread::available_parallelism().map(|n| n.get().min(4)).unwrap_or(2);
                 Box::new(StreamingModel::load(&dir, threads, &Quantization::default()).map_err(|e| anyhow!("{e}"))?)
             }
+            Engine::Whisper => Box::new(whisper::WhisperCli::new()?),
+            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::WhisperCli::new()?)),
         };
         Ok(model)
     }
 
     pub fn remove(&self) -> Result<()> {
+        match self.engine {
+            Engine::Whisper => return whisper::remove(),
+            Engine::Hybrid => bail!("Hybrid uses Parakeet V3 and Whisper turbo; delete those instead"),
+            _ => {}
+        }
         let dir = self.dir();
         if dir.exists() {
             fs::remove_dir_all(&dir)?;
@@ -142,6 +195,10 @@ impl ModelInfo {
     /// Downloads and installs the model. `progress(downloaded, total)` is
     /// called as bytes arrive; `total` is 0 when the size isn't known yet.
     pub fn download(&self, mut progress: impl FnMut(u64, u64)) -> Result<()> {
+        self.download_with(&mut progress)
+    }
+
+    fn download_with(&self, progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
         fs::create_dir_all(models_root())?;
         let client = reqwest::blocking::Client::builder()
             // Applies to each read, so a silent connection errors out
@@ -174,6 +231,20 @@ impl ModelInfo {
                 let target = self.dir();
                 let _ = fs::remove_dir_all(&target);
                 fs::rename(&staging, &target)?;
+            }
+            Source::Whisper => whisper::download(progress)?,
+            Source::Parts => {
+                let parakeet = parakeet_v3();
+                let mb = |n: u32| n as u64 * 1_048_576;
+                let parakeet_bytes = if parakeet.is_installed() { 0 } else { mb(parakeet.size_mb) };
+                let whisper_bytes = if whisper::is_installed() { 0 } else { mb(whisper::RUNTIME_MB + whisper::MODEL_MB) };
+                let total = parakeet_bytes + whisper_bytes;
+                if parakeet_bytes > 0 {
+                    parakeet.download_with(&mut |done, _| progress(done, total))?;
+                }
+                if whisper_bytes > 0 {
+                    whisper::download(&mut |done, _| progress(parakeet_bytes + done, total))?;
+                }
             }
         }
         Ok(())
@@ -225,6 +296,7 @@ fn has_required_files(engine: Engine, dir: &Path) -> bool {
         Engine::MoonshineStreaming => {
             has("encoder.onnx") && has("decoder.onnx") && has("tokenizer.json")
         }
+        Engine::Whisper | Engine::Hybrid => false,
     }
 }
 

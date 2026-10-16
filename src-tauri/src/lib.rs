@@ -6,10 +6,12 @@ mod format;
 mod mic_check;
 mod model;
 mod paste;
+mod process;
 mod recordings;
 mod settings;
 #[cfg(windows)]
 mod wasapi;
+mod whisper;
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -640,6 +642,9 @@ fn delete_model(app: AppHandle, id: String) -> Result<(), String> {
         let inner = state.inner.lock().unwrap();
         if inner.active.id == info.id {
             return Err("Switch to another model before deleting this one".into());
+        }
+        if model::parts_of(inner.active.id).contains(&info.id) {
+            return Err(format!("{} is in use by {}; switch models first", info.name, inner.active.name));
         }
         if inner.downloading == Some(info.id) {
             return Err("Wait for the download to finish".into());

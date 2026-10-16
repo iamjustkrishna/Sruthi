@@ -1,0 +1,331 @@
+//! Whisper large-v3-turbo through whisper.cpp's command-line tool, plus the
+//! Hybrid engine that uses it as a second opinion for Parakeet.
+//!
+//! Whisper understands whispers and accents far better than Parakeet, but
+//! its encoder is heavy: a full 30 s window took ~9-17 s on this PC's CPU.
+//! Each run therefore gets a window sized to the clip (`audio_ctx`), which
+//! brought a 3 s whisper down to ~3-4 s. A persistent whisper-server can't
+//! do that: changing the window per request produced garbage.
+
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use anyhow::{anyhow, Context, Result};
+use transcribe_rs::{ModelCapabilities, SpeechModel, TranscribeError, TranscribeOptions, TranscriptionResult};
+
+use crate::audio::TARGET_RATE;
+
+const RUNTIME_URL: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
+const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
+const MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
+pub const RUNTIME_MB: u32 = 21;
+pub const MODEL_MB: u32 = 547;
+
+/// Whisper's full window, in encoder positions (50 per second, 30 s).
+const FULL_AUDIO_CTX: u32 = 1500;
+/// Shortest window used: about 7.7 s. Smaller windows hallucinated.
+const MIN_AUDIO_CTX: u32 = 384;
+
+const CAPABILITIES: ModelCapabilities = ModelCapabilities {
+    name: "Whisper large-v3-turbo",
+    engine_id: "whisper_cli",
+    sample_rate: TARGET_RATE,
+    languages: &["en"],
+    supports_timestamps: false,
+    supports_translation: false,
+    supports_streaming: false,
+};
+
+fn root() -> PathBuf {
+    crate::settings::app_root().join("whisper")
+}
+
+fn runtime_dir() -> PathBuf {
+    root().join("runtime")
+}
+
+fn cli_path() -> PathBuf {
+    runtime_dir().join(if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" })
+}
+
+fn model_path() -> PathBuf {
+    root().join("models").join(MODEL_FILE)
+}
+
+pub fn is_installed() -> bool {
+    cli_path().is_file() && model_path().is_file()
+}
+
+/// Downloads whatever is missing: the whisper.cpp tools and the model.
+pub fn download(progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(20))
+        .build()?;
+    let runtime_bytes = if cli_path().is_file() { 0 } else { RUNTIME_MB as u64 * 1_048_576 };
+    let total = runtime_bytes + MODEL_MB as u64 * 1_048_576;
+
+    if !cli_path().is_file() {
+        fs::create_dir_all(root())?;
+        let zip_path = root().join("runtime.zip.part");
+        crate::model::fetch_resumable(&client, RUNTIME_URL, &zip_path, &mut |done, _| progress(done, total))?;
+        install_runtime(&zip_path)?;
+        let _ = fs::remove_file(&zip_path);
+    }
+    if !model_path().is_file() {
+        fs::create_dir_all(root().join("models"))?;
+        let part = root().join("models").join(format!("{MODEL_FILE}.part"));
+        crate::model::fetch_resumable(&client, MODEL_URL, &part, &mut |done, _| progress(runtime_bytes + done, total))?;
+        fs::rename(&part, model_path())?;
+    }
+    progress(total, total);
+    Ok(())
+}
+
+fn install_runtime(zip_path: &Path) -> Result<()> {
+    let staging = root().join("runtime._extract");
+    let _ = fs::remove_dir_all(&staging);
+    zip::ZipArchive::new(File::open(zip_path)?)?
+        .extract(&staging)
+        .context("Failed to unpack whisper.cpp")?;
+    let exe = cli_path().file_name().unwrap().to_owned();
+    let dir = find_dir_with(&staging, &exe).ok_or_else(|| anyhow!("whisper-cli not found in download"))?;
+    let _ = fs::remove_dir_all(runtime_dir());
+    fs::rename(&dir, runtime_dir())?;
+    let _ = fs::remove_dir_all(&staging);
+    Ok(())
+}
+
+fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
+    if dir.join(file).is_file() {
+        return Some(dir.to_path_buf());
+    }
+    fs::read_dir(dir).ok()?.flatten().filter(|e| e.path().is_dir()).find_map(|e| find_dir_with(&e.path(), file))
+}
+
+pub fn remove() -> Result<()> {
+    if root().exists() {
+        fs::remove_dir_all(root())?;
+    }
+    Ok(())
+}
+
+/// Encoder window for a clip: 1.5x its length plus 3 s of slack, at least
+/// ~7.7 s, and the full 30 s (0 = "all") for long dictations.
+fn audio_ctx(seconds: f32) -> u32 {
+    let positions = ((seconds * 1.5 + 3.0) * 50.0).ceil() as u32;
+    let rounded = positions.div_ceil(64) * 64;
+    if rounded >= FULL_AUDIO_CTX { 0 } else { rounded.max(MIN_AUDIO_CTX) }
+}
+
+pub struct WhisperCli {
+    threads: usize,
+}
+
+impl WhisperCli {
+    pub fn new() -> Result<Self> {
+        if !is_installed() {
+            return Err(anyhow!("Whisper turbo isn't downloaded"));
+        }
+        // Leave a couple of cores for the rest of the system.
+        let threads = std::thread::available_parallelism().map(|n| n.get().saturating_sub(2).max(4)).unwrap_or(4);
+        Ok(Self { threads })
+    }
+
+    fn run(&self, samples: &[f32]) -> Result<String> {
+        let wav = root().join(format!("dictation-{}.wav", std::process::id()));
+        fs::write(&wav, crate::recordings::encode_wav(samples))?;
+        let ctx = audio_ctx(samples.len() as f32 / TARGET_RATE as f32);
+
+        let mut cmd = Command::new(cli_path());
+        cmd.arg("-m")
+            .arg(model_path())
+            .arg("-f")
+            .arg(&wav)
+            .args(["-l", "en", "-nt", "-np", "-t", &self.threads.to_string(), "-ac", &ctx.to_string()])
+            .current_dir(runtime_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        crate::process::hide_window(&mut cmd);
+        let child = cmd.spawn().context("Couldn't start whisper.cpp")?;
+        crate::process::kill_with_app(&child);
+        let output = child.wait_with_output();
+        let _ = fs::remove_file(&wav);
+        let output = output?;
+        if !output.status.success() {
+            return Err(anyhow!("whisper.cpp failed ({})", output.status));
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        Ok(drop_repeated_sentences(&joined))
+    }
+}
+
+/// On short clips Whisper often says the same sentence twice ("Don't you
+/// know about this? Don't you know about this?"). Back-to-back identical
+/// sentences are almost never what someone dictated, so keep one.
+fn drop_repeated_sentences(text: &str) -> String {
+    let mut sentences: Vec<&str> = Vec::new();
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        if matches!(c, '.' | '?' | '!') {
+            sentences.push(text[start..=i].trim());
+            start = i + 1;
+        }
+    }
+    if start < text.len() {
+        sentences.push(text[start..].trim());
+    }
+    let norm = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let mut out: Vec<&str> = Vec::new();
+    for s in sentences.into_iter().filter(|s| !s.is_empty()) {
+        if out.last().is_some_and(|last| norm(last) == norm(s)) {
+            continue;
+        }
+        out.push(s);
+    }
+    out.join(" ")
+}
+
+impl SpeechModel for WhisperCli {
+    fn capabilities(&self) -> ModelCapabilities {
+        CAPABILITIES
+    }
+
+    fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+        let started = std::time::Instant::now();
+        let text = self.run(samples).map_err(|e| TranscribeError::Inference(e.to_string()))?;
+        log::info!("Whisper turbo: {:.1}s of audio in {} ms", samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
+        Ok(TranscriptionResult { text, segments: None })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hybrid
+
+const HYBRID_CAPABILITIES: ModelCapabilities = ModelCapabilities {
+    name: "Hybrid (Parakeet + Whisper)",
+    engine_id: "hybrid",
+    sample_rate: TARGET_RATE,
+    languages: &["en"],
+    supports_timestamps: false,
+    supports_translation: false,
+    supports_streaming: false,
+};
+
+/// Normal speech runs ~2-3 words per second of actual speaking. Far fewer
+/// words than that means the fast model missed most of it (typical for
+/// whispers: 3 s of whispering came back as "Yeah.").
+const MIN_WORDS_PER_SECOND: f32 = 1.0;
+/// Below this much speech, there's too little to judge.
+const MIN_SPEECH_SECS: f32 = 0.4;
+
+/// Parakeet first (fast); Whisper turbo only when Parakeet clearly missed
+/// what was said.
+pub struct Hybrid {
+    fast: Box<dyn SpeechModel + Send>,
+    slow: WhisperCli,
+}
+
+impl Hybrid {
+    pub fn new(fast: Box<dyn SpeechModel + Send>, slow: WhisperCli) -> Self {
+        Self { fast, slow }
+    }
+}
+
+impl SpeechModel for Hybrid {
+    fn capabilities(&self) -> ModelCapabilities {
+        HYBRID_CAPABILITIES
+    }
+
+    fn set_hotwords(&mut self, words: &[String]) {
+        self.fast.set_hotwords(words);
+    }
+
+    fn transcribe_raw(&mut self, samples: &[f32], options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+        // `transcribe` (not `_raw`) keeps Parakeet's own silence padding.
+        let fast = self.fast.transcribe(samples, options)?;
+        let speech = speech_seconds(samples);
+        if !needs_second_opinion(&fast.text, speech) {
+            return Ok(fast);
+        }
+        log::info!("Hybrid: Parakeet heard {:?} in {speech:.1}s of speech; asking Whisper", fast.text);
+        let slow = self.slow.transcribe_raw(samples, options)?;
+        Ok(if slow.text.trim().is_empty() { fast } else { slow })
+    }
+}
+
+fn needs_second_opinion(text: &str, speech_secs: f32) -> bool {
+    if speech_secs < MIN_SPEECH_SECS {
+        return false;
+    }
+    // A number like "987-6543210" is one token but ten spoken digits, so
+    // digits count as words too (two digits ~ one word of speaking time).
+    let words: f32 = text
+        .split_whitespace()
+        .filter(|w| w.chars().any(char::is_alphanumeric))
+        .map(|w| (w.chars().filter(char::is_ascii_digit).count() as f32 / 2.0).max(1.0))
+        .sum();
+    words == 0.0 || words / speech_secs < MIN_WORDS_PER_SECOND
+}
+
+/// Seconds of actual speaking: 20 ms frames louder than a tenth of the
+/// loud frames (pauses don't count).
+fn speech_seconds(samples: &[f32]) -> f32 {
+    let frame = TARGET_RATE as usize / 50;
+    let mut levels: Vec<f32> = samples.chunks(frame).map(crate::audio::rms).collect();
+    if levels.is_empty() {
+        return 0.0;
+    }
+    let mut sorted = levels.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let loud = sorted[(sorted.len() * 9) / 10];
+    levels.retain(|&l| l > loud * 0.1 && l > 1e-4);
+    levels.len() as f32 / 50.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn window_fits_the_clip() {
+        assert_eq!(audio_ctx(3.0), MIN_AUDIO_CTX); // short whisper: ~7.7 s
+        assert_eq!(audio_ctx(8.0), 768); // 15 s window
+        assert_eq!(audio_ctx(25.0), 0); // long: full window
+    }
+
+    #[test]
+    fn second_opinion_when_words_are_missing() {
+        // Real case: 3 s of whispering came back as "Yeah.".
+        assert!(needs_second_opinion("Yeah.", 3.0));
+        assert!(needs_second_opinion("", 2.0));
+        assert!(!needs_second_opinion("There's a garden in my house.", 2.5));
+        // Numbers take long to say: 4 tokens, but plenty of speech.
+        assert!(!needs_second_opinion("Call me at 987-6543210.", 3.5));
+        // Too little speech to judge (a tap, a cough).
+        assert!(!needs_second_opinion("", 0.2));
+    }
+
+    #[test]
+    fn repeated_sentences_are_dropped() {
+        // Real Whisper outputs on short whispered clips.
+        assert_eq!(
+            drop_repeated_sentences("Don't you know about whisper flow? Don't you know about whisper flow?"),
+            "Don't you know about whisper flow?"
+        );
+        assert_eq!(drop_repeated_sentences("Yes. No. Yes."), "Yes. No. Yes.");
+        assert_eq!(drop_repeated_sentences("No trailing stop"), "No trailing stop");
+    }
+
+    #[test]
+    fn speech_time_ignores_pauses() {
+        let mut audio = vec![0.0f32; TARGET_RATE as usize]; // 1 s pause
+        audio.extend(vec![0.1f32; TARGET_RATE as usize * 2]); // 2 s "speech"
+        let secs = speech_seconds(&audio);
+        assert!((1.9..=2.1).contains(&secs), "{secs}");
+    }
+}

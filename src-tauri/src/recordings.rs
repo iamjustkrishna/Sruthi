@@ -92,7 +92,7 @@ pub fn remove(id: &str) -> Result<()> {
 }
 
 /// 16-bit PCM WAV, mono, 16 kHz.
-fn encode_wav(samples: &[f32]) -> Vec<u8> {
+pub(crate) fn encode_wav(samples: &[f32]) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
     let mut out = Vec::with_capacity(44 + data_len as usize);
     out.extend_from_slice(b"RIFF");
