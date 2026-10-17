@@ -102,6 +102,78 @@ fn remove_fillers(s: &str) -> String {
     out.join(" ")
 }
 
+/// Words after which "like" is a filler ("talking about like some").
+const LIKE_AFTER: &[&str] =
+    &["about", "and", "but", "so", "or", "with", "for", "in", "on", "at", "because", "then", "basically", "literally"];
+/// Words that start a clause: "like" right before one is a filler ("which is
+/// like which goes like if there").
+const LIKE_BEFORE_CLAUSE: &[&str] = &["which", "what", "what's", "if", "how", "where", "when", "why"];
+/// Words after which "like" is a verb or means "as" or "similar to": kept.
+const LIKE_KEPT_AFTER: &[&str] = &[
+    "i", "you", "we", "they", "he", "she", "people", "who", "do", "does", "did", "don't", "doesn't", "didn't",
+    "would", "i'd", "you'd", "we'd", "they'd", "will", "won't", "might", "may", "can", "could", "should", "to",
+    "really", "also", "still", "always", "never", "actually", "totally", "definitely", "just", "more", "most",
+    "much", "not", "look", "looks", "looked", "looking", "feel", "feels", "felt", "feeling", "seem", "seems",
+    "seemed", "sound", "sounds", "sounded", "smell", "smells", "taste", "tastes", "something", "anything",
+    "nothing", "exactly", "kind", "sort", "kinda", "sorta", "be", "is", "was", "are", "were", "it's", "that's",
+    "lot", "bit", "little", "almost", "pretty", "very", "quite", "even", "sounding",
+];
+/// After these, "like" takes an object, so it's the verb: "and like it".
+const LIKE_OBJECTS: &[&str] = &["it", "him", "her", "them", "me", "us", "you", "this", "that", "these", "those", "to"];
+/// Prepositions that make the next pronoun an object, not the subject of
+/// "like": "want to know from you like what's there".
+const OBJECT_AFTER: &[&str] = &["from", "to", "with", "for", "about", "of", "by"];
+
+/// Drops "like" where it's only a filler: after a preposition or
+/// conjunction ("about like some", "and like the"), right before a clause
+/// ("is like which", "from you like what's"), set off by commas ("so,
+/// like, we") or said twice. Kept wherever it can mean something: "I like
+/// it", "and like it", "looks like", "just like", "things like that",
+/// "kind of like a car", "countries like France". Only for the AI clean-up:
+/// in plain rules mode and code editors every "like" stays.
+pub fn filler_like(s: &str) -> String {
+    s.split('\n').map(filler_like_in_line).collect::<Vec<_>>().join("\n")
+}
+
+fn filler_like_in_line(line: &str) -> String {
+    let tokens: Vec<&str> = line.split(' ').collect();
+    let key = |i: usize| tokens.get(i).map_or(String::new(), |t| split_punct(t).1.to_lowercase());
+    let mut out: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut capitalize_next = false;
+    for (i, token) in tokens.iter().enumerate() {
+        let (lead, word, trail) = split_punct(token);
+        let is_like = word.eq_ignore_ascii_case("like") && lead.is_empty() && !trail.contains(['.', '?', '!']);
+        let prev = if i > 0 { key(i - 1) } else { String::new() };
+        let before_prev = if i > 1 { key(i - 2) } else { String::new() };
+        let next = key(i + 1);
+        let prev_token = if i > 0 { tokens[i - 1] } else { "" };
+        let sentence_start = i == 0 || prev_token.ends_with(['.', '?', '!']);
+        let pronoun_is_object = OBJECT_AFTER.contains(&before_prev.as_str());
+        let kept_after = LIKE_KEPT_AFTER.contains(&prev.as_str()) && !pronoun_is_object;
+        // "is like which" never means anything.
+        let be_like_which = next == "which" && ["is", "was", "are", "were", "it's", "that's"].contains(&prev.as_str());
+        let filler = is_like
+            && !next.is_empty()
+            && (next == "like"
+                || (prev_token.ends_with(',') && trail.contains(','))
+                || (sentence_start && trail.contains(','))
+                || (LIKE_AFTER.contains(&prev.as_str()) && !LIKE_OBJECTS.contains(&next.as_str()))
+                || (LIKE_BEFORE_CLAUSE.contains(&next.as_str()) && (!kept_after || be_like_which) && !sentence_start));
+        if filler {
+            capitalize_next |= sentence_start && word.starts_with(char::is_uppercase);
+            continue;
+        }
+        let mut token = token.to_string();
+        if std::mem::take(&mut capitalize_next) {
+            if let Some(c) = token.chars().next() {
+                token.replace_range(..c.len_utf8(), &c.to_uppercase().to_string());
+            }
+        }
+        out.push(token);
+    }
+    out.join(" ")
+}
+
 // ---------------------------------------------------------------------------
 // Spoken punctuation and layout
 
@@ -711,7 +783,51 @@ fn capitalize_sentences(s: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::apply;
+    use super::{apply, filler_like};
+
+    #[test]
+    fn filler_likes_go() {
+        // Real Parakeet outputs (80 s and 50 s dictations).
+        assert_eq!(
+            filler_like("but want to know from you like what's there for me to understand"),
+            "but want to know from you what's there for me to understand"
+        );
+        assert_eq!(filler_like("I think this is talking about like some are correlated"), "I think this is talking about some are correlated");
+        assert_eq!(
+            filler_like("What's the page 27 is talking about which is like which goes like if there continues"),
+            "What's the page 27 is talking about which is which goes if there continues"
+        );
+        assert_eq!(filler_like("It took like two hours and like the whole team came"), "It took like two hours and the whole team came");
+        assert_eq!(filler_like("we waited for like an hour"), "we waited for an hour");
+        assert_eq!(filler_like("So, like, we went home."), "So, we went home.");
+        assert_eq!(filler_like("Like, it was huge."), "It was huge.");
+        assert_eq!(filler_like("it was like like a dream"), "it was like a dream");
+        assert_eq!(filler_like("Hi Raj,\n\nso like we're done"), "Hi Raj,\n\nso we're done");
+    }
+
+    #[test]
+    fn meaningful_likes_stay() {
+        for text in [
+            "I like it a lot.",
+            "I tried sushi and like it.",
+            "It looks like we're late.",
+            "It feels like when we were kids.",
+            "Just like I said.",
+            "Like I said, it works.",
+            "Things like that happen.",
+            "It's kind of like a car.",
+            "Countries like France and Spain.",
+            "Do you like what you see?",
+            "I'd like to know how it works.",
+            "I don't like how it looks.",
+            "It's a lot like what we had.",
+            "That's what I like.",
+            "This last line like intermediate levels of correlation.",
+            "We'd like which one?",
+        ] {
+            assert_eq!(filler_like(text), text);
+        }
+    }
 
     #[test]
     fn real_parakeet_outputs() {

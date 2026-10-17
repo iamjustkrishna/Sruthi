@@ -47,7 +47,13 @@ impl Formatter {
         // small model dropped intro sentences ("We decided three things.").
         let has_list = ruled.contains("
 1. ");
-        if !smart || has_list || app == AppKind::Code || ruled.split_whitespace().count() < SMART_MIN_WORDS {
+        if !smart || app == AppKind::Code {
+            return ruled;
+        }
+        // The small model keeps most filler "like"s, so the clear ones go
+        // first (and the AI's output is checked against this).
+        let ruled = rules::filler_like(&ruled);
+        if has_list || ruled.split_whitespace().count() < SMART_MIN_WORDS {
             return ruled;
         }
         let server = self.server.lock().unwrap();
