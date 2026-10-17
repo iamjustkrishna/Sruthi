@@ -18,6 +18,7 @@ use windows::Win32::Media::Audio::{
     AUDCLNT_STREAMOPTIONS_RAW, DEVICE_STATE_ACTIVE,
 };
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ};
+use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST};
 
 /// How often captured audio is collected.
 const POLL: Duration = Duration::from_millis(10);
@@ -111,7 +112,11 @@ pub fn capture(
         let client: IAudioClient = client2.cast()?;
         let format = client.GetMixFormat()?;
         let (rate, channels, bits) = ((*format).nSamplesPerSec, (*format).nChannels as usize, (*format).wBitsPerSample);
-        let init = client.Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 200_000, 0, format, None);
+        // Room for 100 ms of audio, and a high thread priority: the speech
+        // model transcribes in the background while the key is held, and
+        // the microphone must not lose audio when the CPU is busy.
+        let init = client.Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 1_000_000, 0, format, None);
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
         CoTaskMemFree(Some(format as *const _));
         init?;
         if bits != 32 && bits != 16 {
