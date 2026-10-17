@@ -10,12 +10,13 @@ export default defineConfig(() => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // Two pages: the main window and the dictation overlay pill.
+  // Pages: the main window, the dictation pill and the result box.
   build: {
     rollupOptions: {
       input: {
         main: "index.html",
         overlay: "overlay.html",
+        result: "result.html",
       },
     },
   },

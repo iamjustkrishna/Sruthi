@@ -24,6 +24,24 @@ pub fn writing_focus() -> Option<Caret> {
     }
 }
 
+/// Whether the focused element takes typed text: Some(false) on a web page,
+/// a file list or the desktop, where pasting would do nothing. None when it
+/// can't be told (UI Automation unavailable or too slow); callers should
+/// then paste as usual rather than risk losing the text.
+pub fn text_field_focused() -> Option<bool> {
+    #[cfg(windows)]
+    {
+        if win32_caret().is_some() {
+            return Some(true);
+        }
+        uia::focused_is_editable_with_timeout()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 #[cfg(windows)]
 fn win32_caret() -> Option<Caret> {
     use windows_sys::Win32::Foundation::POINT;
@@ -67,7 +85,8 @@ mod uia {
     };
     use windows::Win32::UI::Accessibility::{
         CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, IUIAutomationTextPattern2,
-        IUIAutomationTextRange, TextUnit_Character, UIA_TextPattern2Id, UIA_TextPatternId,
+        IUIAutomationTextRange, IUIAutomationValuePattern, TextUnit_Character, UIA_ComboBoxControlTypeId,
+        UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_TextPattern2Id, UIA_TextPatternId, UIA_ValuePatternId,
     };
 
     use super::Caret;
@@ -86,6 +105,47 @@ mod uia {
             let _ = tx.send(focused_text());
         });
         rx.recv_timeout(TIMEOUT).ok().flatten()
+    }
+
+    pub fn focused_is_editable_with_timeout() -> Option<bool> {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let _ = tx.send(focused_is_editable());
+        });
+        rx.recv_timeout(TIMEOUT).ok().flatten()
+    }
+
+    fn focused_is_editable() -> Option<bool> {
+        // SAFETY: COM is initialized for this thread before any call and
+        // uninitialized after every COM object has been dropped.
+        unsafe {
+            CoInitializeEx(None, COINIT_MULTITHREADED).ok().ok()?;
+            let result = (|| {
+                let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                let element = automation.GetFocusedElement().ok()?;
+                let control = element.CurrentControlType().ok()?;
+                // A value the user can change: a text box, editable combo box.
+                let writable_value = element
+                    .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+                    .ok()
+                    .map(|v| !v.CurrentIsReadOnly().map(|b| b.as_bool()).unwrap_or(true));
+                let has_text = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok();
+                Some(if control == UIA_EditControlTypeId {
+                    true
+                } else if control == UIA_DocumentControlTypeId {
+                    // Word documents are editable; a browser's web page is a
+                    // read-only document (its value is the page address).
+                    writable_value.unwrap_or(true)
+                } else if control == UIA_ComboBoxControlTypeId {
+                    writable_value.unwrap_or(false)
+                } else {
+                    // Custom text controls such as terminals expose text.
+                    writable_value.unwrap_or(false) || has_text
+                })
+            })();
+            CoUninitialize();
+            result
+        }
     }
 
     fn focused_text() -> Option<Caret> {
@@ -185,5 +245,6 @@ mod tests {
             Some(c) => println!("writing focus at x={} y={} h={}", c.x, c.y, c.height),
             None => println!("no writing focus found"),
         }
+        println!("text field focused: {:?}", super::text_field_focused());
     }
 }

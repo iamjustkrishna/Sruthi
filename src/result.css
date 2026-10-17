@@ -1,0 +1,124 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  display: flex;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+/* Same brand look as the pill */
+.card {
+  --blue-50: #eaf2ff;
+  --blue-300: #7fb2ff;
+  --blue-500: #2f7bff;
+  --ink: rgba(9, 14, 32, 0.95);
+
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 50%),
+    var(--ink);
+  box-shadow:
+    inset 0 0 0 1px rgba(127, 178, 255, 0.22),
+    0 10px 28px rgba(8, 20, 60, 0.4);
+  color: var(--blue-50);
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+.card.show {
+  opacity: 1;
+  transform: none;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logo {
+  width: 20px;
+  height: 20px;
+}
+.title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue-300);
+}
+
+.text {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hint {
+  flex: 1;
+  font-size: 11.5px;
+  color: rgba(234, 242, 255, 0.55);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 0;
+}
+.copy {
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: var(--blue-500);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 0.15s ease;
+}
+.copy:hover {
+  background: #1f66e6;
+}
+.copy.done {
+  background: #16a34a;
+}
+.close {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(234, 242, 255, 0.6);
+  font-size: 18px;
+  line-height: 1;
+}
+.close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--blue-50);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: opacity 0.01ms;
+    transform: none;
+  }
+}

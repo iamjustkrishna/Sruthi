@@ -35,6 +35,22 @@
         "visible": false,
         "focus": false,
         "focusable": false
+      },
+      {
+        "label": "result",
+        "title": "Srutam Dictate result",
+        "url": "result.html",
+        "width": 460,
+        "height": 210,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "visible": false,
+        "focus": false,
+        "focusable": false
       }
     ],
     "security": {

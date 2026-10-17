@@ -428,6 +428,39 @@ fn place_overlay(app: &AppHandle) {
     let _ = app.emit_to("overlay", "overlay-align", align);
 }
 
+/// Shows the text in the result box (with a Copy button) just above where
+/// the pill sits, for dictations made while no text field was focused.
+fn show_result(app: &AppHandle, text: &str) {
+    let Some(w) = app.get_webview_window("result") else { return };
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| w.primary_monitor().ok().flatten());
+    if let (Some(monitor), Ok(size)) = (monitor, w.outer_size()) {
+        let area = monitor.work_area();
+        let scale = monitor.scale_factor();
+        let (left, width) = (area.position.x, area.size.width as i32);
+        let bottom = area.position.y + area.size.height as i32;
+        // Above the pill: margin + pill height + a small gap.
+        let above_pill = ((BOTTOM_MARGIN + 48.0 + 8.0) * scale) as i32;
+        let x = left + (width - size.width as i32) / 2;
+        let y = bottom - above_pill - size.height as i32;
+        let _ = w.set_position(PhysicalPosition::new(x, y));
+    }
+    let _ = app.emit_to("result", "result-show", text);
+    let _ = w.show();
+}
+
+fn hide_result_box(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("result") {
+        if w.is_visible().unwrap_or(false) {
+            let _ = app.emit_to("result", "result-hide", ());
+            let _ = w.hide();
+        }
+    }
+}
+
 /// Sends the live mic level to the pill about 30 times a second while
 /// recording.
 fn stream_levels(app: &AppHandle, level: Arc<AtomicU32>) {
@@ -453,6 +486,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
     let state = app.state::<AppState>();
     match key_state {
         ShortcutState::Pressed => {
+            hide_result_box(app);
             let mut inner = state.inner.lock().unwrap();
             // Holding the key auto-repeats Pressed; ignore everything but the first.
             if inner.session.is_some() || inner.busy {
@@ -546,9 +580,14 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     }
 
     if !outcome.text.is_empty() {
-        // The pill can't take focus, so it stays up while the paste lands.
-        // Trailing space keeps back-to-back dictations from running together.
-        paste::paste_text(&format!("{} ", outcome.text))?;
+        if caret::text_field_focused() == Some(false) {
+            // Nowhere to type: show the text with a Copy button instead.
+            show_result(app, &outcome.text);
+        } else {
+            // The pill can't take focus, so it stays up while the paste lands.
+            // Trailing space keeps back-to-back dictations from running together.
+            paste::paste_text(&format!("{} ", outcome.text))?;
+        }
     }
 
     // Keep the recording (even when nothing was heard, to help tune).
@@ -973,6 +1012,16 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
 }
 
 #[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn hide_result(app: AppHandle) {
+    hide_result_box(&app);
+}
+
+#[tauri::command]
 fn get_recording(id: String) -> Result<tauri::ipc::Response, String> {
     recordings::read_wav(&id).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
 }
@@ -1090,6 +1139,8 @@ pub fn run() {
             probe_microphones,
             get_recording,
             delete_recording,
+            copy_text,
+            hide_result,
             open_recordings_folder
         ])
         .build(tauri::generate_context!())
