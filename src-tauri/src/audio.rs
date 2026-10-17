@@ -314,6 +314,11 @@ impl Recording {
         resample(&buf[from..to], self.rate, TARGET_RATE)
     }
 
+    /// How many device-rate samples `samples_16k` samples at 16 kHz span.
+    pub fn device_samples(&self, samples_16k: usize) -> usize {
+        (samples_16k as u64 * self.rate as u64 / TARGET_RATE as u64) as usize
+    }
+
     /// Stops capturing. The captured audio stays readable.
     pub fn stop(&self) -> Result<()> {
         match &self.source {
