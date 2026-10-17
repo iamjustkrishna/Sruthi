@@ -8,6 +8,8 @@ pub mod rules;
 
 use std::sync::Mutex;
 
+use crate::context::AppKind;
+
 /// Phrases shorter than this skip the LLM: rules alone are enough and instant.
 const SMART_MIN_WORDS: usize = 5;
 
@@ -28,15 +30,30 @@ impl Formatter {
 
     /// Dictionary words are fixed first (so rules see the right words) and
     /// again after the LLM, in case it "corrected" a name back.
-    pub fn format(&self, raw: &str, smart: bool, words: &[String]) -> String {
+    /// `app` is where the text is going: it picks the AI's layout (email,
+    /// chat, document), and code editors and terminals skip the AI so the
+    /// words arrive exactly as spoken.
+    pub fn format(&self, raw: &str, smart: bool, words: &[String], app: AppKind) -> String {
         let ruled = rules::apply(&dictionary::apply(raw, words));
-        if !smart || ruled.split_whitespace().count() < SMART_MIN_WORDS {
+        let text = self.polish(ruled, smart, words, app);
+        let text = if app == AppKind::Email { rules::email_layout(&text) } else { text };
+        rules::tidy_lines(&text)
+    }
+
+    /// The AI clean-up step (falls back to `ruled` whenever it shouldn't run
+    /// or doesn't stay faithful).
+    fn polish(&self, ruled: String, smart: bool, words: &[String], app: AppKind) -> String {
+        // A list the rules already built is kept as is: rewriting it, the
+        // small model dropped intro sentences ("We decided three things.").
+        let has_list = ruled.contains("
+1. ");
+        if !smart || has_list || app == AppKind::Code || ruled.split_whitespace().count() < SMART_MIN_WORDS {
             return ruled;
         }
         let server = self.server.lock().unwrap();
         let Some(server) = server.as_ref() else { return ruled };
         let started = std::time::Instant::now();
-        match server.clean_up(&ruled, words) {
+        match server.clean_up(&ruled, words, app) {
             Ok(out) if llm::faithful(&ruled, &out) => {
                 log::info!("LLM clean-up in {} ms", started.elapsed().as_millis());
                 dictionary::apply(&out, words)
@@ -55,7 +72,7 @@ impl Formatter {
 
 #[cfg(test)]
 mod tests {
-    use super::{llm, Formatter};
+    use super::{llm, AppKind, Formatter};
 
     /// Downloads the default LLM if needed, starts llama-server and formats
     /// tricky dictations. Opt-in (network + ~400 MB):
@@ -93,9 +110,35 @@ mod tests {
         ];
         for raw in samples {
             let t = std::time::Instant::now();
-            let out = formatter.format(raw, true, &[]);
+            let out = formatter.format(raw, true, &[], AppKind::Other);
             println!("\nIN : {raw}\nOUT: {out}\n({} ms)", t.elapsed().as_millis());
             assert!(!out.trim().is_empty());
+        }
+    }
+
+    /// Formats the same dictations for different apps with the real LLM:
+    /// `cargo test --lib llm_app_styles -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn llm_app_styles() {
+        let info = llm::find(llm::DEFAULT_LLM).unwrap();
+        let formatter = Formatter::default();
+        formatter.set_server(Some(llm::LlmServer::start(info).unwrap()));
+        let samples = [
+            (AppKind::Email, "hi ajay hope you are doing well I wanted to let you know that the demo is ready we can review it on monday at 11 am let me know if that works thanks krishna"),
+            (AppKind::Email, "Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna"),
+            (AppKind::Chat, "hey are you coming to the party tonight let me know"),
+            (AppKind::Document, "Meeting notes. We decided three things. Number one, launch on Monday. Number two, fix the login bug. Number three, update the docs."),
+            (AppKind::Code, "um create a function called parse config"),
+        ];
+        for (app, raw) in samples {
+            let t = std::time::Instant::now();
+            let out = formatter.format(raw, true, &["Srutam".to_string()], app);
+            println!("
+[{app:?}] ({} ms)
+IN : {raw}
+OUT:
+{out}", t.elapsed().as_millis());
         }
     }
 }

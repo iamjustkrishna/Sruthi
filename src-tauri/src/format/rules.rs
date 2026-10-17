@@ -12,6 +12,7 @@ pub fn apply(text: &str) -> String {
     let mut s = collapse_loops(text.trim());
     s = remove_fillers(&s);
     s = voice_commands(&s);
+    s = numbered_lists(&s);
     s = number_words(&s);
     s = spelled_codes(&s);
     s = times(&s);
@@ -131,6 +132,58 @@ fn voice_commands(s: &str) -> String {
         };
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Spoken numbered lists: "number one … number two …" → "1. …\n2. …"
+
+/// Words that introduce a list item when followed by its number.
+const LIST_MARKERS: &[&str] = &["number", "point", "item", "step"];
+
+fn list_number(word: &str) -> Option<u64> {
+    let w = word.to_lowercase();
+    small_number(&w).filter(|n| (1..=10).contains(n)).or_else(|| w.parse::<u64>().ok().filter(|n| (1..=10).contains(n)))
+}
+
+fn numbered_lists(s: &str) -> String {
+    let tokens: Vec<&str> = s.split(' ').filter(|t| !t.is_empty()).collect();
+    // Markers must count up from 1 ("number one", "number two", …).
+    let mut markers: Vec<usize> = Vec::new();
+    for i in 0..tokens.len().saturating_sub(1) {
+        let marker = split_punct(tokens[i]).1.to_lowercase();
+        if LIST_MARKERS.contains(&marker.as_str())
+            && list_number(split_punct(tokens[i + 1]).1) == Some(markers.len() as u64 + 1)
+        {
+            markers.push(i);
+        }
+    }
+    if markers.len() < 2 {
+        return s.to_string();
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let intro = tokens[..markers[0]].join(" ");
+    let intro = intro.trim_end_matches([' ', '.', ',', ':', ';']);
+    if !intro.is_empty() {
+        lines.push(format!("{intro}:"));
+    }
+    for (n, &start) in markers.iter().enumerate() {
+        let end = markers.get(n + 1).copied().unwrap_or(tokens.len());
+        let mut item: Vec<&str> = tokens[start + 2..end].to_vec();
+        // "Number one point. We have to…": drop a dangling "point".
+        if item.first().is_some_and(|w| split_punct(w).1.eq_ignore_ascii_case("point") && split_punct(w).2.contains('.')) {
+            item.remove(0);
+        }
+        let text = item.join(" ");
+        let text = text.trim_matches([' ', ',', ':', ';', '-']);
+        if text.is_empty() {
+            continue;
+        }
+        let mut chars = text.chars();
+        let first: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+        lines.push(format!("{}. {first}{}", n + 1, chars.as_str()));
+    }
+    lines.join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -562,6 +615,53 @@ static MULTI_SPACE: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]{2,}"));
 static SPACE_AROUND_NEWLINE: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]*\n[ \t]*"));
 static LEADING_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"^[\s,.;:]+"));
 
+// ---------------------------------------------------------------------------
+// Email layout
+
+static GREETING: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"(?i)^((?:hi|hello|hey|dear|good (?:morning|afternoon|evening))(?:\s+[^\s,.!:\n]+){0,3})[,.!:]?\s+(\S)")
+});
+static SIGN_OFF: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"(?i)(^|[.!?]\s+|\n\s*)((?:thanks|thank you|many thanks|regards|best regards|kind regards|warm regards|best|cheers|sincerely)\b[^\n]*)$")
+});
+
+/// Lays out an email: the greeting on its own line, a blank line, the body,
+/// a blank line, then the sign-off with the name on the next line. Works on
+/// the AI's output and on plain rules output alike; text that already has
+/// a greeting line is left as is.
+pub fn email_layout(s: &str) -> String {
+    let mut out = s.trim().to_string();
+    if !out.lines().next().is_some_and(|l| GREETING.is_match(l) && l.trim_end().ends_with(',') && l.split_whitespace().count() <= 4) {
+        out = GREETING
+            .replace(&out, |c: &Captures| format!("{},\n\n{}", &c[1], c[2].to_uppercase()))
+            .into_owned();
+    }
+    if let Some(c) = SIGN_OFF.captures(&out) {
+        let whole = c.get(0).unwrap();
+        let sign_off = c[2].trim().trim_end_matches('.');
+        // "Thanks, Krishna" → "Thanks,\nKrishna"
+        let formatted = match sign_off.split_once(',') {
+            Some((phrase, name)) if !name.trim().is_empty() && name.split_whitespace().count() <= 3 => {
+                format!("{},\n{}", phrase.trim(), name.trim())
+            }
+            _ => sign_off.to_string(),
+        };
+        let body = format!("{}{}", &out[..whole.start()], c[1].trim_end());
+        out = if body.trim().is_empty() { formatted } else { format!("{}\n\n{formatted}", body.trim_end()) };
+    }
+    out
+}
+
+static TRAILING_SPACES: LazyLock<Regex> = LazyLock::new(|| re(r"[ \t]+\n"));
+static EXTRA_BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| re(r"\n{3,}"));
+
+/// Removes spaces at line ends (the AI adds Markdown-style ones) and keeps
+/// at most one blank line between paragraphs.
+pub fn tidy_lines(s: &str) -> String {
+    let out = TRAILING_SPACES.replace_all(s.trim(), "\n");
+    EXTRA_BLANK_LINES.replace_all(&out, "\n\n").into_owned()
+}
+
 fn tidy(s: &str) -> String {
     let mut out = SPACE_AROUND_NEWLINE.replace_all(s, "\n").into_owned();
     out = SPACE_BEFORE_PUNCT.replace_all(&out, "$1").into_owned();
@@ -628,6 +728,42 @@ mod tests {
         );
         assert_eq!(apply("My vehicle number is T52WA"), "My vehicle number is T52WA");
         assert_eq!(apply("Revenue grew by 12.5% this quarter."), "Revenue grew by 12.5% this quarter.");
+    }
+
+    #[test]
+    fn spoken_numbered_lists() {
+        // Real dictation from the user.
+        assert_eq!(
+            apply("I want you to note down two points. Number one point. We have to go to the party. Number two, we have to go in the car."),
+            "I want you to note down two points:\n1. We have to go to the party.\n2. We have to go in the car."
+        );
+        assert_eq!(
+            apply("Steps: step 1 open the app, step 2 sign in, step 3 click dictate."),
+            "Steps:\n1. Open the app\n2. Sign in\n3. Click dictate."
+        );
+        // A lone "number one" isn't a list; numbers out of order aren't either.
+        assert_eq!(apply("He is the number one player."), "He is the number one player.");
+        assert_eq!(apply("Point two and point one."), "Point two and point one.");
+    }
+
+    #[test]
+    fn email_layout_from_dictation() {
+        use super::{email_layout, tidy_lines};
+        // Rules output for a dictated email with a list (no AI step).
+        assert_eq!(
+            email_layout(&apply("Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna")),
+            "Hi team,\n\nQuick update:\n1. The app now records instantly.\n2. Whispers work with the hybrid model.\n\nThanks,\nKrishna"
+        );
+        // Plain sentence email.
+        assert_eq!(
+            email_layout("Hi Ajay, the demo is ready. Can we review it on Monday? Regards, Krishna."),
+            "Hi Ajay,\n\nThe demo is ready. Can we review it on Monday?\n\nRegards,\nKrishna"
+        );
+        // Already laid out by the AI: unchanged apart from tidying.
+        let ai = "Hi Ajay,  \n\nHope you are doing well.\n\nThanks,  \nKrishna";
+        assert_eq!(tidy_lines(&email_layout(ai)), "Hi Ajay,\n\nHope you are doing well.\n\nThanks,\nKrishna");
+        // No greeting or sign-off: nothing to do.
+        assert_eq!(email_layout("The report is attached."), "The report is attached.");
     }
 
     #[test]

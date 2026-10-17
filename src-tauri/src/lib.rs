@@ -1,5 +1,6 @@
 mod audio;
 mod caret;
+mod context;
 mod dictation;
 mod enhance;
 mod format;
@@ -507,12 +508,15 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 Ok(rec) => {
                     let level = rec.level();
                     let saved = settings::load();
+                    let target = context::active_app();
+                    log::info!("Dictating into {} ({:?}): {:?}", target.process, target.kind, target.title);
                     inner.session = Some(dictation::Session::start(
                         rec,
                         state.engine.clone(),
                         state.formatter.clone(),
                         saved.smart,
                         saved.dictionary,
+                        target.kind,
                     ));
                     drop(inner);
                     // Finding the text field can take a moment (UI Automation),

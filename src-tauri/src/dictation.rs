@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use transcribe_rs::{SpeechModel, TranscribeOptions};
 
 use crate::audio::{Recording, TARGET_RATE};
+use crate::context::AppKind;
 use crate::enhance;
 use crate::format::Formatter;
 
@@ -22,11 +23,20 @@ pub struct Session {
     smart: bool,
     /// The user's dictionary at the time the key was pressed.
     words: Vec<String>,
+    /// The app that had focus when the key was pressed.
+    app: AppKind,
 }
 
 impl Session {
-    pub fn start(recording: Recording, engine: Engine, formatter: Arc<Formatter>, smart: bool, words: Vec<String>) -> Self {
-        Self { recording, engine, formatter, smart, words }
+    pub fn start(
+        recording: Recording,
+        engine: Engine,
+        formatter: Arc<Formatter>,
+        smart: bool,
+        words: Vec<String>,
+        app: AppKind,
+    ) -> Self {
+        Self { recording, engine, formatter, smart, words, app }
     }
 
     /// Stops recording, transcribes and formats. Recordings shorter than
@@ -58,7 +68,7 @@ impl Session {
                 .trim()
                 .to_string()
         };
-        let text = if heard.is_empty() { String::new() } else { self.formatter.format(&heard, self.smart, &self.words) };
+        let text = if heard.is_empty() { String::new() } else { self.formatter.format(&heard, self.smart, &self.words, self.app) };
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {heard:?}");
         log::info!("Pasted: {text:?}");
