@@ -94,6 +94,13 @@ pub fn apply(text: &str, dictionary: &[String]) -> String {
 /// "theory" all sound alike), so the spelling must be close too.
 const SHORT_KEY: usize = 4;
 
+/// True when `heard` (one or a few words) sounds roughly like `entry`: the
+/// AI clean-up may swap a misheard name for its dictionary spelling.
+pub fn sounds_like(heard: &str, entry: &str) -> bool {
+    let (heard, entry) = (sound_key(heard), sound_key(entry));
+    !entry.is_empty() && match_score(&heard, &entry) >= 0.65
+}
+
 /// Spelled within one letter of each other (two for 5+ letter words),
 /// case-insensitive.
 fn close_spelling(a: &str, b: &str) -> bool {

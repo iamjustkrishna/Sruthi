@@ -54,7 +54,7 @@ impl Formatter {
         let Some(server) = server.as_ref() else { return ruled };
         let started = std::time::Instant::now();
         match server.clean_up(&ruled, words, app) {
-            Ok(out) if llm::faithful(&ruled, &out) => {
+            Ok(out) if llm::faithful(&ruled, &out, words) => {
                 crate::timing::add("ai", started.elapsed());
                 log::info!("LLM clean-up in {} ms", started.elapsed().as_millis());
                 dictionary::apply(&out, words)
