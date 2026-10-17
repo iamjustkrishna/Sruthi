@@ -1,16 +1,21 @@
-//! Whisper large-v3-turbo through whisper.cpp's command-line tool, plus the
-//! Hybrid engine that uses it as a second opinion for Parakeet.
+//! Whisper large-v3-turbo through whisper.cpp, plus the Hybrid engine that
+//! uses it as a second opinion for Parakeet.
 //!
 //! Whisper understands whispers and accents far better than Parakeet, but
-//! its encoder is heavy: a full 30 s window took ~9-17 s on this PC's CPU.
-//! Each run therefore gets a window sized to the clip (`audio_ctx`), which
-//! brought a 3 s whisper down to ~3-4 s. A persistent whisper-server can't
-//! do that: changing the window per request produced garbage.
+//! its encoder is heavy. Two ways to run it:
+//! - On the graphics card (a Vulkan build of whisper.cpp in
+//!   `runtime-vulkan`): a whisper-server that stays loaded and uses the full
+//!   30 s window, the way Whisper was trained.
+//! - On the CPU: a full window took ~9-17 s here, so each run starts
+//!   whisper-cli with a window sized to the clip (`audio_ctx`), ~3-4 s for a
+//!   3 s whisper. A persistent server can't do that: changing the window per
+//!   request produced garbage.
 
 use std::fs::{self, File};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use transcribe_rs::{ModelCapabilities, SpeechModel, TranscribeError, TranscribeOptions, TranscriptionResult};
@@ -48,6 +53,17 @@ fn runtime_dir() -> PathBuf {
 
 fn cli_path() -> PathBuf {
     runtime_dir().join(if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" })
+}
+
+/// whisper.cpp built with Vulkan, for the graphics card. The official
+/// releases have no such build for Windows, so it's built locally for now
+/// (see docs/GPU.md).
+fn gpu_runtime_dir() -> PathBuf {
+    root().join("runtime-vulkan")
+}
+
+fn gpu_server_path() -> PathBuf {
+    gpu_runtime_dir().join(if cfg!(windows) { "whisper-server.exe" } else { "whisper-server" })
 }
 
 fn model_path() -> PathBuf {
@@ -236,20 +252,167 @@ fn drop_repeated_sentences(text: &str) -> String {
     out.join(" ")
 }
 
+/// Whisper on the graphics card when that works, otherwise on the CPU.
+pub fn load() -> Result<Box<dyn SpeechModel + Send>> {
+    if !is_installed() {
+        return Err(anyhow!("Whisper turbo isn't downloaded"));
+    }
+    if gpu_server_path().is_file() && std::env::var_os("SRUTAM_WHISPER_CPU").is_none() {
+        match WhisperServer::start() {
+            Ok(server) => return Ok(Box::new(server)),
+            Err(e) => log::warn!("Whisper on the graphics card didn't start, using the CPU: {e:#}"),
+        }
+    }
+    Ok(Box::new(WhisperCli::new()?))
+}
+
+/// whisper-server on the graphics card: the model stays loaded, so a
+/// dictation only pays for the work itself.
+pub struct WhisperServer {
+    child: Child,
+    base: String,
+    client: reqwest::blocking::Client,
+    prompt: Option<String>,
+}
+
+impl WhisperServer {
+    pub fn start() -> Result<Self> {
+        let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        let mut cmd = Command::new(gpu_server_path());
+        cmd.arg("-m")
+            .arg(model_path())
+            .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+            // The GPU does the heavy lifting; a few CPU threads are enough.
+            .args(["-t", "4", "-l", "en", "-nt", "-bs", "1", "-bo", "1", "-nf"])
+            .current_dir(gpu_runtime_dir())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        crate::gpu::use_dedicated(&mut cmd);
+        crate::process::hide_window(&mut cmd);
+        let child = cmd.spawn().context("Couldn't start whisper-server")?;
+        crate::process::kill_with_app(&child);
+        let mut server = Self {
+            child,
+            base: format!("http://127.0.0.1:{port}"),
+            client: reqwest::blocking::Client::builder().build()?,
+            prompt: None,
+        };
+        server.wait_ready(Duration::from_secs(60))?;
+        // The first run on the GPU sets up its shaders; do that now, not
+        // during the first dictation.
+        let warm = Instant::now();
+        server.request(&vec![0.0; TARGET_RATE as usize], Duration::from_secs(60))?;
+        log::info!("Whisper turbo ready on the graphics card (warm-up {} ms)", warm.elapsed().as_millis());
+        Ok(server)
+    }
+
+    fn wait_ready(&mut self, timeout: Duration) -> Result<()> {
+        // The server only starts listening once the model is loaded.
+        let started = Instant::now();
+        while started.elapsed() < timeout {
+            if let Some(status) = self.child.try_wait()? {
+                return Err(anyhow!("whisper-server exited ({status})"));
+            }
+            if self.client.get(&self.base).timeout(Duration::from_secs(2)).send().is_ok() {
+                return Ok(());
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        Err(anyhow!("whisper-server didn't start in time"))
+    }
+
+    fn request(&self, samples: &[f32], timeout: Duration) -> Result<String> {
+        let wav = reqwest::blocking::multipart::Part::bytes(crate::recordings::encode_wav(samples))
+            .file_name("dictation.wav")
+            .mime_str("audio/wav")?;
+        let mut form = reqwest::blocking::multipart::Form::new()
+            .part("file", wav)
+            .text("response_format", "text")
+            .text("temperature", "0")
+            .text("temperature_inc", "0")
+            .text("no_timestamps", "true");
+        if let Some(prompt) = &self.prompt {
+            form = form.text("prompt", prompt.clone());
+        }
+        let resp = self.client.post(format!("{}/inference", self.base)).multipart(form).timeout(timeout).send()?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("whisper-server answered {}", resp.status()));
+        }
+        Ok(resp.text()?)
+    }
+
+    fn run(&mut self, samples: &[f32]) -> Result<String> {
+        let seconds = samples.len() as f32 / TARGET_RATE as f32;
+        // A stuck run (a repetition loop) would also hold up the next
+        // dictation, so give up on it and restart the server.
+        let text = match self.request(samples, gpu_time_budget(seconds)) {
+            Ok(text) => text,
+            Err(e) => {
+                let _ = self.child.kill();
+                let prompt = self.prompt.take();
+                *self = Self::start()?;
+                self.prompt = prompt;
+                return Err(e.context(format!("Whisper on the graphics card failed ({seconds:.1}s of audio)")));
+            }
+        };
+        let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        let text = drop_repeated_sentences(&joined);
+        Ok(if echoes_prompt(&text, self.prompt.as_deref()) { String::new() } else { text })
+    }
+}
+
+impl Drop for WhisperServer {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// Longest a GPU run may take before it's treated as stuck.
+fn gpu_time_budget(seconds: f32) -> Duration {
+    Duration::from_secs_f32((4.0 + seconds * 0.5).min(30.0))
+}
+
+impl SpeechModel for WhisperServer {
+    fn capabilities(&self) -> ModelCapabilities {
+        CAPABILITIES
+    }
+
+    fn set_hotwords(&mut self, words: &[String]) {
+        self.prompt = prompt_for(words);
+    }
+
+    fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+        let started = Instant::now();
+        let text = self.run(samples).map_err(|e| TranscribeError::Inference(format!("{e:#}")))?;
+        crate::timing::add("whisper-gpu", started.elapsed());
+        log::info!("Whisper turbo (GPU): {:.1}s of audio in {} ms", samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
+        Ok(TranscriptionResult { text, segments: None })
+    }
+}
+
+/// The user's dictionary as Whisper's prompt, the way Wispr biases its
+/// models. Just the words: a label like "Glossary:" got echoed back on
+/// short clips.
+fn prompt_for(words: &[String]) -> Option<String> {
+    let words: Vec<&str> = words.iter().map(|w| w.trim()).filter(|w| !w.is_empty()).collect();
+    (!words.is_empty()).then(|| format!("{}.", words.join(", ")))
+}
+
 impl SpeechModel for WhisperCli {
     fn capabilities(&self) -> ModelCapabilities {
         CAPABILITIES
     }
 
     fn set_hotwords(&mut self, words: &[String]) {
-        let words: Vec<&str> = words.iter().map(|w| w.trim()).filter(|w| !w.is_empty()).collect();
-        // Just the words: a label like "Glossary:" got echoed back on short clips.
-        self.prompt = (!words.is_empty()).then(|| format!("{}.", words.join(", ")));
+        self.prompt = prompt_for(words);
     }
 
     fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
         let started = std::time::Instant::now();
         let text = self.run(samples).map_err(|e| TranscribeError::Inference(e.to_string()))?;
+        crate::timing::add("whisper", started.elapsed());
         log::info!("Whisper turbo: {:.1}s of audio in {} ms", samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
         Ok(TranscriptionResult { text, segments: None })
     }
@@ -279,13 +442,13 @@ const MIN_SPEECH_SECS: f32 = 0.4;
 /// what was said.
 pub struct Hybrid {
     fast: Box<dyn SpeechModel + Send>,
-    slow: WhisperCli,
+    slow: Box<dyn SpeechModel + Send>,
     /// The user's dictionary, to spot misheard dictionary words.
     words: Vec<String>,
 }
 
 impl Hybrid {
-    pub fn new(fast: Box<dyn SpeechModel + Send>, slow: WhisperCli) -> Self {
+    pub fn new(fast: Box<dyn SpeechModel + Send>, slow: Box<dyn SpeechModel + Send>) -> Self {
         Self { fast, slow, words: Vec::new() }
     }
 }
@@ -307,7 +470,7 @@ impl SpeechModel for Hybrid {
 
     fn transcribe_raw(&mut self, samples: &[f32], options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
         // `transcribe` (not `_raw`) keeps Parakeet's own silence padding.
-        let fast = self.fast.transcribe(samples, options)?;
+        let fast = crate::timing::measure("parakeet", || self.fast.transcribe(samples, options))?;
         let speech = speech_seconds(samples);
         // Whisper also gets a say when Parakeet's words sound close to, but
         // not quite like, a dictionary word: with the dictionary as its
@@ -399,6 +562,62 @@ mod tests {
         assert!(echoes_prompt("Srutam, Kubernetes.", prompt));
         assert!(!echoes_prompt("Srutam is the best.", prompt));
         assert!(!echoes_prompt("Srutam.", Some("Srutam.")));
+    }
+
+    /// Times each stage on the newest saved recordings: Parakeet, Whisper
+    /// on the graphics card, Whisper on the CPU, and the AI clean-up.
+    /// `cargo test --release --lib stage_speed -- --ignored --nocapture`
+    /// (SRUTAM_BENCH_COUNT=8 picks how many recordings.)
+    #[test]
+    #[ignore]
+    fn stage_speed() {
+        let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
+        let count: usize = std::env::var("SRUTAM_BENCH_COUNT").ok().and_then(|n| n.parse().ok()).unwrap_or(8);
+        let words = crate::settings::load().dictionary;
+        let mut files: Vec<_> = fs::read_dir(crate::recordings::folder())
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "wav"))
+            .collect();
+        files.sort();
+        files.reverse();
+        files.truncate(count);
+
+        let mut parakeet = crate::model::find("parakeet-v3").unwrap().load().unwrap();
+        parakeet.set_hotwords(&words);
+        parakeet.set_latin_only(true);
+        let started = Instant::now();
+        let mut gpu = WhisperServer::start().expect("GPU Whisper");
+        println!("GPU Whisper loaded and warmed up in {} ms", started.elapsed().as_millis());
+        gpu.set_hotwords(&words);
+        let mut cpu = WhisperCli::new().unwrap();
+        cpu.set_hotwords(&words);
+        let formatter = crate::format::Formatter::default();
+        let llm = crate::format::llm::find(crate::format::llm::DEFAULT_LLM).unwrap();
+        formatter.set_server(Some(crate::format::llm::LlmServer::start(llm).unwrap()));
+
+        let options = TranscribeOptions::default();
+        for file in files {
+            let raw = transcribe_rs::audio::read_wav_samples(&file).unwrap();
+            let Some(samples) = crate::enhance::prepare(&raw) else { continue };
+            let secs = samples.len() as f32 / TARGET_RATE as f32;
+            let time = |f: &mut dyn FnMut() -> String| {
+                let t = Instant::now();
+                let text = f();
+                (text, t.elapsed().as_millis())
+            };
+            let (p_text, p_ms) = time(&mut || parakeet.transcribe(&samples, &options).unwrap().text);
+            let (g_text, g_ms) = time(&mut || gpu.transcribe_raw(&samples, &options).map(|r| r.text).unwrap_or_else(|e| format!("<{e}>")));
+            // SRUTAM_BENCH_SKIP_CPU=1 skips the (slow) CPU Whisper run.
+            let skip_cpu = std::env::var_os("SRUTAM_BENCH_SKIP_CPU").is_some();
+            let (c_text, c_ms) = if skip_cpu { (String::from("(skipped)"), 0) } else { time(&mut || cpu.transcribe_raw(&samples, &options).map(|r| r.text).unwrap_or_else(|e| format!("<{e}>"))) };
+            let (out, ai_ms) = time(&mut || formatter.format(&p_text, true, &words, crate::context::AppKind::Other));
+            println!(
+                "\n{} ({secs:.1}s)\n  parakeet {p_ms:>5} ms  {p_text}\n  gpu      {g_ms:>5} ms  {g_text}\n  cpu      {c_ms:>5} ms  {c_text}\n  format   {ai_ms:>5} ms  {out}",
+                file.file_name().unwrap().to_string_lossy()
+            );
+        }
     }
 
     #[test]

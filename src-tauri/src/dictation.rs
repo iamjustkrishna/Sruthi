@@ -39,6 +39,11 @@ impl Session {
         Self { recording, engine, formatter, smart, words, app }
     }
 
+    /// The app the text is going to.
+    pub fn app(&self) -> AppKind {
+        self.app
+    }
+
     /// Stops recording, transcribes and formats. Recordings shorter than
     /// an accidental tap come back with no audio.
     pub fn finish(self) -> Result<Outcome> {
@@ -53,11 +58,13 @@ impl Session {
             return Ok(Outcome { device, dead_mic: true, ..Outcome::default() });
         }
         // Boost quiet speech; skip the model entirely when nothing was said.
-        let Some(prepared) = enhance::prepare(&audio) else {
+        let Some(prepared) = crate::timing::measure("prepare", || enhance::prepare(&audio)) else {
             log::info!("No speech in recording");
             return Ok(Outcome { audio, device, ..Outcome::default() });
         };
 
+        let stages_before = crate::timing::summary();
+        let started = std::time::Instant::now();
         let heard = {
             let mut engine = self.engine.lock().unwrap();
             let model = engine.as_mut().ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
@@ -68,6 +75,10 @@ impl Session {
                 .trim()
                 .to_string()
         };
+        // Hybrid reports Parakeet and Whisper separately; other models as one step.
+        if crate::timing::summary() == stages_before {
+            crate::timing::add("speech", started.elapsed());
+        }
         let text = if heard.is_empty() { String::new() } else { self.formatter.format(&heard, self.smart, &self.words, self.app) };
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {heard:?}");

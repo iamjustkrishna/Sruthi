@@ -170,6 +170,7 @@ impl LlmServer {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
+        crate::gpu::use_dedicated(&mut cmd);
         crate::process::hide_window(&mut cmd);
         let child = cmd.spawn().context("Couldn't start llama-server")?;
         crate::process::kill_with_app(&child);

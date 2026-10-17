@@ -4,12 +4,14 @@ mod context;
 mod dictation;
 mod enhance;
 mod format;
+mod gpu;
 mod mic_check;
 mod model;
 mod paste;
 mod process;
 mod recordings;
 mod settings;
+mod timing;
 #[cfg(windows)]
 mod wasapi;
 mod whisper;
@@ -551,6 +553,8 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
 
 fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow::Result<String> {
     let released = Instant::now();
+    timing::reset();
+    let app_kind = session.app();
     let outcome = session.finish()?;
     log::info!("Final text ready {} ms after release", released.elapsed().as_millis());
 
@@ -571,12 +575,15 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     if !outcome.text.is_empty() {
         if caret::text_field_focused() == Some(false) {
             // Nowhere to type: show the text with a Copy button instead.
-            show_result(app, &outcome.text);
+            timing::measure("result-box", || show_result(app, &outcome.text));
         } else {
             // The pill can't take focus, so it stays up while the paste lands.
             // Trailing space keeps back-to-back dictations from running together.
-            paste::paste_text(&format!("{} ", outcome.text))?;
+            timing::measure("paste", || paste::paste_text(&format!("{} ", outcome.text)))?;
         }
+    }
+    if !outcome.audio.is_empty() {
+        timing::write(app_kind, outcome.audio.len() as f32 / audio::TARGET_RATE as f32, released.elapsed());
     }
 
     // Keep the recording (even when nothing was heard, to help tune).

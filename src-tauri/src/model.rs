@@ -173,8 +173,8 @@ impl ModelInfo {
                 let threads = thread::available_parallelism().map(|n| n.get().min(4)).unwrap_or(2);
                 Box::new(StreamingModel::load(&dir, threads, &Quantization::default()).map_err(|e| anyhow!("{e}"))?)
             }
-            Engine::Whisper => Box::new(whisper::WhisperCli::new()?),
-            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::WhisperCli::new()?)),
+            Engine::Whisper => whisper::load()?,
+            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::load()?)),
         };
         Ok(model)
     }

@@ -55,14 +55,17 @@ impl Formatter {
         let started = std::time::Instant::now();
         match server.clean_up(&ruled, words, app) {
             Ok(out) if llm::faithful(&ruled, &out) => {
+                crate::timing::add("ai", started.elapsed());
                 log::info!("LLM clean-up in {} ms", started.elapsed().as_millis());
                 dictionary::apply(&out, words)
             }
             Ok(out) => {
+                crate::timing::add("ai-rejected", started.elapsed());
                 log::warn!("LLM output drifted from the dictation, using rules output instead: {out:?}");
                 ruled
             }
             Err(e) => {
+                crate::timing::add("ai-failed", started.elapsed());
                 log::warn!("LLM clean-up failed, using rules output: {e}");
                 ruled
             }
