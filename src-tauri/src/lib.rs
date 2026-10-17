@@ -429,28 +429,13 @@ fn place_overlay(app: &AppHandle) {
     let _ = app.emit_to("overlay", "overlay-align", align);
 }
 
-/// Shows the text in the result box (with a Copy button) just above where
-/// the pill sits, for dictations made while no text field was focused.
+/// Starts showing the result box (text + Copy) for a dictation made while
+/// no text field was focused. The box page sizes itself to the text and
+/// then calls `place_result`, which positions and shows the window.
 fn show_result(app: &AppHandle, text: &str) {
-    let Some(w) = app.get_webview_window("result") else { return };
-    let monitor = app
-        .cursor_position()
-        .ok()
-        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
-        .or_else(|| w.primary_monitor().ok().flatten());
-    if let (Some(monitor), Ok(size)) = (monitor, w.outer_size()) {
-        let area = monitor.work_area();
-        let scale = monitor.scale_factor();
-        let (left, width) = (area.position.x, area.size.width as i32);
-        let bottom = area.position.y + area.size.height as i32;
-        // Above the pill: margin + pill height + a small gap.
-        let above_pill = ((BOTTOM_MARGIN + 48.0 + 8.0) * scale) as i32;
-        let x = left + (width - size.width as i32) / 2;
-        let y = bottom - above_pill - size.height as i32;
-        let _ = w.set_position(PhysicalPosition::new(x, y));
-    }
+    // The box takes the pill's place at the bottom of the screen.
+    schedule_hide(app, Duration::ZERO);
     let _ = app.emit_to("result", "result-show", text);
-    let _ = w.show();
 }
 
 fn hide_result_box(app: &AppHandle) {
@@ -1020,6 +1005,34 @@ fn copy_text(text: String) -> Result<(), String> {
     arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
 }
 
+/// Width of the result box, in logical pixels.
+const RESULT_WIDTH: f64 = 460.0;
+/// Gap between the result box and the taskbar, in logical pixels.
+const RESULT_MARGIN: f64 = 12.0;
+
+/// Sizes the result box to `height` (logical px, measured by the page),
+/// pins it centered just above the taskbar, and shows it.
+#[tauri::command]
+fn place_result(app: AppHandle, height: f64) {
+    let Some(w) = app.get_webview_window("result") else { return };
+    let height = height.clamp(96.0, 320.0);
+    let _ = w.set_size(tauri::LogicalSize::new(RESULT_WIDTH, height));
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|p| app.monitor_from_point(p.x, p.y).ok().flatten())
+        .or_else(|| w.primary_monitor().ok().flatten());
+    if let Some(monitor) = monitor {
+        let area = monitor.work_area();
+        let scale = monitor.scale_factor();
+        let (w_px, h_px) = ((RESULT_WIDTH * scale) as i32, (height * scale) as i32);
+        let x = area.position.x + (area.size.width as i32 - w_px) / 2;
+        let y = area.position.y + area.size.height as i32 - h_px - (RESULT_MARGIN * scale) as i32;
+        let _ = w.set_position(PhysicalPosition::new(x, y));
+    }
+    let _ = w.show();
+}
+
 #[tauri::command]
 fn hide_result(app: AppHandle) {
     hide_result_box(&app);
@@ -1144,6 +1157,7 @@ pub fn run() {
             get_recording,
             delete_recording,
             copy_text,
+            place_result,
             hide_result,
             open_recordings_folder
         ])
