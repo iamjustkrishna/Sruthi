@@ -11,6 +11,7 @@ mod model;
 mod paste;
 mod process;
 mod recordings;
+mod secrets;
 mod settings;
 mod timing;
 #[cfg(windows)]
@@ -27,6 +28,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, State, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use format::cloud::{self, Cloud, Provider};
 use format::llm::{self, LlmInfo, LlmServer};
 use settings::OverlayPosition;
 
@@ -106,6 +108,7 @@ struct Status {
     overlay: OverlayPosition,
     smart: bool,
     llm: LlmStatus,
+    cloud: CloudStatus,
     dictionary: Vec<String>,
     hotkey: String,
     instant_mic: bool,
@@ -125,6 +128,62 @@ enum Dictation {
     Transcribing,
     Done { text: String },
     Error { message: String },
+}
+
+/// Cloud providers for Smart formatting, for the main window.
+#[derive(Clone, Serialize)]
+struct CloudStatus {
+    /// The provider in use, if any (None: the local model).
+    active: Option<&'static str>,
+    providers: Vec<CloudEntry>,
+}
+
+#[derive(Clone, Serialize)]
+struct CloudEntry {
+    id: &'static str,
+    name: &'static str,
+    model: String,
+    default_model: &'static str,
+    key_saved: bool,
+    key_url: &'static str,
+}
+
+fn cloud_status() -> CloudStatus {
+    let saved = settings::load();
+    CloudStatus {
+        active: saved.cloud.as_deref().and_then(Provider::find).map(Provider::id),
+        providers: cloud::PROVIDERS
+            .iter()
+            .map(|&p| CloudEntry {
+                id: p.id(),
+                name: p.name(),
+                model: saved.cloud_models.get(p.id()).cloned().unwrap_or_else(|| p.default_model().to_string()),
+                default_model: p.default_model(),
+                key_saved: secrets::get(p.id()).is_some(),
+                key_url: p.key_url(),
+            })
+            .collect(),
+    }
+}
+
+/// Points Smart formatting at the chosen cloud provider (or back at the
+/// local model).
+fn sync_cloud(app: &AppHandle) {
+    let saved = settings::load();
+    let cloud = saved.cloud.as_deref().and_then(Provider::find).filter(|_| saved.smart).and_then(|p| {
+        match Cloud::new(p, saved.cloud_models.get(p.id()).cloned()) {
+            Ok(cloud) => Some(cloud),
+            Err(e) => {
+                log::warn!("Cloud clean-up is off: {e}");
+                None
+            }
+        }
+    });
+    if let Some(cloud) = &cloud {
+        log::info!("Smart formatting uses {} ({})", cloud.provider.name(), cloud.model);
+    }
+    app.state::<AppState>().formatter.set_cloud(cloud);
+    emit_status(app);
 }
 
 #[derive(Clone, Serialize)]
@@ -223,6 +282,7 @@ impl AppState {
                     .collect(),
                 downloading: inner.llm_downloading,
             },
+            cloud: cloud_status(),
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
             microphone: settings::load().microphone,
@@ -712,8 +772,91 @@ fn set_smart(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut saved = settings::load();
     saved.smart = enabled;
     settings::save(&saved).map_err(|e| e.to_string())?;
+    sync_cloud(&app);
     sync_llm(app);
     Ok(())
+}
+
+fn lookup_provider(id: &str) -> Result<Provider, String> {
+    Provider::find(id).ok_or_else(|| format!("Unknown provider: {id}"))
+}
+
+/// Picks the cloud provider for Smart formatting, or None for the local model.
+#[tauri::command]
+fn set_cloud_provider(app: AppHandle, provider: Option<String>) -> Result<(), String> {
+    let provider = provider.as_deref().map(lookup_provider).transpose()?;
+    if let Some(p) = provider {
+        if secrets::get(p.id()).is_none() {
+            return Err(format!("Add your {} API key first.", p.name()));
+        }
+    }
+    let mut saved = settings::load();
+    saved.cloud = provider.map(|p| p.id().to_string());
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    sync_cloud(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn save_cloud_key(app: AppHandle, provider: String, key: String) -> Result<(), String> {
+    let p = lookup_provider(&provider)?;
+    if key.trim().is_empty() {
+        return Err("The API key is empty.".into());
+    }
+    secrets::set(p.id(), &key).map_err(|e| e.to_string())?;
+    sync_cloud(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_cloud_key(app: AppHandle, provider: String) -> Result<(), String> {
+    let p = lookup_provider(&provider)?;
+    secrets::delete(p.id());
+    let mut saved = settings::load();
+    if saved.cloud.as_deref() == Some(p.id()) {
+        saved.cloud = None;
+        settings::save(&saved).map_err(|e| e.to_string())?;
+    }
+    sync_cloud(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_cloud_model(app: AppHandle, provider: String, model: String) -> Result<(), String> {
+    let p = lookup_provider(&provider)?;
+    let mut saved = settings::load();
+    let model = model.trim();
+    if model.is_empty() || model == p.default_model() {
+        saved.cloud_models.remove(p.id());
+    } else {
+        saved.cloud_models.insert(p.id().to_string(), model.to_string());
+    }
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    sync_cloud(&app);
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct CloudTest {
+    text: String,
+    ms: u64,
+}
+
+/// Cleans up a sample dictation with the provider, to check the key and model.
+#[tauri::command]
+async fn test_cloud(provider: String) -> Result<CloudTest, String> {
+    let p = lookup_provider(&provider)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let saved = settings::load();
+        let cloud = Cloud::new(p, saved.cloud_models.get(p.id()).cloned()).map_err(|e| e.to_string())?;
+        let started = Instant::now();
+        let sample = "um so I have ten no twenty dogs and they all need food";
+        let ruled = format::rules::apply(sample);
+        let text = cloud.clean_up(&ruled, &saved.dictionary, context::AppKind::Other).map_err(|e| format!("{e:#}"))?;
+        Ok(CloudTest { text, ms: started.elapsed().as_millis() as u64 })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -1141,6 +1284,7 @@ pub fn run() {
             if active.is_installed() {
                 load_model(handle.clone(), active);
             }
+            sync_cloud(&handle);
             sync_llm(handle.clone());
             sync_mic(handle);
             Ok(())
@@ -1155,6 +1299,11 @@ pub fn run() {
             download_llm,
             select_llm,
             delete_llm,
+            set_cloud_provider,
+            save_cloud_key,
+            delete_cloud_key,
+            set_cloud_model,
+            test_cloud,
             add_word,
             remove_word,
             set_hotkey,

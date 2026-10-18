@@ -49,6 +49,29 @@
         </div>
         <p class="muted" id="llm-text"></p>
         <ul class="models" id="llms"></ul>
+        <div class="cloud" id="cloud">
+          <h3>AI engine</h3>
+          <p class="muted small">
+            On this PC keeps everything offline. A cloud model is smarter with corrections and grammar, but your text
+            (never the audio) is sent to it. If it can't be reached, the model on this PC takes over.
+          </p>
+          <div class="engines" id="engines" role="radiogroup" aria-label="AI engine"></div>
+          <div class="cloud-panel" id="cloud-panel" hidden>
+            <p class="small" id="cloud-key-state"></p>
+            <form class="word-form" id="cloud-key-form">
+              <input type="password" id="cloud-key" autocomplete="off" spellcheck="false" placeholder="Paste your API key" />
+              <button type="submit">Save key</button>
+            </form>
+            <label class="small cloud-model">
+              Model
+              <span class="word-form">
+                <input type="text" id="cloud-model" spellcheck="false" />
+                <button type="button" class="ghost" id="cloud-test">Test</button>
+              </span>
+            </label>
+            <p class="small muted" id="cloud-test-result"></p>
+          </div>
+        </div>
       </section>
 
       <section class="card">

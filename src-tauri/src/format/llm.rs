@@ -207,21 +207,9 @@ impl LlmServer {
     /// dictation clearly means them.
     pub fn clean_up(&self, text: &str, glossary: &[String], app: AppKind) -> Result<String> {
         let words = text.split_whitespace().count();
-        let mut system = SYSTEM_PROMPT.to_string();
-        if !glossary.is_empty() {
-            system.push_str(&format!(
-                " The speaker often uses these names and terms; when the dictation means one of them \
-                 (even if it was misheard as similar-sounding words), spell it exactly like this: {}.",
-                glossary.join(", ")
-            ));
-        }
-        let (style, style_example) = style_for(app);
-        if !style.is_empty() {
-            system.push(' ');
-            system.push_str(style);
-        }
+        let (system, examples) = prompt(glossary, app);
         let mut messages = vec![json!({ "role": "system", "content": system })];
-        for (input, output) in EXAMPLES.iter().chain(style_example) {
+        for (input, output) in examples {
             messages.push(json!({ "role": "user", "content": input }));
             messages.push(json!({ "role": "assistant", "content": output }));
         }
@@ -254,6 +242,25 @@ impl Drop for LlmServer {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// The instructions and worked examples for a clean-up, shared by the local
+/// model and the cloud providers.
+pub(super) fn prompt(glossary: &[String], app: AppKind) -> (String, Vec<(&'static str, &'static str)>) {
+    let mut system = SYSTEM_PROMPT.to_string();
+    if !glossary.is_empty() {
+        system.push_str(&format!(
+            " The speaker often uses these names and terms; when the dictation means one of them \
+             (even if it was misheard as similar-sounding words), spell it exactly like this: {}.",
+            glossary.join(", ")
+        ));
+    }
+    let (style, style_example) = style_for(app);
+    if !style.is_empty() {
+        system.push(' ');
+        system.push_str(style);
+    }
+    (system, EXAMPLES.iter().chain(style_example).copied().collect())
 }
 
 trait JsonValue {

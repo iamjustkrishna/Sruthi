@@ -2,6 +2,7 @@
 //! then (in Smart mode) a small local LLM, with a guard that falls back to
 //! the rules output if the LLM drifts from what was said.
 
+pub mod cloud;
 pub mod corrections;
 pub mod dictionary;
 pub mod llm;
@@ -17,11 +18,18 @@ const SMART_MIN_WORDS: usize = 5;
 #[derive(Default)]
 pub struct Formatter {
     server: Mutex<Option<llm::LlmServer>>,
+    /// A cloud provider chosen instead of the local model (the local one
+    /// stays as the fallback).
+    cloud: Mutex<Option<cloud::Cloud>>,
 }
 
 impl Formatter {
     pub fn set_server(&self, server: Option<llm::LlmServer>) {
         *self.server.lock().unwrap() = server;
+    }
+
+    pub fn set_cloud(&self, cloud: Option<cloud::Cloud>) {
+        *self.cloud.lock().unwrap() = cloud;
     }
 
     /// The LLM currently running, if any.
@@ -58,11 +66,26 @@ impl Formatter {
             return ruled;
         }
         let server = self.server.lock().unwrap();
-        let Some(server) = server.as_ref() else { return ruled };
+        let cloud = self.cloud.lock().unwrap();
+        let (server, cloud) = (server.as_ref(), cloud.as_ref());
+        if server.is_none() && cloud.is_none() {
+            return ruled;
+        }
+        // The cloud first; the local model if it fails (offline, bad key).
+        let ask = |piece: &str| -> anyhow::Result<String> {
+            if let Some(cloud) = cloud {
+                match cloud.clean_up(piece, words, app) {
+                    Ok(out) => return Ok(out),
+                    Err(e) => log::warn!("Cloud clean-up failed{}: {e:#}", if server.is_some() { ", using the local model" } else { "" }),
+                }
+            }
+            server.ok_or_else(|| anyhow::anyhow!("no local model running"))?.clean_up(piece, words, app)
+        };
         let started = std::time::Instant::now();
         // Given a long dictation in one go, the small model summarizes it;
-        // a sentence or so at a time it mostly just cleans it.
-        let pieces = if ruled.split_whitespace().count() > CHUNK_ABOVE_WORDS {
+        // a sentence or so at a time it mostly just cleans it. Cloud models
+        // handle the whole thing.
+        let pieces = if cloud.is_none() && ruled.split_whitespace().count() > CHUNK_ABOVE_WORDS {
             chunks(&ruled, CHUNK_WORDS)
         } else {
             vec![(ruled.as_str(), "")]
@@ -75,7 +98,7 @@ impl Formatter {
                 outs.push(piece.to_string());
                 continue;
             }
-            let out = match server.clean_up(piece, words, app) {
+            let out = match ask(piece) {
                 Ok(out) => out,
                 Err(e) => {
                     failed += 1;
@@ -106,10 +129,13 @@ impl Formatter {
             }
         }
         let text = join_pieces(&pieces, outs);
-        let stage = match (cleaned, failed) {
-            (0, 0) => "ai-rejected",
-            (0, _) => "ai-failed",
-            _ => "ai",
+        let stage = match (cleaned, failed, cloud.is_some()) {
+            (0, 0, false) => "ai-rejected",
+            (0, _, false) => "ai-failed",
+            (_, _, false) => "ai",
+            (0, 0, true) => "cloud-rejected",
+            (0, _, true) => "cloud-failed",
+            (_, _, true) => "cloud",
         };
         crate::timing::add(stage, started.elapsed());
         log::info!(

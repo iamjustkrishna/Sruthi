@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
@@ -37,6 +38,10 @@ interface Status {
     models: LlmEntry[];
     downloading: string | null;
   };
+  cloud: {
+    active: string | null;
+    providers: CloudEntry[];
+  };
   dictionary: string[];
   hotkey: string;
   instant_mic: boolean;
@@ -45,6 +50,15 @@ interface Status {
   default_microphone: string | null;
   mic_warning: string | null;
   history: HistoryEntry[];
+}
+
+interface CloudEntry {
+  id: string;
+  name: string;
+  model: string;
+  default_model: string;
+  key_saved: boolean;
+  key_url: string;
 }
 
 interface MicProbe {
@@ -238,6 +252,126 @@ function renderLlms(s: Status) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// AI engine: the local model or a cloud provider with the user's API key
+
+/** Provider whose settings are open (null: on this PC). */
+let viewing: string | null | undefined;
+const cloudPanel = $("cloud-panel");
+const cloudKey = $<HTMLInputElement>("cloud-key");
+const cloudModel = $<HTMLInputElement>("cloud-model");
+const cloudResult = $("cloud-test-result");
+
+function cloudMessage(text: string, isError = false) {
+  cloudResult.textContent = text;
+  cloudResult.classList.toggle("error", isError);
+}
+
+async function cloudRun(command: string, args: Record<string, unknown>) {
+  try {
+    await invoke(command, args);
+    return true;
+  } catch (e) {
+    cloudMessage(String(e), true);
+    return false;
+  }
+}
+
+function engineButton(id: string | null, label: string, s: Status) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = label;
+  b.setAttribute("role", "radio");
+  b.setAttribute("aria-checked", String(s.cloud.active === id));
+  b.classList.toggle("viewing", (viewing ?? s.cloud.active) === id);
+  b.addEventListener("click", async () => {
+    if (viewing !== id) cloudMessage("");
+    viewing = id;
+    const entry = s.cloud.providers.find((p) => p.id === id);
+    // A provider is switched on once it has a key; until then its settings open.
+    if (id === null || entry?.key_saved) {
+      await cloudRun("set_cloud_provider", { provider: id });
+    } else if (status) {
+      renderCloud(status);
+      cloudKey.focus();
+    }
+  });
+  return b;
+}
+
+function renderCloud(s: Status) {
+  $("cloud").hidden = !s.smart;
+  if (viewing === undefined) viewing = s.cloud.active;
+  const inUse = s.cloud.providers.find((p) => p.id === s.cloud.active);
+  if (s.smart && inUse) {
+    llmText.textContent = `On. Dictations are polished by ${inUse.name} (${inUse.model}); the model on this PC is the backup.`;
+  }
+  $("engines").replaceChildren(
+    engineButton(null, "On this PC", s),
+    ...s.cloud.providers.map((p) => engineButton(p.id, p.name, s)),
+  );
+  const entry = s.cloud.providers.find((p) => p.id === viewing);
+  cloudPanel.hidden = !entry;
+  if (!entry) return;
+
+  const state = $("cloud-key-state");
+  const getKey = document.createElement("button");
+  getKey.type = "button";
+  getKey.className = "linkish";
+  getKey.textContent = `Get a ${entry.name} key`;
+  getKey.addEventListener("click", () => openUrl(entry.key_url));
+  if (entry.key_saved) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "linkish";
+    remove.textContent = "Remove key";
+    remove.addEventListener("click", () => cloudRun("delete_cloud_key", { provider: entry.id }));
+    state.replaceChildren(
+      s.cloud.active === entry.id ? "In use. " : "Key saved. ",
+      "Your API key is stored in Windows Credential Manager. ",
+      remove,
+    );
+  } else {
+    state.replaceChildren("Add your API key to use this provider. ", getKey);
+  }
+  cloudKey.placeholder = entry.key_saved ? "Paste a new key to replace it" : "Paste your API key";
+  if (document.activeElement !== cloudModel) {
+    cloudModel.value = entry.model;
+    cloudModel.placeholder = entry.default_model;
+  }
+  $<HTMLButtonElement>("cloud-test").disabled = !entry.key_saved;
+}
+
+$("cloud-key-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const provider = viewing;
+  const key = cloudKey.value.trim();
+  if (!provider || !key) return;
+  if (await cloudRun("save_cloud_key", { provider, key })) {
+    cloudKey.value = "";
+    if (await cloudRun("set_cloud_provider", { provider })) cloudMessage("Key saved. Try Test to check it works.");
+  }
+});
+
+cloudModel.addEventListener("change", () => {
+  if (viewing) cloudRun("set_cloud_model", { provider: viewing, model: cloudModel.value });
+});
+
+$("cloud-test").addEventListener("click", async () => {
+  if (!viewing) return;
+  const test = $<HTMLButtonElement>("cloud-test");
+  test.disabled = true;
+  cloudMessage("Cleaning up a sample sentence…");
+  try {
+    const r = await invoke<{ text: string; ms: number }>("test_cloud", { provider: viewing });
+    cloudMessage(`Works (${(r.ms / 1000).toFixed(1)} s): "${r.text}"`);
+  } catch (e) {
+    cloudMessage(String(e), true);
+  } finally {
+    test.disabled = false;
+  }
+});
+
 function render(s: Status) {
   status = s;
   const active = s.models.find((m) => m.id === s.active);
@@ -249,6 +383,7 @@ function render(s: Status) {
   $("hotkey").textContent = s.hotkey;
   renderModels(s);
   renderLlms(s);
+  renderCloud(s);
   document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
     input.checked = input.value === s.overlay;
   });

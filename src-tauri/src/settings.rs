@@ -1,5 +1,6 @@
 //! User settings, stored as JSON next to the models.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -35,11 +36,16 @@ pub struct Settings {
     pub instant_mic: bool,
     /// Microphone to record from (None: Windows' default).
     pub microphone: Option<String>,
+    /// Cloud provider for Smart formatting ("gemini", "groq", "anthropic");
+    /// None: the local model. API keys are kept in Credential Manager.
+    pub cloud: Option<String>,
+    /// Model chosen per cloud provider (missing: the provider's default).
+    pub cloud_models: HashMap<String, String>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None }
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None, cloud: None, cloud_models: HashMap::new() }
     }
 }
 

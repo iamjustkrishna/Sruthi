@@ -258,6 +258,61 @@ button.ghost {
   line-height: 1.4;
 }
 
+/* AI engine: local or a cloud provider */
+.cloud {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cloud h3 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+.engines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+.engines button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 500;
+}
+.engines button[aria-checked="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.engines button.viewing:not([aria-checked="true"]) {
+  border-style: dashed;
+  border-color: var(--muted);
+}
+.cloud-panel {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cloud-panel p {
+  margin: 0;
+}
+.cloud-model {
+  display: block;
+  color: var(--muted);
+}
+.cloud-model .word-form {
+  margin: 4px 0 6px;
+}
+.linkish {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .choices {
   display: flex;
   flex-direction: column;
