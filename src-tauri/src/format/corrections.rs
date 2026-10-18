@@ -118,9 +118,19 @@ fn not_but_in_line(line: &str) -> String {
     let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
     let mut i = 1;
     while i + 3 < tokens.len() {
-        let shape = word(&tokens[i]) == "not" && word(&tokens[i + 2]) == "but" && !word(&tokens[i + 1]).is_empty();
+        let shape = word(&tokens[i]) == "not"
+            && word(&tokens[i + 2]) == "but"
+            && !word(&tokens[i + 1]).is_empty()
+            // "what's not possible. But that line…" is two sentences.
+            && !ends_sentence(&tokens[i + 1]);
+        // The earlier X sits right before "not", with at most a cue or a
+        // filler between ("Disha. No, not Disha but…"); "what is possible
+        // and what's not possible but…" is a contrast.
         let earlier = if shape {
-            (i.saturating_sub(MAX_GAP + 1)..i).rev().find(|&j| word(&tokens[j]) == word(&tokens[i + 1]))
+            (i.saturating_sub(MAX_GAP + 1)..i).rev().find(|&j| {
+                word(&tokens[j]) == word(&tokens[i + 1])
+                    && tokens[j + 1..i].iter().all(|t| matches!(word(t).as_str(), "no" | "uh" | "um" | "sorry" | "wait" | "oh"))
+            })
         } else {
             None
         };
@@ -149,7 +159,7 @@ fn values_in_line(line: &str) -> String {
     let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
     let mut i = 1;
     while i < tokens.len() {
-        match correct_at(&tokens, i).or_else(|| phrase_at(&tokens, i)) {
+        match correct_at(&tokens, i).or_else(|| phrase_at(&tokens, i)).or_else(|| swap_at(&tokens, i)) {
             Some((start, cue_end, tail)) => {
                 let capital = starts_sentence(&tokens, start);
                 let mut rest: Vec<String> = tokens.split_off(cue_end);
@@ -264,6 +274,40 @@ fn plain_word(token: &str) -> bool {
 /// "I watched a tiger. No, a cat and…" → "I watched a cat and…": an
 /// a/the/my… phrase of one or two words replaced right away by another of
 /// the same shape. Not after a negation ("It wasn't a tiger. No, a cat.").
+/// Longest phrase repeated after a swapped value.
+const MAX_SWAP_WORDS: usize = 4;
+
+/// "Krishna will be no. Ajay will be joining" → "Ajay will be joining": a
+/// value (name, number, day…) and a few words, a cue, then another value of
+/// the same kind and the same words again. The repeated words are what
+/// make a bare "no" safe to trust here.
+fn swap_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)> {
+    let (len, strong) = match (cue_at(tokens, i, STRONG_CUES), cue_at(tokens, i, WEAK_CUES)) {
+        (Some(len), _) => (len, true),
+        (None, Some(len)) => (len, false),
+        _ => return None,
+    };
+    let y = i + len;
+    let y_kind = kind(tokens.get(y)?, false)?;
+    // With an everyday "no", the first attempt must be unfinished ("Krishna
+    // will be no…"); "Raj will come. No, Sam will come too" is two statements.
+    if !strong && ends_sentence(&tokens[i - 1]) {
+        return None;
+    }
+    (1..=MAX_SWAP_WORDS).find_map(|p| {
+        let x = i.checked_sub(p + 1)?;
+        if kind(&tokens[x], false) != Some(y_kind) || y + 1 + p > tokens.len() {
+            return None;
+        }
+        let said: Vec<String> = tokens[x + 1..i].iter().map(|t| word(t)).collect();
+        let again: Vec<String> = tokens[y + 1..y + 1 + p].iter().map(|t| word(t)).collect();
+        let plain = said.iter().all(|w| !w.is_empty() && w.chars().all(|c| c.is_alphabetic() || c == '\''));
+        // Nothing ends a sentence inside the abandoned attempt.
+        let open = !tokens[x..i - 1].iter().any(|t| ends_sentence(t)) && !split_punct(&tokens[i - 1]).2.contains('?');
+        (said == again && plain && open).then(|| (x, y, Vec::new()))
+    })
+}
+
 fn phrase_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)> {
     let len = cue_at(tokens, i, STRONG_CUES).or_else(|| cue_at(tokens, i, WEAK_CUES))?;
     let cue_end = i + len;
@@ -432,7 +476,23 @@ OUT: {out}
             values("I met my friend Akash. No Rajesh. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice."),
             "I met my friend Rajesh. He's married. My wife name is Kancha. She's also nice."
         );
-        for text in ["I want not tea but coffee.", "Thanks Raj. No problem.", "Did you see Raj? No, Sam."] {
+        // Real dictation: a restart with a different name.
+        assert_eq!(
+            values("So today we are going to have a meeting at 8 AM and Krishna will be no. Ajay will be joining the meeting as well."),
+            "So today we are going to have a meeting at 8 AM and Ajay will be joining the meeting as well."
+        );
+        assert_eq!(values("Send it to Raghav by Monday sorry Jagjeet by Monday."), "Send it to Jagjeet by Monday.");
+        assert_eq!(values("We need 5 boxes no 6 boxes."), "We need 6 boxes.");
+        for text in [
+            "I want not tea but coffee.",
+            "Thanks Raj. No problem.",
+            "Did you see Raj? No, Sam.",
+            "Raj will come. No Sam will come too.",
+            // Real dictation.
+            "There is a very thin line between what is possible and what's not possible. But that line is now faded a lot.",
+            "It is possible and what's not possible but fun is fine.",
+            "Krishna will be late, no Ajay will be early.",
+        ] {
             assert_eq!(values(text), text, "{text}");
         }
     }
