@@ -43,12 +43,28 @@ pub const CATALOG: &[LlmInfo] = &[
         file: "Qwen3-0.6B-Q4_K_M.gguf",
     },
     LlmInfo {
+        id: "qwen3.5-0.8b",
+        name: "Qwen3.5 0.8B",
+        description: "Newer generation, about as fast as Qwen3 0.6B.",
+        size_mb: 508,
+        url: "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf",
+        file: "Qwen3.5-0.8B-Q4_K_M.gguf",
+    },
+    LlmInfo {
         id: "qwen3-1.7b",
         name: "Qwen3 1.7B",
         description: "Better with self-corrections and lists, but slower.",
         size_mb: 1056,
         url: "https://huggingface.co/unsloth/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
         file: "Qwen3-1.7B-Q4_K_M.gguf",
+    },
+    LlmInfo {
+        id: "qwen3.5-2b",
+        name: "Qwen3.5 2B",
+        description: "The smartest that fits next to Whisper on a 4 GB graphics card; about twice as slow as the small ones.",
+        size_mb: 1222,
+        url: "https://huggingface.co/unsloth/Qwen3.5-2B-GGUF/resolve/main/Qwen3.5-2B-Q4_K_M.gguf",
+        file: "Qwen3.5-2B-Q4_K_M.gguf",
     },
 ];
 
@@ -518,12 +534,23 @@ fn mark_droppable(a: &[Word], cut: Range<usize>, list: bool, free: &mut [bool]) 
         }
         let bare_no = key(i) == "no"
             && i + 1 < a.len()
-            && (NO_REPLACEMENTS.contains(&key(i + 1)) || key(i + 1).starts_with(|c: char| c.is_ascii_digit()) || NUMBER_WORDS.contains(&key(i + 1)));
+            && (NO_REPLACEMENTS.contains(&key(i + 1))
+                || key(i + 1).starts_with(|c: char| c.is_ascii_digit())
+                || NUMBER_WORDS.contains(&key(i + 1))
+                // "Akash. No, Rajesh."
+                || a[i + 1].name);
+        // "Disha. Not Disha but Kancha.": "not X but" right after saying X.
+        let not_but = key(i) == "not"
+            && i + 2 < a.len()
+            && key(i + 2) == "but"
+            && (i.saturating_sub(4)..i).any(|j| a[j].key == a[i + 1].key);
         const NO: &[&str] = &["no"];
+        const NOT_BUT: &[&str] = &["not", "", "but"];
         let cue = CORRECTION_CUES
             .iter()
             .find(|cue| cue.len() <= cut.end - i && cue.iter().enumerate().all(|(k, w)| key(i + k) == *w))
-            .or(bare_no.then_some(&NO));
+            .or(bare_no.then_some(&NO))
+            .or(not_but.then_some(&NOT_BUT));
         if let Some(cue) = cue {
             free[i.saturating_sub(CORRECTION_WORDS).max(cut.start)..i + cue.len()].fill(true);
         }
@@ -675,6 +702,11 @@ pub(super) mod tests {
         assert!(faithful("So I think we should go at 5, no wait, at 6", "I think we should go at 6."));
         assert!(faithful("We can meet on Monday. Sorry, I mean Tuesday at 10 AM", "We can meet on Tuesday at 10 AM."));
         assert!(faithful("I saw a big tiger, no, a small cat near the gate", "I saw a small cat near the gate."));
+        // Real Groq output for a real dictation: both name corrections applied.
+        assert!(faithful(
+            "So after a very long time I met my friend Akash. No Rajesh. He's a very good guy. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice.",
+            "So after a very long time I met my friend Rajesh. He's a very good guy. He's married. My wife name is Kancha. She's also nice."
+        ));
         assert!(faithful("things to buy milk eggs bread", "Things to buy:
 - Milk
 - Eggs

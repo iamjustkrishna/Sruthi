@@ -311,6 +311,8 @@ function renderCloud(s: Status) {
     ...s.cloud.providers.map((p) => engineButton(p.id, p.name, s)),
   );
   const entry = s.cloud.providers.find((p) => p.id === viewing);
+  // On this PC: pick the offline model; a cloud provider: its key and model.
+  llmList.hidden = !s.smart || !!entry;
   cloudPanel.hidden = !entry;
   if (!entry) return;
 

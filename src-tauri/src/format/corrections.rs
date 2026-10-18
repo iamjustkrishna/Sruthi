@@ -108,7 +108,41 @@ fn capitalize(token: &str) -> String {
 
 /// "I have 10 no 20 dogs" → "I have 20 dogs".
 pub fn values(text: &str) -> String {
-    text.split('\n').map(values_in_line).collect::<Vec<_>>().join("\n")
+    text.split('\n').map(|line| values_in_line(&not_but_in_line(line))).collect::<Vec<_>>().join("\n")
+}
+
+/// "His wife's name is Disha. No, not Disha but Akansha." → "His wife's
+/// name is Akansha.": "not X but Y" right after saying X. Without the
+/// earlier X it's a plain contrast ("I want not tea but coffee") and stays.
+fn not_but_in_line(line: &str) -> String {
+    let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
+    let mut i = 1;
+    while i + 3 < tokens.len() {
+        let shape = word(&tokens[i]) == "not" && word(&tokens[i + 2]) == "but" && !word(&tokens[i + 1]).is_empty();
+        let earlier = if shape {
+            (i.saturating_sub(MAX_GAP + 1)..i).rev().find(|&j| word(&tokens[j]) == word(&tokens[i + 1]))
+        } else {
+            None
+        };
+        match earlier {
+            Some(j) => {
+                let capital = starts_sentence(&tokens, j);
+                // "is. Disha. Not Disha but…": the full stop before a one-word
+                // false start is a transcription artifact.
+                if j > 0 && ends_sentence(&tokens[j]) && ends_sentence(&tokens[j - 1]) {
+                    let (lead, w, _) = split_punct(&tokens[j - 1]);
+                    tokens[j - 1] = format!("{lead}{w}");
+                }
+                tokens.drain(j..i + 3);
+                if capital {
+                    tokens[j] = capitalize(&tokens[j]);
+                }
+                i = j.max(1);
+            }
+            None => i += 1,
+        }
+    }
+    tokens.join(" ")
 }
 
 fn values_in_line(line: &str) -> String {
@@ -167,8 +201,15 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
         y += 1;
     }
     let y_kind = kind(tokens.get(y)?, false)?;
+    // A bare "No" before a name only counts when the name is a reply on
+    // its own: "my friend Akash. No, Rajesh." (not "I told Raghav no
+    // Jagjeet would come").
     if y_kind == Kind::Name && !strong {
-        return None;
+        let alone = split_punct(&tokens[y]).2.contains(['.', ',', '!', ';']) || y + 1 == tokens.len();
+        let x_done = split_punct(&tokens[i - 1]).2.contains(['.', ',', '!', ';']);
+        if !(alone && x_done && kind(&tokens[i - 1], starts_sentence(tokens, i - 1)) == Some(Kind::Name)) {
+            return None;
+        }
     }
     // The old value: the nearest same-kind word just before the cue.
     let j = (i.saturating_sub(MAX_GAP)..i).rev().find(|&j| kind(&tokens[j], starts_sentence(tokens, j)) == Some(y_kind))?;
@@ -378,6 +419,22 @@ OUT: {out}
         assert_eq!(values("Call me at 3:30 PM sorry 4:30 PM"), "Call me at 4:30 PM");
         // Several in a row: the last one wins.
         assert_eq!(values("Give me 5 no 6 no 7 apples"), "Give me 7 apples");
+    }
+
+    #[test]
+    fn real_name_corrections() {
+        // Real dictations.
+        assert_eq!(
+            values("So after a very long time I met my friend Akash. No, Rajesh. He's a very good guy. He's married. And Her wife name is Disha. No, not Disha but Akansha. She's all so nice."),
+            "So after a very long time I met my friend Rajesh. He's a very good guy. He's married. And Her wife name is Akansha. She's all so nice."
+        );
+        assert_eq!(
+            values("I met my friend Akash. No Rajesh. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice."),
+            "I met my friend Rajesh. He's married. My wife name is Kancha. She's also nice."
+        );
+        for text in ["I want not tea but coffee.", "Thanks Raj. No problem.", "Did you see Raj? No, Sam."] {
+            assert_eq!(values(text), text, "{text}");
+        }
     }
 
     #[test]
