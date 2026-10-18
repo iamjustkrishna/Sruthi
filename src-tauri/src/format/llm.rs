@@ -311,6 +311,7 @@ const EXAMPLES: &[(&str, &str)] = &[
         "I think we should go at six because traffic is bad.",
     ),
     ("We can meet on Monday. Sorry, I mean Tuesday at 10 AM", "We can meet on Tuesday at 10 AM."),
+    ("I saw a big tiger, no, a small cat near the gate", "I saw a small cat near the gate."),
     ("can you tell me when the report is due", "Can you tell me when the report is due?"),
     (
         "things to buy milk eggs bread and some coffee",
@@ -364,6 +365,10 @@ const CORRECTION_CUES: &[&[&str]] = &[
     &["correction"],
     &["make", "that"],
 ];
+/// A bare "no" is a correction cue only when a replacement follows it
+/// ("a tiger. No, a cat", "10 no 20"), not in "no idea" or "no one".
+const NO_REPLACEMENTS: &[&str] = &["a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their"];
+
 /// How many words before a correction cue count as the corrected part.
 const CORRECTION_WORDS: usize = 6;
 
@@ -504,9 +509,14 @@ fn mark_droppable(a: &[Word], cut: Range<usize>, list: bool, free: &mut [bool]) 
                 free[i + 1] = true;
             }
         }
+        let bare_no = key(i) == "no"
+            && i + 1 < a.len()
+            && (NO_REPLACEMENTS.contains(&key(i + 1)) || key(i + 1).starts_with(|c: char| c.is_ascii_digit()) || NUMBER_WORDS.contains(&key(i + 1)));
+        const NO: &[&str] = &["no"];
         let cue = CORRECTION_CUES
             .iter()
-            .find(|cue| cue.len() <= cut.end - i && cue.iter().enumerate().all(|(k, w)| key(i + k) == *w));
+            .find(|cue| cue.len() <= cut.end - i && cue.iter().enumerate().all(|(k, w)| key(i + k) == *w))
+            .or(bare_no.then_some(&NO));
         if let Some(cue) = cue {
             free[i.saturating_sub(CORRECTION_WORDS).max(cut.start)..i + cue.len()].fill(true);
         }
@@ -657,6 +667,7 @@ pub(super) mod tests {
         assert!(faithful("So I think, we should go at five. No wait, at six", "We should go at six."));
         assert!(faithful("So I think we should go at 5, no wait, at 6", "I think we should go at 6."));
         assert!(faithful("We can meet on Monday. Sorry, I mean Tuesday at 10 AM", "We can meet on Tuesday at 10 AM."));
+        assert!(faithful("I saw a big tiger, no, a small cat near the gate", "I saw a small cat near the gate."));
         assert!(faithful("things to buy milk eggs bread", "Things to buy:
 - Milk
 - Eggs

@@ -61,11 +61,11 @@ impl Session {
     /// Stops recording, transcribes and formats. Recordings shorter than
     /// an accidental tap come back with no audio.
     pub fn finish(self) -> Result<Outcome> {
-        self.recording.stop()?;
+        crate::timing::measure("stop", || self.recording.stop())?;
         // Pieces done while the key was held (waiting for one in progress).
         let early = self.early.finish();
         let device = self.recording.device().to_string();
-        let audio = self.recording.slice_16k(0, self.recording.len());
+        let audio = crate::timing::measure("resample", || self.recording.slice_16k(0, self.recording.len()));
         if (audio.len() as f32) / (TARGET_RATE as f32) < MIN_DICTATION_SECS {
             return Ok(Outcome { device, ..Outcome::default() });
         }
@@ -88,7 +88,11 @@ impl Session {
         }
 
         let heard = chunks::join(&texts);
-        let text = if heard.is_empty() { String::new() } else { self.formatter.format(&heard, self.smart, &self.words, self.app) };
+        let text = if heard.is_empty() {
+            String::new()
+        } else {
+            crate::timing::measure("format", || self.formatter.format(&heard, self.smart, &self.words, self.app))
+        };
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {heard:?}");
         log::info!("Pasted: {text:?}");
@@ -179,12 +183,13 @@ impl Early {
             log::warn!("Background transcription panicked");
             Progress::default()
         });
+        // "early" ran while the key was held; "early-wait" is the part of
+        // a piece still running at release (or the background thread
+        // noticing the release).
         if progress.pieces > 0 {
-            // "early" ran while the key was held; "early-wait" is the part of
-            // a piece still running at release.
             crate::timing::add("early", progress.busy);
-            crate::timing::add("early-wait", waited.elapsed());
         }
+        crate::timing::add("early-wait", waited.elapsed());
         progress
     }
 }

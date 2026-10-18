@@ -115,7 +115,7 @@ fn values_in_line(line: &str) -> String {
     let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
     let mut i = 1;
     while i < tokens.len() {
-        match correct_at(&tokens, i) {
+        match correct_at(&tokens, i).or_else(|| phrase_at(&tokens, i)) {
             Some((start, cue_end, tail)) => {
                 let capital = starts_sentence(&tokens, start);
                 let mut rest: Vec<String> = tokens.split_off(cue_end);
@@ -198,6 +198,62 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
     let had_prep = j > 0 && PREPOSITIONS.contains(&word(&tokens[j - 1]).as_str());
     let start = if new_prep && had_prep { j - 1 } else { j };
     Some((start, cue_end, tail))
+}
+
+const DETERMINERS: &[&str] = &["a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their", "some"];
+
+/// Words that may follow a corrected phrase ("No, a cat and it was…").
+/// Anything else is likely a new clause: "I bought a car. No, a friend gave
+/// it to me" isn't a correction.
+const FOLLOWERS: &[&str] = &[
+    "and", "but", "so", "or", "because", "then", "here", "there", "yesterday", "today", "tomorrow", "now", "too", "again", "with",
+    "at", "on", "in", "by", "for", "to", "from", "near", "outside", "inside",
+];
+
+fn negated(token: &str) -> bool {
+    let w = word(token);
+    matches!(w.as_str(), "not" | "never" | "no" | "nothing" | "nobody" | "none" | "neither" | "nor" | "without") || w.ends_with("n't")
+}
+
+fn plain_word(token: &str) -> bool {
+    let (_, w, _) = split_punct(token);
+    !w.is_empty() && w.chars().all(char::is_alphabetic) && !DETERMINERS.contains(&w.to_lowercase().as_str())
+}
+
+/// "I watched a tiger. No, a cat and…" → "I watched a cat and…": an
+/// a/the/my… phrase of one or two words replaced right away by another of
+/// the same shape. Not after a negation ("It wasn't a tiger. No, a cat.").
+fn phrase_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)> {
+    let len = cue_at(tokens, i, STRONG_CUES).or_else(|| cue_at(tokens, i, WEAK_CUES))?;
+    let cue_end = i + len;
+    if !DETERMINERS.contains(&word(tokens.get(cue_end)?).as_str()) {
+        return None;
+    }
+    (1..=2).find_map(|m| {
+        // Old phrase: determiner + m words right before the cue.
+        let x = i.checked_sub(m + 1)?;
+        if !DETERMINERS.contains(&word(&tokens[x]).as_str()) || !tokens[x + 1..i].iter().all(|t| plain_word(t)) {
+            return None;
+        }
+        if tokens[x..i - 1].iter().any(|t| !split_punct(t).2.is_empty()) || split_punct(&tokens[i - 1]).2.contains('?') {
+            return None;
+        }
+        // New phrase: determiner + m words, then a natural break.
+        let y_end = cue_end + 1 + m;
+        if y_end > tokens.len() || !tokens[cue_end + 1..y_end].iter().all(|t| plain_word(t)) {
+            return None;
+        }
+        let breaks = !split_punct(&tokens[y_end - 1]).2.is_empty()
+            || tokens.get(y_end).is_none_or(|t| FOLLOWERS.contains(&word(t).as_str()));
+        if !breaks {
+            return None;
+        }
+        let sentence = (0..x).rev().find(|&k| ends_sentence(&tokens[k])).map(|k| k + 1).unwrap_or(0);
+        if tokens[sentence..x].iter().any(|t| negated(t)) {
+            return None;
+        }
+        Some((x, cue_end, Vec::new()))
+    })
 }
 
 /// "Let's meet Monday. Scratch that." → "" (the sentence before the cue
@@ -332,6 +388,27 @@ OUT: {out}
         assert_eq!(values("Send it to Raghav, I mean Jagjeet, by Friday."), "Send it to Jagjeet, by Friday.");
         // A name needs a strong cue: a bare "no" isn't enough.
         assert_eq!(values("I told Raghav no Jagjeet would come"), "I told Raghav no Jagjeet would come");
+    }
+
+    #[test]
+    fn phrases_corrected_on_the_spot() {
+        // Real dictation.
+        assert_eq!(
+            values("So I was walking nearby a lake and I watched a tiger. No a cat and it was so dangerous."),
+            "So I was walking nearby a lake and I watched a cat and it was so dangerous."
+        );
+        assert_eq!(values("Pass me the red one, no, the blue one."), "Pass me the blue one.");
+        assert_eq!(values("I need a pen sorry a pencil"), "I need a pencil");
+        assert_eq!(values("We bought a car. No wait, a bike."), "We bought a bike.");
+        for text in [
+            "It wasn't a tiger. No, a cat.",
+            "Was it a tiger? No, a cat.",
+            "I bought a car. No, a friend gave it to me.",
+            "I want the job. No one else does.",
+            "That is a lot. No, the price is fine.",
+        ] {
+            assert_eq!(values(text), text, "{text}");
+        }
     }
 
     #[test]
