@@ -8,14 +8,21 @@ use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
+use super::corrections;
+
 pub fn apply(text: &str) -> String {
     let mut s = collapse_loops(text.trim());
     s = remove_fillers(&s);
+    s = corrections::restarts(&s);
     s = voice_commands(&s);
     s = numbered_lists(&s);
     s = number_words(&s);
     s = spelled_codes(&s);
     s = times(&s);
+    // After numbers and times are converted, before money: "ten no twenty
+    // dollars" → "20 dollars" → "$20".
+    s = corrections::values(&s);
+    s = corrections::scratch_that(&s);
     s = money_and_percent(&s);
     s = emails_and_domains(&s);
     s = phone_numbers(&s);
@@ -27,7 +34,7 @@ fn re(pattern: &str) -> Regex {
 }
 
 /// Splits a token into (leading punctuation, word, trailing punctuation).
-fn split_punct(token: &str) -> (&str, &str, &str) {
+pub(super) fn split_punct(token: &str) -> (&str, &str, &str) {
     let start = token.find(|c: char| c.is_alphanumeric()).unwrap_or(token.len());
     let end = token
         .rfind(|c: char| c.is_alphanumeric())
@@ -316,7 +323,7 @@ fn scale_number(w: &str) -> Option<u64> {
     Some(v)
 }
 
-fn is_number_word(w: &str) -> bool {
+pub(super) fn is_number_word(w: &str) -> bool {
     // "oh" only counts inside a run (e.g. years), never on its own.
     (small_number(w).is_some() && w != "oh") || tens_number(w).is_some() || scale_number(w).is_some()
 }
@@ -836,7 +843,7 @@ mod tests {
         assert_eq!(apply("Call me at 987-6543210."), "Call me at 98765 43210.");
         assert_eq!(
             apply("Um, so I think, uh, we should go at five. No wait, at six"),
-            "So I think, we should go at five. No wait, at six"
+            "So I think, we should go at six"
         );
         assert_eq!(
             apply("Buy milk, eggs and bread full stop new line call mom."),

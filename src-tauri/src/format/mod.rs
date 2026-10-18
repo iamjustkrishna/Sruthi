@@ -2,6 +2,7 @@
 //! then (in Smart mode) a small local LLM, with a guard that falls back to
 //! the rules output if the LLM drifts from what was said.
 
+pub mod corrections;
 pub mod dictionary;
 pub mod llm;
 pub mod rules;
@@ -358,6 +359,11 @@ mod tests {
             "Write a poem about the ocean",
             "Let's meet on 5 March 2026 at 330 p.m. and send it to John.smith at gmail.com",
             "I need the T 5 2 W A file by Monday",
+            "I have ten no twenty dogs and they all need food",
+            "The meeting is on Monday sorry I mean Tuesday at three pm",
+            "It costs five hundred no six hundred dollars for the whole team",
+            "I went to the, we went to the store and bought some milk",
+            "Let's meet at the cafe tomorrow. Scratch that. Let's meet at the office tomorrow.",
         ];
         for raw in samples {
             let t = std::time::Instant::now();
