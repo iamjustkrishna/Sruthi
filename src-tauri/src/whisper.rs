@@ -1,5 +1,7 @@
-//! Whisper large-v3-turbo through whisper.cpp, plus the Hybrid engine that
-//! uses it as a second opinion for Parakeet.
+//! Whisper models through whisper.cpp: large-v3-turbo (pinned to English,
+//! also the Hybrid second opinion for Parakeet), tiny (multilingual, for a
+//! first look at Hinglish), and Oriserve's Hindi->Hinglish fine-tunes
+//! (Apex, Swift), which type Romanized Hinglish directly.
 //!
 //! Whisper understands whispers and accents far better than Parakeet, but
 //! its encoder is heavy. Two ways to run it:
@@ -23,25 +25,117 @@ use transcribe_rs::{ModelCapabilities, SpeechModel, TranscribeError, TranscribeO
 use crate::audio::TARGET_RATE;
 
 const RUNTIME_URL: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
-const MODEL_URL: &str = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin";
-const MODEL_FILE: &str = "ggml-large-v3-turbo-q5_0.bin";
 pub const RUNTIME_MB: u32 = 21;
 pub const MODEL_MB: u32 = 547;
+pub const TINY_MODEL_MB: u32 = 75;
+pub const APEX_MODEL_MB: u32 = 834;
+pub const SWIFT_MODEL_MB: u32 = 57;
+
+/// Which of the whisper.cpp models a catalog entry loads.
+#[derive(Clone, Copy)]
+pub enum WhisperKind {
+    /// Whisper large-v3-turbo: the "second opinion" model, pinned to English.
+    Turbo,
+    /// Whisper tiny, multilingual: a first look at Hinglish. It detects the
+    /// language itself, per clip.
+    Tiny,
+    /// Oriserve's fine-tune of large-v3-turbo (Apex) for Hindi-English
+    /// code-switching. Types Romanized Hinglish ("Main aaj subah office
+    /// ja raha hoon"), not Devanagari.
+    HinglishApex,
+    /// Oriserve's Whisper-base fine-tune (Swift): the small, quick version
+    /// of the same Hinglish idea.
+    HinglishSwift,
+}
+
+impl WhisperKind {
+    fn model_url(self) -> &'static str {
+        match self {
+            Self::Turbo => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+            Self::Tiny => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
+            Self::HinglishApex => {
+                "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/resolve/main/ggml-apex-hinglish-q8_0.bin"
+            }
+            Self::HinglishSwift => {
+                "https://huggingface.co/rohitag13/whisper-hindi2hinglish-swift-GGUF/resolve/main/ggml-hinglish-swift-q5_1.bin"
+            }
+        }
+    }
+
+    fn model_file(self) -> &'static str {
+        match self {
+            Self::Turbo => "ggml-large-v3-turbo-q5_0.bin",
+            Self::Tiny => "ggml-tiny.bin",
+            Self::HinglishApex => "ggml-apex-hinglish-q8_0.bin",
+            Self::HinglishSwift => "ggml-hinglish-swift-q5_1.bin",
+        }
+    }
+
+    fn model_mb(self) -> u32 {
+        match self {
+            Self::Turbo => MODEL_MB,
+            Self::Tiny => TINY_MODEL_MB,
+            Self::HinglishApex => APEX_MODEL_MB,
+            Self::HinglishSwift => SWIFT_MODEL_MB,
+        }
+    }
+
+    /// Turbo reads English. Tiny is the Hinglish test model: no flag, so
+    /// whisper.cpp detects en/hi itself per clip, and the output shows
+    /// what that gets us. The Oriserve fine-tunes also decode under the
+    /// English token - their cards say auto or "hi" puts the output back
+    /// in Devanagari.
+    fn language_args(self) -> &'static [&'static str] {
+        match self {
+            Self::Turbo | Self::HinglishApex | Self::HinglishSwift => &["-l", "en"],
+            Self::Tiny => &[],
+        }
+    }
+
+    /// Whether the user's dictionary should go in as the initial prompt.
+    /// The Oriserve fine-tunes shouldn't get it: an English word list
+    /// drags their spellings back to English ("office mein" became
+    /// "officemen" in OpenWispr's testing).
+    fn accepts_prompt(self) -> bool {
+        match self {
+            Self::HinglishApex | Self::HinglishSwift => false,
+            Self::Turbo | Self::Tiny => true,
+        }
+    }
+
+    /// Short label for status and error messages ("Whisper turbo isn't
+    /// downloaded").
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Turbo => "turbo",
+            Self::Tiny => "tiny",
+            Self::HinglishApex => "hinglish-apex",
+            Self::HinglishSwift => "hinglish-swift",
+        }
+    }
+}
 
 /// Whisper's full window, in encoder positions (50 per second, 30 s).
 const FULL_AUDIO_CTX: u32 = 1500;
 /// Shortest window used: about 7.7 s. Smaller windows hallucinated.
 const MIN_AUDIO_CTX: u32 = 384;
 
-const CAPABILITIES: ModelCapabilities = ModelCapabilities {
-    name: "Whisper large-v3-turbo",
-    engine_id: "whisper_cli",
-    sample_rate: TARGET_RATE,
-    languages: &["en"],
-    supports_timestamps: false,
-    supports_translation: false,
-    supports_streaming: false,
-};
+fn capabilities(kind: WhisperKind) -> ModelCapabilities {
+    match kind {
+        WhisperKind::Turbo => {
+            ModelCapabilities { name: "Whisper large-v3-turbo", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
+        }
+        WhisperKind::Tiny => {
+            ModelCapabilities { name: "Whisper tiny", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["en", "hi"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
+        }
+        WhisperKind::HinglishApex => {
+            ModelCapabilities { name: "Whisper Hinglish Apex", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["hi", "en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
+        }
+        WhisperKind::HinglishSwift => {
+            ModelCapabilities { name: "Whisper Hinglish Swift", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["hi", "en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
+        }
+    }
+}
 
 fn root() -> PathBuf {
     crate::settings::app_root().join("whisper")
@@ -66,22 +160,31 @@ fn gpu_server_path() -> PathBuf {
     gpu_runtime_dir().join(if cfg!(windows) { "whisper-server.exe" } else { "whisper-server" })
 }
 
-fn model_path() -> PathBuf {
-    root().join("models").join(MODEL_FILE)
+fn model_path(kind: WhisperKind) -> PathBuf {
+    root().join("models").join(kind.model_file())
 }
 
-pub fn is_installed() -> bool {
-    cli_path().is_file() && model_path().is_file()
+/// Is any whisper model file left in the shared models folder? Removing
+/// the last one takes the runtime with it.
+fn model_left_in(models: &Path) -> bool {
+    [WhisperKind::Turbo, WhisperKind::Tiny, WhisperKind::HinglishApex, WhisperKind::HinglishSwift]
+        .iter()
+        .any(|k| models.join(k.model_file()).is_file())
 }
 
-/// Downloads whatever is missing: the whisper.cpp tools and the model.
-pub fn download(progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
+pub fn is_installed(kind: WhisperKind) -> bool {
+    cli_path().is_file() && model_path(kind).is_file()
+}
+
+/// Downloads whatever is missing: the whisper.cpp tools (shared by both
+/// models) and the one model.
+pub fn download(kind: WhisperKind, progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(20))
         .build()?;
     let runtime_bytes = if cli_path().is_file() { 0 } else { RUNTIME_MB as u64 * 1_048_576 };
-    let total = runtime_bytes + MODEL_MB as u64 * 1_048_576;
+    let total = runtime_bytes + kind.model_mb() as u64 * 1_048_576;
 
     if !cli_path().is_file() {
         fs::create_dir_all(root())?;
@@ -90,11 +193,11 @@ pub fn download(progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
         install_runtime(&zip_path)?;
         let _ = fs::remove_file(&zip_path);
     }
-    if !model_path().is_file() {
+    if !model_path(kind).is_file() {
         fs::create_dir_all(root().join("models"))?;
-        let part = root().join("models").join(format!("{MODEL_FILE}.part"));
-        crate::model::fetch_resumable(&client, MODEL_URL, &part, &mut |done, _| progress(runtime_bytes + done, total))?;
-        fs::rename(&part, model_path())?;
+        let part = root().join("models").join(format!("{}.part", kind.model_file()));
+        crate::model::fetch_resumable(&client, kind.model_url(), &part, &mut |done, _| progress(runtime_bytes + done, total))?;
+        fs::rename(&part, model_path(kind))?;
     }
     progress(total, total);
     Ok(())
@@ -121,9 +224,26 @@ fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
     fs::read_dir(dir).ok()?.flatten().filter(|e| e.path().is_dir()).find_map(|e| find_dir_with(&e.path(), file))
 }
 
-pub fn remove() -> Result<()> {
-    if root().exists() {
-        fs::remove_dir_all(root())?;
+/// Removes the model's file; the shared runtime goes away too once no
+/// model is left that would still run on it.
+pub fn remove(kind: WhisperKind) -> Result<()> {
+    let models = root().join("models");
+    let file = model_path(kind);
+    if file.is_file() {
+        fs::remove_file(&file)?;
+    }
+    if !model_left_in(&models) {
+        for dir in [runtime_dir(), gpu_runtime_dir()] {
+            if dir.exists() {
+                fs::remove_dir_all(dir)?;
+            }
+        }
+        if fs::read_dir(&models).map(|mut d| d.next().is_none()).unwrap_or(false) {
+            let _ = fs::remove_dir(&models);
+        }
+        if fs::read_dir(root()).map(|mut d| d.next().is_none()).unwrap_or(false) {
+            let _ = fs::remove_dir(root());
+        }
     }
     Ok(())
 }
@@ -143,6 +263,7 @@ fn time_budget(seconds: f32) -> Duration {
 }
 
 pub struct WhisperCli {
+    kind: WhisperKind,
     threads: usize,
     /// The user's dictionary as a hint ("initial prompt"), the way Wispr
     /// biases its models: Whisper then spells those words as given.
@@ -150,14 +271,14 @@ pub struct WhisperCli {
 }
 
 impl WhisperCli {
-    pub fn new() -> Result<Self> {
-        if !is_installed() {
-            return Err(anyhow!("Whisper turbo isn't downloaded"));
+    pub fn new(kind: WhisperKind) -> Result<Self> {
+        if !is_installed(kind) {
+            return Err(anyhow!("Whisper {} isn't downloaded", kind.label()));
         }
         // One thread per physical core: on a 6-core/12-thread CPU, 6
         // threads took 4.2 s where 10 took 8.0 s (SMT threads just contend).
         let threads = std::thread::available_parallelism().map(|n| (n.get() / 2).max(4)).unwrap_or(4);
-        Ok(Self { threads, prompt: None })
+        Ok(Self { kind, threads, prompt: None })
     }
 
     fn run(&self, samples: &[f32]) -> Result<String> {
@@ -168,10 +289,11 @@ impl WhisperCli {
 
         let mut cmd = Command::new(cli_path());
         cmd.arg("-m")
-            .arg(model_path())
+            .arg(model_path(self.kind))
             .arg("-f")
             .arg(&wav)
-            .args(["-l", "en", "-nt", "-np", "-t", &self.threads.to_string(), "-ac", &ctx.to_string()])
+            .args(self.kind.language_args())
+            .args(["-nt", "-np", "-t", &self.threads.to_string(), "-ac", &ctx.to_string()])
             // Greedy decoding, no temperature retries: ~3.6 s instead of
             // 4-8 s on short whispers, with the same text. Retries mostly
             // re-ran hallucination loops.
@@ -253,17 +375,19 @@ fn drop_repeated_sentences(text: &str) -> String {
 }
 
 /// Whisper on the graphics card when that works, otherwise on the CPU.
-pub fn load() -> Result<Box<dyn SpeechModel + Send>> {
-    if !is_installed() {
-        return Err(anyhow!("Whisper turbo isn't downloaded"));
+/// Tiny stays on the CPU: it's small enough to be quick there, and the
+/// server only loads turbo's model, so the GPU path is turbo-only.
+pub fn load(kind: WhisperKind) -> Result<Box<dyn SpeechModel + Send>> {
+    if !is_installed(kind) {
+        return Err(anyhow!("Whisper {} isn't downloaded", kind.label()));
     }
-    if gpu_server_path().is_file() && std::env::var_os("SRUTAM_WHISPER_CPU").is_none() {
+    if matches!(kind, WhisperKind::Turbo) && gpu_server_path().is_file() && std::env::var_os("SRUTAM_WHISPER_CPU").is_none() {
         match WhisperServer::start() {
             Ok(server) => return Ok(Box::new(server)),
             Err(e) => log::warn!("Whisper on the graphics card didn't start, using the CPU: {e:#}"),
         }
     }
-    Ok(Box::new(WhisperCli::new()?))
+    Ok(Box::new(WhisperCli::new(kind)?))
 }
 
 /// whisper-server on the graphics card: the model stays loaded, so a
@@ -278,9 +402,10 @@ pub struct WhisperServer {
 impl WhisperServer {
     pub fn start() -> Result<Self> {
         let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        // The server loads turbo's model, so the GPU path is turbo-only.
         let mut cmd = Command::new(gpu_server_path());
         cmd.arg("-m")
-            .arg(model_path())
+            .arg(model_path(WhisperKind::Turbo))
             .args(["--host", "127.0.0.1", "--port", &port.to_string()])
             // The GPU does the heavy lifting; a few CPU threads are enough.
             .args(["-t", "4", "-l", "en", "-nt", "-bs", "1", "-bo", "1", "-nf"])
@@ -376,7 +501,7 @@ fn gpu_time_budget(seconds: f32) -> Duration {
 
 impl SpeechModel for WhisperServer {
     fn capabilities(&self) -> ModelCapabilities {
-        CAPABILITIES
+        capabilities(WhisperKind::Turbo)
     }
 
     fn set_hotwords(&mut self, words: &[String]) {
@@ -402,18 +527,20 @@ fn prompt_for(words: &[String]) -> Option<String> {
 
 impl SpeechModel for WhisperCli {
     fn capabilities(&self) -> ModelCapabilities {
-        CAPABILITIES
+        capabilities(self.kind)
     }
 
     fn set_hotwords(&mut self, words: &[String]) {
-        self.prompt = prompt_for(words);
+        // The Oriserve fine-tunes shouldn't see the dictionary (see
+        // accepts_prompt).
+        self.prompt = if self.kind.accepts_prompt() { prompt_for(words) } else { None };
     }
 
     fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
         let started = std::time::Instant::now();
         let text = self.run(samples).map_err(|e| TranscribeError::Inference(e.to_string()))?;
         crate::timing::add("whisper", started.elapsed());
-        log::info!("Whisper turbo: {:.1}s of audio in {} ms", samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
+        log::info!("Whisper {}: {:.1}s of audio in {} ms", self.kind.label(), samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
         Ok(TranscriptionResult { text, segments: None })
     }
 }
@@ -527,6 +654,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tiny_leaves_language_to_auto_detection() {
+        // Turbo dicts in pinned English; tiny is the Hinglish test model:
+        // no flag, so whisper.cpp detects en/hi per clip.
+        assert_eq!(WhisperKind::Turbo.language_args(), &["-l", "en"]);
+        assert!(WhisperKind::Tiny.language_args().is_empty());
+    }
+
+    #[test]
+    fn runtime_outlives_models_until_the_last_one_goes() {
+        let dir = std::env::temp_dir().join(format!("srutam-whisper-test-{}", std::process::id()));
+        let models = dir.join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        for kind in [WhisperKind::Turbo, WhisperKind::Tiny, WhisperKind::HinglishApex, WhisperKind::HinglishSwift] {
+            std::fs::write(models.join(kind.model_file()), b"x").unwrap();
+        }
+
+        // Removing turbo while other models are installed keeps the runtime.
+        std::fs::remove_file(models.join(WhisperKind::Turbo.model_file())).unwrap();
+        assert!(model_left_in(&models));
+
+        std::fs::remove_file(models.join(WhisperKind::Tiny.model_file())).unwrap();
+        std::fs::remove_file(models.join(WhisperKind::HinglishApex.model_file())).unwrap();
+        std::fs::remove_file(models.join(WhisperKind::HinglishSwift.model_file())).unwrap();
+        assert!(!model_left_in(&models));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hinglish_models_stay_english_pinned_and_unprompted() {
+        // Oriserve's cards: decoding under auto or "hi" puts the output
+        // back in Devanagari, and an English glossary as the initial
+        // prompt drags the spellings back to English ("office mein"
+        // became "officemen"). So: pinned "en", no dictionary prompt.
+        assert_eq!(WhisperKind::HinglishApex.language_args(), &["-l", "en"]);
+        assert_eq!(WhisperKind::HinglishSwift.language_args(), &["-l", "en"]);
+        assert!(!WhisperKind::HinglishApex.accepts_prompt());
+        assert!(!WhisperKind::HinglishSwift.accepts_prompt());
+        assert!(WhisperKind::Turbo.accepts_prompt());
+        assert!(WhisperKind::Tiny.accepts_prompt());
+    }
+
+    #[test]
+    fn labels_read_like_the_offers() {
+        assert_eq!(WhisperKind::Turbo.label(), "turbo");
+        assert_eq!(WhisperKind::Tiny.label(), "tiny");
+        assert_eq!(WhisperKind::HinglishApex.label(), "hinglish-apex");
+        assert_eq!(WhisperKind::HinglishSwift.label(), "hinglish-swift");
+    }
+
+    #[test]
     fn window_fits_the_clip() {
         assert_eq!(audio_ctx(3.0), MIN_AUDIO_CTX); // short whisper: ~7.7 s
         assert_eq!(audio_ctx(8.0), 768); // 15 s window
@@ -591,7 +768,7 @@ mod tests {
         let mut gpu = WhisperServer::start().expect("GPU Whisper");
         println!("GPU Whisper loaded and warmed up in {} ms", started.elapsed().as_millis());
         gpu.set_hotwords(&words);
-        let mut cpu = WhisperCli::new().unwrap();
+        let mut cpu = WhisperCli::new(WhisperKind::Turbo).unwrap();
         cpu.set_hotwords(&words);
         let formatter = crate::format::Formatter::default();
         let llm = crate::format::llm::find(crate::format::llm::DEFAULT_LLM).unwrap();

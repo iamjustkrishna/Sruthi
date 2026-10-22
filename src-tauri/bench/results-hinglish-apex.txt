@@ -1,0 +1,69 @@
+﻿cargo :     Finished `release` profile [optimized] target(s) in 0.98s
+At C:\Users\krish\OneDrive\Documents\Projects\Srutam_Dictate\src-tauri\bench\run-benchmark.ps1:19 char:5
++     cargo test --release --lib transcribes_wav_with_installed_model - ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `r...get(s) in 0.98s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+     Running unittests src\lib.rs (target\release\deps\srutam_dictate_lib-1d24554ebc461fbb.exe)
+
+running 1 test
+[hinglish-apex] iacc01.wav (16.0s audio, 11318 ms)
+  raw:   That's a barren land, barren padhi hai. Aisa lagta hai ki yah desert hai ek aur there are small small mountains are there. Jo mountains hai that are short height mountain jisse ki saaph nazar aata hai ki yah ek desert kapaat hai.
+  rules: That's a barren land, barren padhi hai. Aisa lagta hai ki yah desert hai ek aur there are small small mountains are there. Jo mountains hai that are short height mountain jisse ki saaph nazar aata hai ki yah ek desert kapaat hai.
+[hinglish-apex] iacc02.wav (14.4s audio, 10059 ms)
+  raw:   Next image, next image is of Christmas tree. Christmas tree yah bahut achchhe se decorate kiya hai Christmas tree ko. Chhote chhote toys se decorate kiya. There are bells, there are small small toys are there.
+  rules: Next image is of Christmas tree. Christmas tree yah bahut achchhe se decorate kiya hai Christmas tree ko. Chhote chhote toys se decorate kiya. There are bells, there are small small toys are there.
+[hinglish-apex] iacc03.wav (9.3s audio, 7334 ms)
+  raw:   Islie achchha lagta hai ki ham log jaise ki dehraadoon mein rahte hain. Masoori paas mein hai, mountains bahut hain aur and I love mountains.
+  rules: Islie achchha lagta hai ki ham log jaise ki dehraadoon mein rahte hain. Masoori paas mein hai, mountains bahut hain aur and I love mountains.
+[hinglish-apex] iacc04.wav (13.8s audio, 9435 ms)
+  raw:   Ise sun ke donon ne socha ki yah unka next adventure spot ho sakta hai. So chintoo aur raajoo ne apne jhole mein kuchh snacks aur paani pack kiya aur gupha ki taraph chal die.
+  rules: Ise sun ke donon ne socha ki yah unka next adventure spot ho sakta hai. So chintoo aur raajoo ne apne jhole mein kuchh snacks aur paani pack kiya aur gupha ki taraph chal die.
+[hinglish-apex] iacc05.wav (8.4s audio, 8151 ms)
+  raw:   Better ki hometown par ho aur baaki feel karo to family vagairah ke saath thoda apne man ka khaana bana deti hai mommy to vah better rahta hai.
+  rules: Better ki hometown par ho aur baaki feel karo to family vagairah ke saath thoda apne man ka khaana bana deti hai mommy to vah better rahta hai.
+[hinglish-apex] iacc06.wav (10.1s audio, 8164 ms)
+  raw:   Sooraj ast hone par vir aur diyaani ek chhupi gupha ko dhoondhane ki yaatra par niklane ka faisla kiya. After searching high and low unhonne city ke kinaare ek old.
+  rules: Sooraj ast hone par vir aur diyaani ek chhupi gupha ko dhoondhane ki yaatra par niklane ka faisla kiya. After searching high and low unhonne city ke kinaare ek old.
+test model::tests::transcribes_wav_with_installed_model has been running for over 60 seconds
+[hinglish-apex] iacc07.wav (10.5s audio, 10796 ms)
+  raw:   Pleading ki mere ko kuchh achchha sa khaane ka do chhatpata sa kyonki jo bhi aapne plate mein diya it is not good, I am not liking it. So yah picture usko depict kar rahi hai.
+  rules: Pleading ki mere ko kuchh achchha sa khaane ka do chhatpata sa kyonki jo bhi aapne plate mein diya it is not good, I am not liking it. So yah picture usko depict kar rahi hai.
+[hinglish-apex] iacc08.wav (9.4s audio, 9205 ms)
+  raw:   Chintoo aur raajoo ne guardian ke die gae task complete kar lie aur har ek task ke baad unhen gupha ka secret thoda aur samajh aa gaya.
+  rules: Chintoo aur raajoo ne guardian ke die gae task complete kar lie aur har ek task ke baad unhen gupha ka secret thoda aur samajh aa gaya.
+[hinglish-apex] slr01.wav (14.0s audio, 10541 ms)
+  raw:   Jaise ki number of words, number of lines, number of characters, number of non space characters, size of file in bites ko pradarshit karta hai. G edit text.
+  rules: Jaise ki number of words, number of lines, number of characters, number of non space characters, size of file in bites ko pradarshit karta hai. G edit text.
+[hinglish-apex] slr02.wav (12.0s audio, 10822 ms)
+  raw:   Hamne g edit text editor mein default plugin jaise sort, change case, spell check kar, insert date and time ke baare mein sikha. Yahaan aapke lie.
+  rules: Hamne g edit text editor mein default plugin jaise sort, change case, spell check kar, insert date and time ke baare mein sikha. Yahaan aapke lie.
+[hinglish-apex] slr03.wav (12.0s audio, 10488 ms)
+  raw:   It can be installed on all computers without restriction or needing to pay license fees to vendors. Dhyaan den ki vilopan.
+  rules: It can be installed on all computers without restriction or needing to pay license fees to vendors. Dhyaan den ki vilopan.
+[hinglish-apex] slr04.wav (12.0s audio, 9840 ms)
+  raw:   Click karen. Ab jaise hi ham text likhate hain this is a STP aur space bar dabaate hain. Aap dekhenge ki STP sankshiptikran spoken tutorial project mein badla ja
+  rules: Click karen. Ab jaise hi ham text likhate hain this is a STP aur space bar dabaate hain. Aap dekhenge ki STP sankshiptikran spoken tutorial project mein badla ja
+[hinglish-apex] slr05.wav (11.0s audio, 9504 ms)
+  raw:   Online test pass karne vaalon ko pramaan patr dete hain. Adhik jaankaari ke lie krpaya contact at spoken hyphen tutorial dot org par likhen.
+  rules: Online test pass karne vaalon ko pramaan patr dete hain. Adhik jaankaari ke lie krpaya contact at spoken hyphen tutorial.org par likhen.
+[hinglish-apex] slr06.wav (10.0s audio, 9346 ms)
+  raw:   Udaahran svaroop, slide number nau aur slide number das mein badlaav karne ke lie slide number das par click karen aur slide ko slide number nau ke aage drag karen.
+  rules: Udaahran svaroop, slide number nau aur slide number das mein badlaav karne ke lie slide number das par click karen aur slide ko slide number nau ke aage drag karen.
+[hinglish-apex] slr07.wav (9.0s audio, 8013 ms)
+  raw:   Fill drop down menu se color option chunen. Blue 8 chunen aur ok par click karen. Dhyaan den.
+  rules: Fill drop down menu se color option chunen. Blue 8 chunen aur ok par click karen. Dhyaan den.
+[hinglish-apex] slr08.wav (9.0s audio, 7269 ms)
+  raw:   Impress window ke oopri baen kone par font type drop down par click karen aur TLWG mono chunen.
+  rules: Impress window ke oopri baen kone par font type drop down par click karen aur TLWG mono chunen.
+[hinglish-apex] slr09.wav (8.0s audio, 6814 ms)
+  raw:   Buy panel mein phir Gmail account chunen. Ab server settings par click karen.
+  rules: Buy panel mein phir Gmail account chunen. Ab server settings par click karen.
+[hinglish-apex] slr10.wav (8.0s audio, 7060 ms)
+  raw:   Saving folder field mein sthaan chunen jahaan aap file ko save karna chaahte hain aur save par click karen.
+  rules: Saving folder field mein sthaan chunen jahaan aap file ko save karna chaahte hain aur save par click karen.
+test model::tests::transcribes_wav_with_installed_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 89 filtered out; finished in 164.24s
+

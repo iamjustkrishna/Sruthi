@@ -25,3 +25,9 @@ dist-ssr
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Benchmark audio (downloaded from open datasets, e.g. HiACC / MUCS SLR104);
+# the runner script and refs stay versioned.
+bench/hinglish/
+bench/results-*
+.superpowers/

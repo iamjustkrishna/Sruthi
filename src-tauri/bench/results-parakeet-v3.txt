@@ -1,0 +1,322 @@
+﻿cargo :    Compiling windows-link v0.2.1
+At C:\Users\krish\OneDrive\Documents\Projects\Srutam_Dictate\src-tauri\bench\run-benchmark.ps1:19 char:5
++     cargo test --release --lib transcribes_wav_with_installed_model - ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (   Compiling windows-link v0.2.1:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+   Compiling serde_core v1.0.229
+   Compiling memchr v2.8.3
+   Compiling zerofrom v0.1.8
+   Compiling stable_deref_trait v1.2.1
+   Compiling windows-sys v0.61.2
+   Compiling yoke v0.8.3
+   Compiling itoa v1.0.18
+   Compiling smallvec v1.16.3
+   Compiling once_cell v1.21.4
+   Compiling pin-project-lite v0.2.17
+   Compiling bytes v1.12.1
+   Compiling windows-result v0.4.1
+   Compiling windows-strings v0.5.1
+   Compiling zerovec v0.11.8
+   Compiling cfg-if v1.0.5
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling log v0.4.34
+   Compiling zerotrie v0.2.5
+   Compiling utf8_iter v1.0.4
+   Compiling icu_properties_data v2.3.0
+   Compiling icu_normalizer_data v2.3.0
+   Compiling windows-core v0.62.2
+   Compiling equivalent v1.0.3
+   Compiling hashbrown v0.17.1
+   Compiling percent-encoding v2.3.2
+   Compiling http v1.5.0
+   Compiling aho-corasick v1.1.5
+   Compiling tracing-core v0.1.36
+   Compiling regex-syntax v0.8.11
+   Compiling fnv v1.0.7
+   Compiling thiserror v2.0.21
+   Compiling windows-threading v0.2.1
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling tracing v0.1.44
+   Compiling futures-core v0.3.34
+   Compiling icu_locale_core v2.3.0
+   Compiling indexmap v2.14.2
+   Compiling zmij v1.0.23
+   Compiling windows-future v0.3.2
+   Compiling windows-collections v0.3.2
+   Compiling windows-numerics v0.3.1
+   Compiling num-traits v0.2.19
+   Compiling form_urlencoded v1.2.2
+   Compiling deranged v0.5.9
+   Compiling windows v0.62.2
+   Compiling futures-sink v0.3.34
+   Compiling serde v1.0.229
+   Compiling icu_provider v2.3.1
+   Compiling bitflags v2.13.2
+   Compiling serde_json v1.0.154
+   Compiling powerfmt v0.2.1
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling regex-automata v0.4.18
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling base64 v0.23.1
+   Compiling time v0.3.55
+   Compiling dpi v0.1.2
+   Compiling crossbeam-utils v0.8.23
+   Compiling windows-link v0.1.3
+   Compiling simd-adler32 v0.3.10
+   Compiling raw-window-handle v0.6.2
+   Compiling alloc-no-stdlib v3.0.0
+   Compiling scopeguard v1.2.0
+   Compiling idna_adapter v1.2.2
+   Compiling alloc-stdlib v0.3.0
+   Compiling typeid v1.0.3
+   Compiling idna v1.1.0
+   Compiling libc v0.2.190
+   Compiling uuid v1.28.0
+   Compiling crossbeam-channel v0.5.17
+   Compiling zeroize v1.9.1
+   Compiling dunce v1.0.5
+   Compiling slab v0.4.12
+   Compiling url v2.5.8
+   Compiling web-time v1.1.0
+   Compiling winnow v1.0.4
+   Compiling siphasher v1.0.4
+   Compiling cfb v0.14.0
+   Compiling erased-serde v0.4.10
+   Compiling phf_shared v0.13.1
+   Compiling brotli-decompressor v6.0.1
+   Compiling toml_parser v1.1.5+spec-1.1.0
+   Compiling regex v1.13.1
+   Compiling jsonptr v0.7.1
+   Compiling serde_spanned v1.1.2
+   Compiling toml_datetime v1.1.2+spec-1.1.0
+   Compiling aws-lc-sys v0.46.0
+   Compiling quick-xml v0.42.0
+   Compiling windows-version v0.1.7
+   Compiling unicode-segmentation v1.13.3
+   Compiling toml_writer v1.1.3+spec-1.1.0
+   Compiling adler2 v2.0.1
+   Compiling parking_lot_core v0.9.12
+   Compiling anyhow v1.0.104
+   Compiling toml v1.1.8+spec-1.1.0
+   Compiling json-patch v4.2.0
+   Compiling aws-lc-rs v1.18.2
+   Compiling crc32fast v1.5.2
+   Compiling brotli v9.0.0
+   Compiling plist v1.10.1
+   Compiling urlpattern v0.6.0
+   Compiling infer v0.22.0
+   Compiling mio v1.2.4
+   Compiling socket2 v0.6.5
+   Compiling winapi-util v0.1.11
+   Compiling phf v0.13.1
+   Compiling same-file v1.0.6
+   Compiling cookie v0.18.2
+   Compiling walkdir v2.5.0
+   Compiling tokio v1.53.3
+   Compiling serde-untagged v0.1.9
+   Compiling rustls-pki-types v1.15.1
+   Compiling lock_api v0.4.14
+   Compiling windows-strings v0.4.2
+   Compiling windows-result v0.3.4
+   Compiling num-integer v0.1.47
+   Compiling serde_with v3.24.0
+   Compiling http-body v1.1.0
+   Compiling futures-io v0.3.34
+   Compiling ctor v1.0.13
+   Compiling glob v0.3.4
+   Compiling semver v1.0.28
+   Compiling futures-task v0.3.34
+   Compiling untrusted v0.9.0
+   Compiling parking_lot v0.12.5
+   Compiling rustls-webpki v0.103.15
+   Compiling futures-util v0.3.34
+   Compiling windows-core v0.61.2
+   Compiling miniz_oxide v0.9.1
+   Compiling keyboard-types v0.8.3
+   Compiling atomic-waker v1.1.2
+   Compiling zlib-rs v0.6.8
+   Compiling mime v0.3.17
+   Compiling try-lock v0.2.5
+   Compiling subtle v2.6.1
+   Compiling tower-service v0.3.3
+   Compiling option-ext v0.2.0
+   Compiling rustls v0.23.46
+   Compiling dirs-sys v0.5.0
+   Compiling want v0.3.2
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling httparse v1.10.1
+   Compiling softbuffer v0.4.8
+   Compiling muda v0.20.0
+   Compiling tauri-utils v2.10.2
+   Compiling num-complex v0.4.6
+   Compiling futures-channel v0.3.34
+   Compiling rawpointer v0.2.1
+   Compiling matrixmultiply v0.3.11
+   Compiling serialize-to-javascript v0.1.2
+   Compiling windows-targets v0.52.6
+   Compiling getrandom v0.3.4
+   Compiling dirs v7.0.0
+   Compiling window-vibrancy v0.8.1
+   Compiling miniz_oxide v0.8.9
+   Compiling flate2 v1.1.10
+   Compiling windows-threading v0.1.0
+   Compiling tray-icon v0.25.1
+   Compiling fdeflate v0.3.7
+   Compiling sync_wrapper v1.0.2
+   Compiling windows-registry v0.6.1
+   Compiling utf8parse v0.2.2
+   Compiling tokio-util v0.7.20
+   Compiling ipnet v2.12.2
+   Compiling strength_reduce v0.2.4
+   Compiling anstyle v1.0.14
+   Compiling once_cell_polyfill v1.70.2
+   Compiling tower-layer v0.3.3
+   Compiling pxfm v0.1.30
+   Compiling heck v0.5.0
+   Compiling h2 v0.4.20
+   Compiling transpose v0.2.3
+   Compiling tower v0.5.3
+   Compiling anstyle-wincon v3.0.11
+   Compiling anstyle-parse v1.0.0
+   Compiling ndarray v0.17.2
+   Compiling png v0.18.1
+   Compiling windows-future v0.2.1
+   Compiling ort-sys v2.0.0-rc.12
+   Compiling windows-sys v0.59.0
+   Compiling windows-numerics v0.2.0
+   Compiling tokio-rustls v0.26.6
+   Compiling windows-collections v0.2.0
+   Compiling primal-check v0.3.4
+   Compiling termcolor v1.4.1
+   Compiling is-terminal v0.4.17
+   Compiling anstyle-query v1.1.5
+   Compiling keyboard-types v0.7.0
+   Compiling moxcms v0.8.1
+   Compiling bytemuck v1.25.2
+   Compiling bumpalo v3.20.3
+   Compiling hyper v1.12.0
+   Compiling unicase v2.10.0
+   Compiling jiff-core v0.1.1
+   Compiling colorchoice v1.0.5
+   Compiling core_detect v1.0.0
+   Compiling humantime v2.4.0
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling byteorder-lite v0.1.0
+   Compiling error-code v3.4.0
+   Compiling simdutf8 v0.1.5
+   Compiling clipboard-win v5.4.1
+   Compiling encoding_rs v0.8.42
+   Compiling jiff v0.2.38
+   Compiling hyper-util v0.1.21
+   Compiling anstream v1.0.0
+   Compiling env_logger v0.10.2
+   Compiling global-hotkey v0.8.0
+   Compiling mime_guess v2.0.5
+   Compiling zopfli v0.8.4
+   Compiling ort v2.0.0-rc.12
+   Compiling image v0.25.10
+   Compiling hyper-rustls v0.27.10
+   Compiling rustfft v6.4.1
+   Compiling windows v0.61.3
+   Compiling rustls-platform-verifier v0.7.1
+   Compiling derive_builder v0.20.2
+   Compiling tower-http v0.6.11
+   Compiling http-body-util v0.1.5
+   Compiling env_filter v2.0.0
+   Compiling open v5.4.4
+   Compiling filetime v0.2.29
+   Compiling libloading v0.8.9
+   Compiling typed-path v0.12.3
+   Compiling dasp_sample v0.11.0
+   Compiling base64 v0.22.1
+   Compiling hound v3.5.1
+   Compiling arboard v3.7.0
+   Compiling ash v0.38.0+1.3.281
+   Compiling zip v9.0.3
+   Compiling tar v0.4.46
+   Compiling reqwest v0.13.5
+   Compiling transcribe-rs v0.3.12 
+(C:\Users\krish\OneDrive\Documents\Projects\Srutam_Dictate\src-tauri\vendor\transcribe-rs)
+   Compiling env_logger v0.11.11
+   Compiling enigo v0.6.1
+   Compiling webview2-com-sys v0.39.1
+   Compiling tao v0.37.1
+   Compiling cpal v0.18.2
+   Compiling webview2-com v0.39.1
+   Compiling tauri-runtime v2.12.2
+   Compiling wry v0.57.0
+   Compiling tauri-runtime-wry v2.12.2
+   Compiling tauri v2.12.4
+   Compiling tauri-plugin-opener v2.7.2
+   Compiling tauri-plugin-global-shortcut v2.4.1
+   Compiling srutam-dictate v0.1.0 (C:\Users\krish\OneDrive\Documents\Projects\Srutam_Dictate\src-tauri)
+    Finished `release` profile [optimized] target(s) in 3m 24s
+     Running unittests src\lib.rs (target\release\deps\srutam_dictate_lib-1d24554ebc461fbb.exe)
+
+running 1 test
+[parakeet-v3] iacc01.wav (16.0s audio, 1791 ms)
+  raw:   That's a barren land, barren, as a lapta desert, or there are small small mountains are there. That are short height mountain.
+  rules: That's a barren land, barren, as a lapta desert, or there are small small mountains are there. That are short height mountain.
+[parakeet-v3] iacc02.wav (14.4s audio, 1681 ms)
+  raw:   Next image, next image is of Christmas tree. Christmas tree bo decorate Christmas tree. Toys decorate there are bells, there are small small toys are there.
+  rules: Next image is of Christmas tree. Christmas tree bo decorate Christmas tree. Toys decorate there are bells, there are small small toys are there.
+[parakeet-v3] iacc03.wav (9.3s audio, 816 ms)
+  raw:   This is the hamluk.
+  rules: This is the hamluk.
+[parakeet-v3] iacc04.wav (13.8s audio, 1184 ms)
+  raw:   He said Sunke Dunune Swaki Ye Unka Next Adventure Sport Hosakta Hai. So Chinto Rajune Apne Jolai Snakes or A Pani Pakya or Gufa Gitrav Shalti.
+  rules: He said Sunke Dunune Swaki Ye Unka Next Adventure Sport Hosakta Hai. So Chinto Rajune Apne Jolai Snakes or A Pani Pakya or Gufa Gitrav Shalti.
+[parakeet-v3] iacc05.wav (8.4s audio, 662 ms)
+  raw:   Better hometown, family.
+  rules: Better hometown, family.
+[parakeet-v3] iacc06.wav (10.1s audio, 826 ms)
+  raw:   Sure as used on a weer or the Chupikufa goodhun negatrapan nickel ne cafes like yeah, after searching high and low unity egg old.
+  rules: Sure as used on a weer or the Chupikufa goodhun negatrapan nickel ne cafes like yeah, after searching high and low unity egg old.
+[parakeet-v3] iacc07.wav (10.5s audio, 801 ms)
+  raw:   Pleading. So this picture was a good thing.
+  rules: Pleading. So this picture was a good thing.
+[parakeet-v3] iacc08.wav (9.4s audio, 695 ms)
+  raw:   Chintu or Rajune Garjine K De Gay Task complete karly or her ek task kevad une guha secret thora or samaja.
+  rules: Chintu or Rajune Garjine K De Gay Task complete karly or her ek task kevad une guha secret thora or samaja.
+[parakeet-v3] slr01.wav (14.0s audio, 1090 ms)
+  raw:   Jesse, number of words, number of lines, number of characters, number of non space characters, size of file in by ta hai. G added text head.
+  rules: Jesse, number of words, number of lines, number of characters, number of non space characters, size of file in by ta hai. G added text head.
+[parakeet-v3] slr02.wav (12.0s audio, 925 ms)
+  raw:   G edit text editor default plugins, Jess is sort, change case, spell checker, insert date and time.
+  rules: G edit text editor default plugins, Jess is sort, change case, spell checker, insert date and time.
+[parakeet-v3] slr03.wav (12.0s audio, 919 ms)
+  raw:   It can be installed on all computers without restriction or needing to pay license fees to vendors.
+  rules: It can be installed on all computers without restriction or needing to pay license fees to vendors.
+[parakeet-v3] slr04.wav (12.0s audio, 923 ms)
+  raw:   
+  rules: 
+  (model heard nothing)
+[parakeet-v3] slr05.wav (11.0s audio, 887 ms)
+  raw:   Online test pass karneva loco Pramad Padradheti hai. Adikjankari contact at spokenhypertutorial.org.
+  rules: Online test pass karneva loco Pramad Padradheti hai. Adikjankari contact at spokenhypertutorial.org.
+[parakeet-v3] slr06.wav (10.0s audio, 833 ms)
+  raw:   Udhana roop slide number no or slide number thus, slide number thus per click care, or slide go slide number no cagate drag cur.
+  rules: Udhana roop slide number no or slide number thus per click care, or slide go slide number no cagate drag cur.
+[parakeet-v3] slr07.wav (9.0s audio, 705 ms)
+  raw:   Till drop down menu say color option to Blue 8 to new or OK per click.
+  rules: Till drop down menu say color option to Blue 8 to new or OK per click.
+[parakeet-v3] slr08.wav (9.0s audio, 710 ms)
+  raw:   Impress window K Upari Bainkune per font type drop down per click or TLWG Mono Chune.
+  rules: Impress window K Upari Bainkune per font type drop down per click or TLWG Mono Chune.
+[parakeet-v3] slr09.wav (8.0s audio, 610 ms)
+  raw:   BuyPalme for the Gmail account server settings per click
+  rules: BuyPalme for the Gmail account server settings per click
+[parakeet-v3] slr10.wav (8.0s audio, 593 ms)
+  raw:   Save in folder field.
+  rules: Save in folder field.
+test model::tests::transcribes_wav_with_installed_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 89 filtered out; finished in 19.71s
+

@@ -13,7 +13,7 @@ use transcribe_rs::onnx::parakeet::ParakeetModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::SpeechModel;
 
-use crate::whisper;
+use crate::whisper::{self, WhisperKind};
 
 pub const DEFAULT_MODEL: &str = "parakeet-v3";
 
@@ -27,7 +27,7 @@ enum Engine {
     MoonshineBase,
     MoonshineStreaming,
     /// whisper.cpp command-line tool (see whisper.rs).
-    Whisper,
+    Whisper(WhisperKind),
     /// Parakeet V3 first, Whisper turbo when Parakeet clearly missed speech.
     Hybrid,
 }
@@ -38,7 +38,7 @@ enum Source {
     /// Individual files: (url, file name inside the model directory).
     Files(&'static [(&'static str, &'static str)]),
     /// whisper.cpp tools + model, managed by whisper.rs.
-    Whisper,
+    Whisper(WhisperKind),
     /// Made of other entries; downloads whichever parts are missing.
     Parts,
 }
@@ -88,8 +88,38 @@ pub const CATALOG: &[ModelInfo] = &[
         languages: "English",
         size_mb: whisper::RUNTIME_MB + whisper::MODEL_MB,
         dir_name: "",
-        engine: Engine::Whisper,
-        source: Source::Whisper,
+        engine: Engine::Whisper(WhisperKind::Turbo),
+        source: Source::Whisper(WhisperKind::Turbo),
+    },
+    ModelInfo {
+        id: "whisper-tiny",
+        name: "Whisper Tiny",
+        description: "The smallest Whisper, and quick on any CPU. Multilingual - an experiment for Hinglish, so expect rough results.",
+        languages: "Multilingual (Hindi, English + 97 more)",
+        size_mb: whisper::RUNTIME_MB + whisper::TINY_MODEL_MB,
+        dir_name: "",
+        engine: Engine::Whisper(WhisperKind::Tiny),
+        source: Source::Whisper(WhisperKind::Tiny),
+    },
+    ModelInfo {
+        id: "hinglish-apex",
+        name: "Whisper Hinglish Apex",
+        description: "Fine-tuned for Hindi + English mixed speech; types romanized Hinglish directly (\"Main aaj subah office ja raha hoon\"). Slow like the turbo it's built on, and rough on pure English.",
+        languages: "Romanized Hinglish (Hindi + English)",
+        size_mb: whisper::RUNTIME_MB + whisper::APEX_MODEL_MB,
+        dir_name: "",
+        engine: Engine::Whisper(WhisperKind::HinglishApex),
+        source: Source::Whisper(WhisperKind::HinglishApex),
+    },
+    ModelInfo {
+        id: "hinglish-swift",
+        name: "Whisper Hinglish Swift",
+        description: "Small and quick, types romanized Hinglish the same way. Rougher than Apex on noisy audio, and rough on pure English.",
+        languages: "Romanized Hinglish (Hindi + English)",
+        size_mb: whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB,
+        dir_name: "",
+        engine: Engine::Whisper(WhisperKind::HinglishSwift),
+        source: Source::Whisper(WhisperKind::HinglishSwift),
     },
     ModelInfo {
         id: "parakeet-v2",
@@ -155,8 +185,8 @@ impl ModelInfo {
 
     pub fn is_installed(&self) -> bool {
         match self.engine {
-            Engine::Whisper => whisper::is_installed(),
-            Engine::Hybrid => parakeet_v3().is_installed() && whisper::is_installed(),
+            Engine::Whisper(kind) => whisper::is_installed(kind),
+            Engine::Hybrid => parakeet_v3().is_installed() && whisper::is_installed(WhisperKind::Turbo),
             _ => has_required_files(self.engine, &self.dir()),
         }
     }
@@ -173,15 +203,15 @@ impl ModelInfo {
                 let threads = thread::available_parallelism().map(|n| n.get().min(4)).unwrap_or(2);
                 Box::new(StreamingModel::load(&dir, threads, &Quantization::default()).map_err(|e| anyhow!("{e}"))?)
             }
-            Engine::Whisper => whisper::load()?,
-            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::load()?)),
+            Engine::Whisper(kind) => whisper::load(kind)?,
+            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::load(WhisperKind::Turbo)?)),
         };
         Ok(model)
     }
 
     pub fn remove(&self) -> Result<()> {
         match self.engine {
-            Engine::Whisper => return whisper::remove(),
+            Engine::Whisper(kind) => return whisper::remove(kind),
             Engine::Hybrid => bail!("Hybrid uses Parakeet V3 and Whisper turbo; delete those instead"),
             _ => {}
         }
@@ -232,18 +262,18 @@ impl ModelInfo {
                 let _ = fs::remove_dir_all(&target);
                 fs::rename(&staging, &target)?;
             }
-            Source::Whisper => whisper::download(progress)?,
+            Source::Whisper(kind) => whisper::download(*kind, progress)?,
             Source::Parts => {
                 let parakeet = parakeet_v3();
                 let mb = |n: u32| n as u64 * 1_048_576;
                 let parakeet_bytes = if parakeet.is_installed() { 0 } else { mb(parakeet.size_mb) };
-                let whisper_bytes = if whisper::is_installed() { 0 } else { mb(whisper::RUNTIME_MB + whisper::MODEL_MB) };
+                let whisper_bytes = if whisper::is_installed(WhisperKind::Turbo) { 0 } else { mb(whisper::RUNTIME_MB + whisper::MODEL_MB) };
                 let total = parakeet_bytes + whisper_bytes;
                 if parakeet_bytes > 0 {
                     parakeet.download_with(&mut |done, _| progress(done, total))?;
                 }
                 if whisper_bytes > 0 {
-                    whisper::download(&mut |done, _| progress(parakeet_bytes + done, total))?;
+                    whisper::download(WhisperKind::Turbo, &mut |done, _| progress(parakeet_bytes + done, total))?;
                 }
             }
         }
@@ -296,7 +326,7 @@ fn has_required_files(engine: Engine, dir: &Path) -> bool {
         Engine::MoonshineStreaming => {
             has("encoder.onnx") && has("decoder.onnx") && has("tokenizer.json")
         }
-        Engine::Whisper | Engine::Hybrid => false,
+        Engine::Whisper(_) | Engine::Hybrid => false,
     }
 }
 
@@ -399,6 +429,27 @@ pub fn selected_model() -> &'static ModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whisper_tiny_is_in_the_catalog() {
+        let info = find("whisper-tiny").expect("whisper-tiny in the catalog");
+        assert_eq!(info.name, "Whisper Tiny");
+        assert!(matches!(info.engine, Engine::Whisper(WhisperKind::Tiny)));
+        assert_eq!(info.size_mb, whisper::RUNTIME_MB + whisper::TINY_MODEL_MB);
+    }
+
+    #[test]
+    fn the_hinglish_models_are_in_the_catalog() {
+        let apex = find("hinglish-apex").expect("hinglish-apex in the catalog");
+        assert_eq!(apex.name, "Whisper Hinglish Apex");
+        assert!(matches!(apex.engine, Engine::Whisper(WhisperKind::HinglishApex)));
+        assert_eq!(apex.size_mb, whisper::RUNTIME_MB + whisper::APEX_MODEL_MB);
+
+        let swift = find("hinglish-swift").expect("hinglish-swift in the catalog");
+        assert_eq!(swift.name, "Whisper Hinglish Swift");
+        assert!(matches!(swift.engine, Engine::Whisper(WhisperKind::HinglishSwift)));
+        assert_eq!(swift.size_mb, whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB);
+    }
 
     /// Runs a real model on a WAV file. Needs the model installed, so it's
     /// opt-in: `SRUTAM_TEST_WAV=path cargo test --release -- --ignored`.

@@ -1,0 +1,68 @@
+﻿cargo :     Finished `release` profile [optimized] target(s) in 1.87s
+At C:\Users\krish\OneDrive\Documents\Projects\Srutam_Dictate\src-tauri\bench\run-benchmark.ps1:19 char:5
++     cargo test --release --lib transcribes_wav_with_installed_model - ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Finished `r...get(s) in 1.87s:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+     Running unittests src\lib.rs (target\release\deps\srutam_dictate_lib-1d24554ebc461fbb.exe)
+
+running 1 test
+[whisper-tiny] iacc01.wav (16.0s audio, 1205 ms)
+  raw:   That's a barren land barren paddy, it's a desert hay, and there are small small mountains are there, which are mountains that are short-hited mountain. The way you see this desert hay is a desert kapat.
+  rules: That's a barren land barren paddy, it's a desert hay, and there are small small mountains are there, which are mountains that are short-hited mountain. The way you see this desert hay is a desert kapat.
+[whisper-tiny] iacc02.wav (14.4s audio, 515 ms)
+  raw:   Next image, next image is of Christmas tree. Christmas tree is a very good decorate Christmas tree. Chote Chote toys, decorate, there are bells, there are small toys are there.
+  rules: Next image is of Christmas tree. Christmas tree is a very good decorate Christmas tree. Chote Chote toys, decorate, there are bells, there are small toys are there.
+[whisper-tiny] iacc03.wav (9.3s audio, 412 ms)
+  raw:   So it looks like we are in the same direction. We have many mountains, and I love mountains.
+  rules: So it looks like we are in the same direction. We have many mountains, and I love mountains.
+[whisper-tiny] iacc04.wav (13.8s audio, 566 ms)
+  raw:   This is the second thought that this is their next adventure sport. So, the second and the second thought is their next goal. So, the second thought is their next goal. I have some snacks and a panipack and a little bit of sugar.
+  rules: This is the second thought that this is their next adventure sport. So, the second and the second thought is their next goal. So, the second thought is their next goal. I have some snacks and a panipack and a little bit of sugar.
+[whisper-tiny] iacc05.wav (8.4s audio, 537 ms)
+  raw:   better than the home town bro and Bakki feel. So, family, if you have to make your own food better, you can make it better.
+  rules: Better than the home town bro and Bakki feel. So, family, if you have to make your own food better, you can make it better.
+[whisper-tiny] iacc06.wav (10.1s audio, 1020 ms)
+  raw:   Suras, Aasthone, Vir, Ordian, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, Aasthone, A
+  rules: Suras, Aasthone, Vir, Ordian, Aasthone, Aasthone, Aasthone, A
+[whisper-tiny] iacc07.wav (10.5s audio, 460 ms)
+  raw:   pleading, I have to eat something good because whatever you have done in your plate is not good, I am not liking it. So, this picture is quick and quick.
+  rules: Pleading, I have to eat something good because whatever you have done in your plate is not good, I am not liking it. So, this picture is quick and quick.
+[whisper-tiny] iacc08.wav (9.4s audio, 459 ms)
+  raw:   and the other women's education, the girls' education, the girls' education, and the other women's education, and the other women's education, and the other women's education.
+  rules: And the other women's education, the girls' education, and the other women's education.
+[whisper-tiny] slr01.wav (14.0s audio, 512 ms)
+  raw:   Jc key number of words number of lines number of characters number of non-space characters size of file invites co fiddershit kata hgd text
+  rules: Jc key number of words number of lines number of characters number of non-space characters size of file invites co fiddershit kata hgd text
+[whisper-tiny] slr02.wav (12.0s audio, 466 ms)
+  raw:   We are going to take the digital plugin, like the source, change the spell checker, insert date and time to see how.
+  rules: We are going to take the digital plugin, like the source, change the spell checker, insert date and time to see how.
+[whisper-tiny] slr03.wav (12.0s audio, 434 ms)
+  raw:   It can be installed on all computers without restriction or needing to pay license fees to vendors.
+  rules: It can be installed on all computers without restriction or needing to pay license fees to vendors.
+[whisper-tiny] slr04.wav (12.0s audio, 484 ms)
+  raw:   Now as we text it, this is a STP and space bar. Now let's see the STP function.
+  rules: Now as we text it, this is a STP and space bar. Now let's see the STP function.
+[whisper-tiny] slr05.wav (11.0s audio, 1019 ms)
+  raw:   and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start by taking a test and we will start
+  rules: And we will start by taking a test and we will start
+[whisper-tiny] slr06.wav (10.0s audio, 1169 ms)
+  raw:   slide number 10 and slide number 10. slide number 10. click and slide.
+  rules: Slide number 10 and slide number 10. Slide number 10. Click and slide.
+[whisper-tiny] slr07.wav (9.0s audio, 383 ms)
+  raw:   Kill drop down menu, color option, blue 8 and ok per clicker.
+  rules: Kill drop down menu, color option, blue 8 and ok per clicker.
+[whisper-tiny] slr08.wav (9.0s audio, 409 ms)
+  raw:   In+ window, open the icon for "Fone to Type" and click on "TLWG" button.
+  rules: In+ window, open the icon for "Fone to Type" and click on "TLWG" button.
+[whisper-tiny] slr09.wav (8.0s audio, 361 ms)
+  raw:   Buy Paralme for Gmail Accounts. Now, Server Settings. Click.
+  rules: Buy Paralme for Gmail Accounts. Now, Server Settings. Click.
+[whisper-tiny] slr10.wav (8.0s audio, 383 ms)
+  raw:   Save in a folder field, stand up and you can save the file and click on it.
+  rules: Save in a folder field, stand up and you can save the file and click on it.
+test model::tests::transcribes_wav_with_installed_model ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 89 filtered out; finished in 10.85s
+

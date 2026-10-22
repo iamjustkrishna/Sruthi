@@ -13,6 +13,7 @@ mod process;
 mod recordings;
 mod secrets;
 mod settings;
+mod stats;
 mod timing;
 #[cfg(windows)]
 mod wasapi;
@@ -112,12 +113,16 @@ struct Status {
     dictionary: Vec<String>,
     hotkey: String,
     instant_mic: bool,
+    /// The window palette choice.
+    theme: settings::Theme,
     microphone: Option<String>,
     microphones: Vec<String>,
     default_microphone: Option<String>,
     /// Shown in the main window when the microphone delivers no sound.
     mic_warning: Option<String>,
     history: Vec<recordings::Entry>,
+    /// The "Your dictation" card numbers.
+    usage: stats::Usage,
 }
 
 /// Payload of the `dictation` event, which drives the overlay pill.
@@ -203,6 +208,9 @@ struct Inner {
     session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
+    /// Process name of the app this dictation is going into, captured at
+    /// press time for the usage stats (the session keeps only the kind).
+    app_target: Option<String>,
     llm_active: &'static LlmInfo,
     llm_state: LlmState,
     llm_detail: Option<String>,
@@ -218,10 +226,20 @@ struct AppState {
     /// Bumped every time the pill is shown, so a delayed hide from an
     /// earlier dictation never hides a newer one.
     overlay_generation: AtomicU64,
+    /// Usage numbers (stats.json), shown in the main window.
+    stats: Mutex<stats::Stats>,
 }
 
 impl AppState {
     fn new() -> Self {
+        // The card shouldn't start empty: dictations recorded before the
+        // stats existed are replayed into it exactly once (guarded by a
+        // flag saved in stats.json). The recordings index is small, so
+        // loading it twice (here and for `history`) is not worth avoiding.
+        let mut stats = stats::load();
+        stats.backfill_history(recordings::load());
+        stats.save();
+
         Self {
             mic: Mutex::new(None),
             inner: Mutex::new(Inner {
@@ -233,6 +251,7 @@ impl AppState {
                 mic_warning: None,
                 session: None,
                 busy: false,
+                app_target: None,
                 llm_active: selected_llm(),
                 llm_state: LlmState::Missing,
                 llm_detail: None,
@@ -241,6 +260,7 @@ impl AppState {
             engine: Arc::new(Mutex::new(None)),
             formatter: Arc::new(format::Formatter::default()),
             overlay_generation: AtomicU64::new(0),
+            stats: Mutex::new(stats),
         }
     }
 
@@ -285,11 +305,13 @@ impl AppState {
             cloud: cloud_status(),
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
+            theme: settings::load().theme,
             microphone: settings::load().microphone,
             microphones: list_microphone_names(),
             default_microphone: audio::default_device_name(),
             mic_warning: inner.mic_warning.clone(),
             history: inner.history.clone(),
+            usage: self.stats.lock().unwrap().usage(&stats::today_key()),
         }
     }
 }
@@ -492,13 +514,20 @@ fn place_overlay(app: &AppHandle) {
     let _ = app.emit_to("overlay", "overlay-align", align);
 }
 
+/// Result box payload: the text plus the little usage line under it.
+#[derive(Clone, Serialize)]
+struct ResultText {
+    text: String,
+    meta: Option<String>,
+}
+
 /// Starts showing the result box (text + Copy) for a dictation made while
 /// no text field was focused. The box page sizes itself to the text and
 /// then calls `place_result`, which positions and shows the window.
-fn show_result(app: &AppHandle, text: &str) {
+fn show_result(app: &AppHandle, text: &str, meta: Option<String>) {
     // The box takes the pill's place at the bottom of the screen.
     schedule_hide(app, Duration::ZERO);
-    let _ = app.emit_to("result", "result-show", text);
+    let _ = app.emit_to("result", "result-show", ResultText { text: text.to_owned(), meta });
 }
 
 fn hide_result_box(app: &AppHandle) {
@@ -558,6 +587,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     let saved = settings::load();
                     let target = context::active_app();
                     log::info!("Dictating into {} ({:?}): {:?}", target.process, target.kind, target.title);
+                    inner.app_target = Some(target.process.clone());
                     inner.session = Some(dictation::Session::start(
                         rec,
                         state.engine.clone(),
@@ -634,13 +664,19 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     }
 
     if !outcome.text.is_empty() {
+        let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
         if caret::text_field_focused() == Some(false) {
             // Nowhere to type: show the text with a Copy button instead.
-            timing::measure("result-box", || show_result(app, &outcome.text));
+            let sample =
+                record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
+            timing::measure("result-box", || {
+                show_result(app, &outcome.text, result_meta(&sample, speech_s))
+            });
         } else {
             // The pill can't take focus, so it stays up while the paste lands.
             // Trailing space keeps back-to-back dictations from running together.
             timing::measure("paste", || paste::paste_text(&format!("{} ", outcome.text)))?;
+            record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
         }
     }
     if !outcome.audio.is_empty() {
@@ -659,6 +695,61 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         }
     }
     Ok(outcome.text)
+}
+
+/// Counts this dictation in the usage stats and tells the overlay windows
+/// the new pace. `released` is the key-release instant; the wait is
+/// computed here, which happens right after the text has landed.
+fn record_usage(app: &AppHandle, heard: &str, text: &str, speech_s: f32, released: Instant) -> stats::Sample {
+    let state = app.state::<AppState>();
+    // Captured at press time (the session keeps only the app kind).
+    let app_name = state.inner.lock().unwrap().app_target.take().unwrap_or_else(|| "unknown".to_owned());
+    let mut stats = state.stats.lock().unwrap();
+    let sample = stats.record(stats::Input {
+        heard,
+        text,
+        speech_s,
+        latency_ms: Some(released.elapsed().as_millis() as u64),
+        app: Some(&app_name),
+        day: &stats::today_key(),
+    });
+    stats.save();
+    let _ = app.emit("dictation-stats", &sample);
+    sample
+}
+
+/// The "+27 words · 6.4 s · 210 wpm" line under the result box text.
+fn result_meta(sample: &stats::Sample, speech_s: f32) -> Option<String> {
+    if sample.words == 0 {
+        return None;
+    }
+    let start = format!("+{} words · {speech_s:.1} s", sample.words);
+    sample.wpm.map(|wpm| format!("{start} · {wpm:.0} wpm"))
+}
+
+/// The main window's hold-to-dictate button drives the same flow as the
+/// global hotkey: press starts recording, release finishes and pastes.
+#[tauri::command]
+fn press_dictation(app: AppHandle) {
+    on_hotkey(&app, ShortcutState::Pressed);
+}
+
+#[tauri::command]
+fn release_dictation(app: AppHandle) {
+    on_hotkey(&app, ShortcutState::Released);
+}
+
+/// Clears the usage statistics for this PC and refreshes the main window.
+#[tauri::command]
+fn reset_usage(app: AppHandle) -> Result<(), String> {
+    {
+        let state = app.state::<AppState>();
+        let mut stats = state.stats.lock().unwrap();
+        stats.reset();
+        stats.save();
+    }
+    emit_status(&app);
+    Ok(())
 }
 
 fn lookup(id: &str) -> Result<&'static model::ModelInfo, String> {
@@ -1064,6 +1155,23 @@ fn set_instant_mic(app: AppHandle, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_theme(app: AppHandle, theme: settings::Theme) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.theme = theme;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    // Results box follows along too; the main window applies its own copy.
+    let _ = app.emit("theme-changed", theme);
+    emit_status(&app);
+    Ok(())
+}
+
+/// The saved palette choice, read once by the result window at startup.
+#[tauri::command]
+fn get_theme() -> settings::Theme {
+    settings::load().theme
+}
+
+#[tauri::command]
 fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
     let new = parse_hotkey(&hotkey)?;
     if new.mods.is_empty() && !hotkey_ok_alone(&hotkey) {
@@ -1309,6 +1417,8 @@ pub fn run() {
             set_hotkey,
             hotkey_options,
             set_instant_mic,
+            set_theme,
+            get_theme,
             set_microphone,
             probe_microphones,
             get_recording,
@@ -1316,7 +1426,10 @@ pub fn run() {
             copy_text,
             place_result,
             hide_result,
-            open_recordings_folder
+            open_recordings_folder,
+            press_dictation,
+            release_dictation,
+            reset_usage
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

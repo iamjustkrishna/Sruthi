@@ -19,6 +19,17 @@ pub enum OverlayPosition {
     Field,
 }
 
+/// Which palette the windows wear.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    /// Match the Windows color mode, live.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -36,6 +47,8 @@ pub struct Settings {
     pub instant_mic: bool,
     /// Microphone to record from (None: Windows' default).
     pub microphone: Option<String>,
+    /// Window palette: follow the system, or force light / dark.
+    pub theme: Theme,
     /// Cloud provider for Smart formatting ("gemini", "groq", "anthropic");
     /// None: the local model. API keys are kept in Credential Manager.
     pub cloud: Option<String>,
@@ -45,7 +58,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None, cloud: None, cloud_models: HashMap::new() }
+        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None, cloud: None, cloud_models: HashMap::new(), theme: Theme::default() }
     }
 }
 
@@ -70,4 +83,34 @@ pub fn save(settings: &Settings) -> Result<()> {
     fs::create_dir_all(app_root())?;
     fs::write(path(), serde_json::to_string_pretty(settings)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn theme_defaults_to_following_the_system() {
+        let settings: Settings = Default::default();
+        assert_eq!(settings.theme, Theme::System);
+        // Stored lowercase, so the file stays readable by hand.
+        assert_eq!(serde_json::to_string(&settings.theme).unwrap(), "\"system\"");
+    }
+
+    #[test]
+    fn the_chosen_theme_survives_a_roundtrip() {
+        let mut settings = Settings::default();
+        settings.theme = Theme::Dark;
+        store_roundtrip(&mut settings, Theme::Dark);
+        settings.theme = Theme::Light;
+        store_roundtrip(&mut settings, Theme::Light);
+        settings.theme = Theme::System;
+        store_roundtrip(&mut settings, Theme::System);
+    }
+
+    fn store_roundtrip(settings: &mut Settings, expected: Theme) {
+        let json = serde_json::to_string(settings).unwrap();
+        let loaded: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.theme, expected);
+    }
 }
