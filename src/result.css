@@ -1,3 +1,7 @@
+@import "./theme.css";
+
+/* The floating result box: same tokens as the app, one shared palette. */
+
 html,
 body {
   margin: 0;
@@ -13,13 +17,7 @@ body {
   box-sizing: border-box;
 }
 
-/* Same brand look as the pill */
 .card {
-  --blue-50: #eaf2ff;
-  --blue-300: #7fb2ff;
-  --blue-500: #2f7bff;
-  --ink: rgba(9, 14, 32, 0.95);
-
   position: relative;
   flex: 1;
   display: flex;
@@ -28,14 +26,11 @@ body {
   min-height: 0;
   padding: 12px 14px 14px;
   overflow: hidden;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 50%),
-    var(--ink);
-  box-shadow:
-    inset 0 0 0 1px rgba(127, 178, 255, 0.22),
-    0 10px 28px rgba(8, 20, 60, 0.4);
-  color: var(--blue-50);
+  border-radius: 16px;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  color: var(--text);
   opacity: 0;
   transform: translateY(8px) scale(0.97);
   transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.15);
@@ -58,7 +53,7 @@ header {
   flex: 1;
   font-size: 12px;
   font-weight: 600;
-  color: var(--blue-300);
+  color: var(--muted);
 }
 
 .text {
@@ -73,6 +68,14 @@ header {
   user-select: text;
 }
 
+/* The "+27 words · 6.4 s · 210 wpm" line under the text. */
+.meta {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 footer {
   display: flex;
   align-items: center;
@@ -81,7 +84,7 @@ footer {
 .hint {
   flex: 1;
   font-size: 11.5px;
-  color: rgba(234, 242, 255, 0.55);
+  color: var(--muted);
 }
 
 button {
@@ -92,30 +95,31 @@ button {
 .copy {
   padding: 7px 16px;
   border-radius: 999px;
-  background: var(--blue-500);
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
   font-size: 13px;
   font-weight: 600;
-  transition: background 0.15s ease;
+  transition: filter 0.15s ease, background 0.15s ease;
 }
 .copy:hover {
-  background: #1f66e6;
+  filter: brightness(1.25);
 }
 .copy.done {
-  background: #16a34a;
+  background: var(--ok);
+  color: #fff;
 }
 .close {
   width: 24px;
   height: 24px;
   border-radius: 50%;
   background: transparent;
-  color: rgba(234, 242, 255, 0.6);
+  color: var(--muted);
   font-size: 18px;
   line-height: 1;
 }
 .close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--blue-50);
+  background: var(--raise);
+  color: var(--text);
 }
 
 /* Measuring the natural height: let the card and text size to content. */
@@ -138,7 +142,7 @@ button {
   bottom: 5px;
   height: 3px;
   border-radius: 2px;
-  background: rgba(127, 178, 255, 0.15);
+  background: var(--track);
   overflow: hidden;
 }
 .timer span {
@@ -146,7 +150,7 @@ button {
   height: 100%;
   width: 100%;
   border-radius: 2px;
-  background: var(--blue-300);
+  background: var(--muted);
   transform-origin: left center;
   transform: scaleX(0);
 }

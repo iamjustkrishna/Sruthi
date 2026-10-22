@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="system">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,146 +9,237 @@
   </head>
   <body>
     <main class="app">
-      <header>
-        <h1>Srutam Dictate</h1>
-        <p class="tagline">Offline voice typing. Your audio never leaves this PC.</p>
-      </header>
+      <nav class="rail" aria-label="Sections">
+        <img class="rail-logo" src="/src/assets/srutam-logo.png" alt="Srutam" />
 
-      <section class="card warning" id="mic-warning" hidden>
-        <p id="mic-warning-text"></p>
-        <button id="mic-warning-check">Check microphones</button>
-      </section>
+        <button class="rail-btn" data-page="home" type="button" aria-label="Home" title="Home">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4.2 11.5 12 4.5l7.8 7" />
+            <path d="M6.5 10.7V19.3a.7.7 0 0 0 .7.7h9.6a.7.7 0 0 0 .7-.7v-8.6" />
+          </svg>
+        </button>
+        <button class="rail-btn" data-page="voice" type="button" aria-label="Voice and model" title="Voice &amp; model">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="9" y="3.5" width="6" height="10" rx="3" />
+            <path d="M5.8 11a6.2 6.2 0 0 0 12.4 0" />
+            <path d="M12 17.2v3M9 20.2h6" />
+          </svg>
+        </button>
+        <button class="rail-btn" data-page="text" type="button" aria-label="Text and AI" title="Text &amp; AI">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4.5 6.5h15M4.5 12h9.5M4.5 17.5h15" />
+            <path d="M17.8 12v.01" stroke-width="2.2" />
+          </svg>
+        </button>
+        <button class="rail-btn" data-page="keys" type="button" aria-label="Shortcuts" title="Shortcuts">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="6.5" width="18" height="11" rx="2" />
+            <path d="M7 10h.01M10.5 10h.01M14 10h.01M17 10h.01M7.5 13.8h9" />
+          </svg>
+        </button>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Microphone</h2>
-          <button id="mic-check" class="ghost small-btn">Check microphones</button>
-        </div>
-        <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
-        <p class="muted small" id="mic-check-status" hidden></p>
-        <ul id="mic-probes" class="mic-probes"></ul>
-      </section>
+        <button class="rail-btn" id="theme-cycle" data-theme="system" type="button" title="Theme: System" aria-label="Theme: System">
+          <svg class="icon icon-system" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="8.4" />
+            <path d="M12 3.6v16.8" />
+          </svg>
+          <svg class="icon icon-light" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" />
+            <path d="M12 2.8v1.9M12 19.3v1.9M2.8 12h1.9M19.3 12h1.9M5.4 5.4l1.3 1.3M17.3 17.3l1.3 1.3M18.6 5.4l-1.3 1.3M6.7 17.3l-1.3 1.3" />
+          </svg>
+          <svg class="icon icon-dark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M19.6 14.2A8.1 8.1 0 1 1 9.8 4.4a6.6 6.6 0 0 0 9.8 9.8z" />
+          </svg>
+        </button>
+      </nav>
 
-      <section class="card" id="model-card">
-        <div class="card-head">
-          <h2>Speech model</h2>
-          <span class="badge" id="model-badge">…</span>
-        </div>
-        <p class="muted" id="model-text">Checking…</p>
-        <ul class="models" id="models"></ul>
-        <p class="error" id="model-error" hidden></p>
-      </section>
+      <div class="pages">
+        <section class="card warning" id="mic-warning" hidden>
+          <p id="mic-warning-text"></p>
+          <button id="mic-warning-check">Check microphones</button>
+        </section>
 
-      <section class="card" id="format-card">
-        <div class="card-head">
-          <h2>Smart formatting</h2>
-          <label class="switch" title="Smart formatting">
-            <input type="checkbox" id="smart-toggle" />
-            <span class="slider"></span>
-          </label>
-        </div>
-        <p class="muted" id="llm-text"></p>
-        <div class="cloud" id="cloud">
-          <h3>AI engine</h3>
-          <p class="muted small">
-            On this PC keeps everything offline. A cloud model is smarter with corrections and grammar, but your text
-            (never the audio) is sent to it. If it can't be reached, the model on this PC takes over.
-          </p>
-          <div class="engines" id="engines" role="radiogroup" aria-label="AI engine"></div>
-          <ul class="models" id="llms"></ul>
-          <div class="cloud-panel" id="cloud-panel" hidden>
-            <p class="small" id="cloud-key-state"></p>
-            <form class="word-form" id="cloud-key-form">
-              <input type="password" id="cloud-key" autocomplete="off" spellcheck="false" placeholder="Paste your API key" />
-              <button type="submit">Save key</button>
+        <section class="page" data-page="home">
+          <section class="card" id="usage-card">
+            <div class="card-head">
+              <h2>Your dictation</h2>
+              <button id="usage-reset" class="ghost small-btn">Reset stats</button>
+            </div>
+            <button id="hold-dictate" class="dictate" disabled title="Hold the button, speak, release. The text goes to your cursor.">
+              Hold to dictate
+            </button>
+            <p class="muted small dictate-hint">
+              or hold <kbd id="hotkey-hint">Ctrl+Shift+Space</kbd> anywhere. In this window the text opens in a result box.
+            </p>
+            <div class="usage-grid" id="usage-grid" hidden>
+              <div class="usage-cell">
+                <strong id="usage-words">0</strong>
+                <span>words · <span id="usage-today"></span></span>
+              </div>
+              <div class="usage-cell">
+                <strong id="usage-wpm">–</strong>
+                <span>words/min<span id="usage-vs"></span></span>
+              </div>
+              <div class="usage-cell">
+                <strong id="usage-saved">0</strong>
+                <span>typing time saved</span>
+              </div>
+              <div class="usage-cell">
+                <strong id="usage-streak">0</strong>
+                <span>day streak</span>
+              </div>
+            </div>
+            <div class="usage-week" id="usage-week" hidden></div>
+            <p class="muted small" id="usage-extra"></p>
+            <p class="muted small" id="usage-empty">
+              Dictate with the button above (or the hotkey) and your words, speed and streak show up here.
+            </p>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Recent dictations</h2>
+              <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
+            </div>
+            <p class="muted small">Every recording is kept on this PC. Play one to hear what the app heard.</p>
+            <ul id="history" class="history"></ul>
+            <p class="muted" id="history-empty">Nothing yet.</p>
+          </section>
+        </section>
+
+        <section class="page" data-page="voice" hidden>
+          <section class="card">
+            <div class="card-head">
+              <h2>Microphone</h2>
+              <button id="mic-check" class="ghost small-btn">Check microphones</button>
+            </div>
+            <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
+            <p class="muted small" id="mic-check-status" hidden></p>
+            <ul id="mic-probes" class="mic-probes"></ul>
+          </section>
+
+          <section class="card" id="model-card">
+            <div class="card-head">
+              <h2>Speech model</h2>
+              <span class="badge" id="model-badge">…</span>
+            </div>
+            <p class="muted" id="model-text">Checking…</p>
+            <ul class="models" id="models"></ul>
+            <p class="error" id="model-error" hidden></p>
+          </section>
+        </section>
+
+        <section class="page" data-page="text" hidden>
+          <section class="card" id="format-card">
+            <div class="card-head">
+              <h2>Smart formatting</h2>
+              <label class="switch" title="Smart formatting">
+                <input type="checkbox" id="smart-toggle" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <p class="muted" id="llm-text"></p>
+            <div class="cloud" id="cloud">
+              <h3>AI engine</h3>
+              <p class="muted small">
+                On this PC keeps everything offline. A cloud model is smarter with corrections and grammar, but your text
+                (never the audio) is sent to it. If it can't be reached, the model on this PC takes over.
+              </p>
+              <div class="engines" id="engines" role="radiogroup" aria-label="AI engine"></div>
+              <ul class="models" id="llms"></ul>
+              <div class="cloud-panel" id="cloud-panel" hidden>
+                <p class="small" id="cloud-key-state"></p>
+                <form class="word-form" id="cloud-key-form">
+                  <input type="password" id="cloud-key" autocomplete="off" spellcheck="false" placeholder="Paste your API key" />
+                  <button type="submit">Save key</button>
+                </form>
+                <label class="small cloud-model">
+                  Model
+                  <span class="word-form">
+                    <input type="text" id="cloud-model" spellcheck="false" />
+                    <button type="button" class="ghost" id="cloud-test">Test</button>
+                  </span>
+                </label>
+                <p class="small muted" id="cloud-test-result"></p>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Dictionary</h2>
+            </div>
+            <p class="muted small">
+              Names, product terms and rare words. When something you say sounds like one of these, it's spelled exactly
+              this way.
+            </p>
+            <form class="word-form" id="word-form">
+              <input id="word-input" type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Srutam" maxlength="60" autocomplete="off" />
+              <button type="submit">Add</button>
             </form>
-            <label class="small cloud-model">
-              Model
-              <span class="word-form">
-                <input type="text" id="cloud-model" spellcheck="false" />
-                <button type="button" class="ghost" id="cloud-test">Test</button>
+            <ul class="words" id="words"></ul>
+          </section>
+        </section>
+
+        <section class="page" data-page="keys" hidden>
+          <section class="card">
+            <div class="card-head">
+              <h2>Shortcuts</h2>
+            </div>
+            <p>
+              Click into any text box, then <strong>hold <kbd id="hotkey">Ctrl+Shift+Space</kbd></strong>,
+              speak, and let go. The text is typed where your cursor is.
+            </p>
+            <p class="muted">Closing this window keeps Srutam Dictate running in the system tray.</p>
+
+            <div class="setting-row">
+              <span>
+                <strong>Instant start</strong>
+                <span class="muted small">
+                  Keeps the microphone ready so nothing you say is cut off, including a word spoken as you press the key.
+                  Windows shows its microphone icon while the app runs; audio is only kept while you hold the key.
+                </span>
               </span>
-            </label>
-            <p class="small muted" id="cloud-test-result"></p>
-          </div>
-        </div>
-      </section>
+              <label class="switch" title="Instant start">
+                <input type="checkbox" id="instant-toggle" />
+                <span class="slider"></span>
+              </label>
+            </div>
 
-      <section class="card">
-        <h2>Dictionary</h2>
-        <p class="muted small">
-          Names, product terms and rare words. When something you say sounds like one of these, it's spelled exactly
-          this way.
-        </p>
-        <form class="word-form" id="word-form">
-          <input id="word-input" type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Srutam" maxlength="60" autocomplete="off" />
-          <button type="submit">Add</button>
-        </form>
-        <ul class="words" id="words"></ul>
-      </section>
+            <div class="hotkey-row">
+              <button id="hotkey-change" class="ghost">Change key</button>
+              <span class="capture" id="hotkey-capture" hidden>Press the new key combination… <span class="muted small">(Esc to cancel)</span></span>
+            </div>
+            <div id="hotkey-suggestions" class="suggestions" hidden>
+              <p class="muted small">Suggestions, checked against shortcuts other apps have taken on this PC:</p>
+              <ul id="hotkey-options" class="hotkey-options"></ul>
+            </div>
+            <p class="error" id="hotkey-error" hidden></p>
+          </section>
 
-      <section class="card">
-        <h2>How to dictate</h2>
-        <p>
-          Click into any text box, then <strong>hold <kbd id="hotkey">Ctrl+Shift+Space</kbd></strong>,
-          speak, and let go. The text is typed where your cursor is.
-        </p>
-        <p class="muted">Closing this window keeps Srutam Dictate running in the system tray.</p>
-
-        <div class="setting-row">
-          <span>
-            <strong>Instant start</strong>
-            <span class="muted small">
-              Keeps the microphone ready so nothing you say is cut off, including a word spoken as you press the key.
-              Windows shows its microphone icon while the app runs; audio is only kept while you hold the key.
-            </span>
-          </span>
-          <label class="switch" title="Instant start">
-            <input type="checkbox" id="instant-toggle" />
-            <span class="slider"></span>
-          </label>
-        </div>
-
-        <div class="hotkey-row">
-          <button id="hotkey-change" class="ghost">Change key</button>
-          <span class="capture" id="hotkey-capture" hidden>Press the new key combination… <span class="muted small">(Esc to cancel)</span></span>
-        </div>
-        <div id="hotkey-suggestions" class="suggestions" hidden>
-          <p class="muted small">Suggestions, checked against shortcuts other apps have taken on this PC:</p>
-          <ul id="hotkey-options" class="hotkey-options"></ul>
-        </div>
-        <p class="error" id="hotkey-error" hidden></p>
-      </section>
-
-      <section class="card">
-        <h2>Where the pill appears</h2>
-        <div class="choices" id="overlay-choices">
-          <label class="choice">
-            <input type="radio" name="overlay" value="bottom" />
-            <span>
-              <strong>Bottom center</strong>
-              <span class="muted small">Always in the same spot, just above the taskbar.</span>
-            </span>
-          </label>
-          <label class="choice">
-            <input type="radio" name="overlay" value="field" />
-            <span>
-              <strong>Under the text field</strong>
-              <span class="muted small">Right where the words will go. Uses bottom center in apps that don't report their text field.</span>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section class="card">
-        <div class="card-head">
-          <h2>Recent dictations</h2>
-          <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
-        </div>
-        <p class="muted small">Every recording is kept on this PC. Play one to hear what the app heard.</p>
-        <ul id="history" class="history"></ul>
-        <p class="muted" id="history-empty">Nothing yet.</p>
-      </section>
+          <section class="card">
+            <div class="card-head">
+              <h2>Where the pill appears</h2>
+            </div>
+            <div class="choices" id="overlay-choices">
+              <label class="choice">
+                <input type="radio" name="overlay" value="bottom" />
+                <span>
+                  <strong>Bottom center</strong>
+                  <span class="muted small">Always in the same spot, just above the taskbar.</span>
+                </span>
+              </label>
+              <label class="choice">
+                <input type="radio" name="overlay" value="field" />
+                <span>
+                  <strong>Under the text field</strong>
+                  <span class="muted small">Right where the words will go. Uses bottom center in apps that don't report their text field.</span>
+                </span>
+              </label>
+            </div>
+          </section>
+        </section>
+      </div>
     </main>
   </body>
 </html>

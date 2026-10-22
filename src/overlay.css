@@ -19,13 +19,12 @@ body[data-align="center"] {
   justify-content: center;
 }
 
-/* Srutam brand blues, sampled from the logo */
+/* The pill is a small dark island that floats over any app's colors */
 .pill {
-  --blue-50: #eaf2ff;
-  --blue-300: #7fb2ff;
-  --blue-500: #2f7bff;
-  --blue-700: #1746d6;
-  --ink: rgba(9, 14, 32, 0.9);
+  --bright: #f2f2f2;
+  --wave-top: #e0e0e0;
+  --wave-low: #9c9c9c;
+  --ink: rgba(18, 18, 18, 0.92);
   --ok: #34d399;
   --warn: #fbbf24;
 
@@ -40,10 +39,10 @@ body[data-align="center"] {
     linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 60%),
     var(--ink);
   box-shadow:
-    inset 0 0 0 1px rgba(127, 178, 255, 0.22),
-    0 6px 18px rgba(8, 20, 60, 0.35);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 6px 18px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);
-  color: var(--blue-50);
+  color: var(--bright);
   font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -72,7 +71,7 @@ body[data-align="center"] .pill {
   /* Breathes with your voice */
   transform: scale(calc(1 + var(--level) * 0.16));
   transition: transform 0.08s linear, filter 0.2s ease;
-  filter: drop-shadow(0 0 calc(2px + var(--level) * 8px) rgba(47, 123, 255, 0.85));
+  filter: drop-shadow(0 0 calc(2px + var(--level) * 8px) rgba(255, 255, 255, 0.7));
 }
 
 /* Glow ring that swells with voice level */
@@ -80,7 +79,7 @@ body[data-align="center"] .pill {
   position: absolute;
   inset: 2px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(47, 123, 255, 0.45), rgba(47, 123, 255, 0) 70%);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 70%);
   transform: scale(calc(0.9 + var(--level) * 0.6));
   opacity: calc(0.35 + var(--level) * 0.65);
   transition: transform 0.08s linear, opacity 0.08s linear;
@@ -91,7 +90,7 @@ body[data-align="center"] .pill {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: conic-gradient(from 0deg, rgba(127, 178, 255, 0) 0deg, var(--blue-300) 300deg, rgba(127, 178, 255, 0) 360deg);
+  background: conic-gradient(from 0deg, rgba(255, 255, 255, 0) 0deg, var(--wave-top) 300deg, rgba(255, 255, 255, 0) 360deg);
   -webkit-mask: radial-gradient(circle, transparent 58%, #000 61%);
   mask: radial-gradient(circle, transparent 58%, #000 61%);
   opacity: 0;
@@ -141,7 +140,7 @@ body[data-align="center"] .pill {
   width: 3px;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--blue-300), var(--blue-500) 55%, var(--blue-700));
+  background: linear-gradient(180deg, var(--wave-top), var(--wave-low) 70%);
   transform: scaleY(0.14);
   transition: transform 0.07s linear;
 }
@@ -158,7 +157,7 @@ body[data-align="center"] .pill {
   overflow: hidden;
   white-space: nowrap;
   font-weight: 500;
-  color: var(--blue-50);
+  color: var(--bright);
   animation: text-in 0.16s ease-out;
 }
 .live:empty {
@@ -169,7 +168,7 @@ body[data-align="center"] .pill {
   display: none;
 }
 .pill[data-phase="done"].has-text .live {
-  color: #d1fae5;
+  color: #eef4ee;
 }
 @keyframes text-in {
   from { opacity: 0.4; }

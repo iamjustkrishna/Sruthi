@@ -29,6 +29,34 @@ function setLive(text: string) {
   pill.classList.toggle("has-text", live.textContent !== "");
 }
 
+// ---------------------------------------------------------------------------
+// Pace: elapsed time while recording, plus your recent speaking speed
+// (kept from the usage stats, so the pill can show "~180 wpm").
+
+let paceTimer: number | undefined;
+let startedAt = 0;
+let recentWpm: number | null = null;
+
+function pace() {
+  const s = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const m = Math.floor(s / 60);
+  const elapsed = `${m}:${String(s % 60).padStart(2, "0")}`;
+  label.textContent = recentWpm ? `${elapsed} · ~${Math.round(recentWpm)} wpm` : elapsed;
+}
+
+function startPace() {
+  startedAt = Date.now();
+  window.clearInterval(paceTimer);
+  paceTimer = window.setInterval(pace, 500);
+  pace();
+}
+
+function stopPace() {
+  window.clearInterval(paceTimer);
+  paceTimer = undefined;
+  label.textContent = "";
+}
+
 const bars = Array.from({ length: BAR_COUNT }, (_, i) => {
   const bar = document.createElement("i");
   bar.style.setProperty("--i", String(i));
@@ -88,23 +116,24 @@ listen<Dictation>("dictation", ({ payload }) => {
       target = smoothed = 0;
       mark.style.setProperty("--level", "0");
       bars.forEach((b) => (b.style.transform = ""));
-      label.textContent = "";
+      startPace();
       setLive("");
       enter();
       break;
     case "transcribing":
       mark.style.setProperty("--level", "0");
       bars.forEach((b) => (b.style.transform = ""));
-      label.textContent = "";
+      stopPace();
       break;
     case "done":
       // Show the final, formatted text for a moment.
       setLive(payload.text);
-      label.textContent = "";
+      stopPace();
       break;
     case "error":
       setLive("");
       label.textContent = payload.message;
+      stopPace();
       if (!isShowing()) enter();
       break;
   }
@@ -112,6 +141,11 @@ listen<Dictation>("dictation", ({ payload }) => {
 
 listen<number>("audio-level", ({ payload }) => {
   target = normalize(payload);
+});
+
+/** The rolling recent average after each dictation, for the pace line. */
+listen<{ avg_wpm: number | null }>("dictation-stats", ({ payload }) => {
+  recentWpm = payload.avg_wpm;
 });
 
 listen<string>("overlay-align", ({ payload }) => {

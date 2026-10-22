@@ -3,11 +3,24 @@ import { listen } from "@tauri-apps/api/event";
 
 const card = document.getElementById("card")!;
 const text = document.getElementById("text")!;
+const meta = document.getElementById("meta")!;
 const copy = document.getElementById("copy") as HTMLButtonElement;
 const timer = document.getElementById("timer")!;
 
 /** Empty space around the card inside the window (body padding). */
 const WINDOW_PADDING = 12;
+
+/** The result box wears the app's theme (system follows live, no JS needed). */
+function applyTheme(theme: string) {
+  document.documentElement.dataset.theme = theme === "light" || theme === "dark" ? theme : "system";
+}
+invoke<string>("get_theme").then((t) => applyTheme(t ?? "system")).catch(() => {});
+listen<string>("theme-changed", ({ payload }) => applyTheme(payload));
+
+interface ResultPayload {
+  text: string;
+  meta: string | null;
+}
 
 let current = "";
 let hideTimer: number | undefined;
@@ -33,10 +46,12 @@ function restartCountdown() {
   timer.classList.add("running");
 }
 
-listen<string>("result-show", async ({ payload }) => {
+listen<ResultPayload>("result-show", async ({ payload }) => {
   window.clearTimeout(hideTimer);
-  current = payload;
-  text.textContent = payload;
+  current = payload.text;
+  text.textContent = payload.text;
+  meta.textContent = payload.meta ?? "";
+  meta.hidden = !payload.meta;
   copy.textContent = "Copy";
   copy.classList.remove("done");
   card.classList.remove("show");

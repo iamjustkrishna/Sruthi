@@ -4,6 +4,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
+type ThemeName = "system" | "light" | "dark";
+
+/** Mirrors the pill's phases so the hold button follows along. */
+type DictationPhaseEvent =
+  | { phase: "recording" }
+  | { phase: "transcribing" }
+  | { phase: "done"; text: string }
+  | { phase: "error"; message: string };
 
 interface ModelEntry {
   id: string;
@@ -45,11 +53,13 @@ interface Status {
   dictionary: string[];
   hotkey: string;
   instant_mic: boolean;
+  theme: ThemeName;
   microphone: string | null;
   microphones: string[];
   default_microphone: string | null;
   mic_warning: string | null;
   history: HistoryEntry[];
+  usage: Usage;
 }
 
 interface CloudEntry {
@@ -76,6 +86,30 @@ interface HistoryEntry {
   seconds: number;
   heard: string;
   text: string;
+}
+
+interface UsageWeek {
+  date: string;
+  words: number;
+}
+
+interface UsageApp {
+  name: string;
+  words: number;
+}
+
+interface Usage {
+  words: number;
+  words_today: number;
+  dictations: number;
+  wpm: number;
+  saved_min: number;
+  streak: number;
+  longest_streak: number;
+  week: UsageWeek[];
+  top_apps: UsageApp[];
+  avg_latency_ms: number;
+  cleaned: number;
 }
 
 interface HotkeyOption {
@@ -376,6 +410,7 @@ $("cloud-test").addEventListener("click", async () => {
 
 function render(s: Status) {
   status = s;
+  applyTheme(s.theme, false);
   const active = s.models.find((m) => m.id === s.active);
   const [label, text] = STATE_COPY[s.model];
   badge.textContent = label;
@@ -393,8 +428,167 @@ function render(s: Status) {
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   renderMicrophones(s);
 
+  renderUsage(s);
+  showHoldPhase(holdPhase);
   renderHistory(s.history);
 }
+
+// ---------------------------------------------------------------------------
+// Hold-to-dictate button: same flow as the hotkey, press and release
+
+const holdBtn = $<HTMLButtonElement>("hold-dictate");
+const HOLD_LABELS = {
+  idle: "Hold to dictate",
+  recording: "Listening… release to finish",
+  transcribing: "Transcribing…",
+} as const;
+type HoldPhase = keyof typeof HOLD_LABELS;
+let holdPhase: HoldPhase = "idle";
+/** True only between this button's press and release (used by the blur net). */
+let buttonHeld = false;
+
+function showHoldPhase(phase: HoldPhase) {
+  holdPhase = phase;
+  holdBtn.textContent = HOLD_LABELS[phase];
+  holdBtn.classList.toggle("recording", phase === "recording");
+  holdBtn.disabled = (status?.model !== "ready") || phase !== "idle";
+}
+
+holdBtn.addEventListener("pointerdown", (e) => {
+  if (holdBtn.disabled || e.button !== 0) return;
+  // Keep capture, so a release outside the button (or the window) still lands.
+  holdBtn.setPointerCapture(e.pointerId);
+  e.preventDefault();
+  buttonHeld = true;
+  invoke("press_dictation").catch((err) => {
+    showHoldPhase("idle");
+    showError(String(err));
+  });
+});
+holdBtn.addEventListener("pointerup", (e) => {
+  if (holdBtn.hasPointerCapture(e.pointerId)) holdBtn.releasePointerCapture(e.pointerId);
+  buttonHeld = false;
+  invoke("release_dictation").catch(() => {});
+});
+holdBtn.addEventListener("pointercancel", () => {
+  buttonHeld = false;
+  invoke("release_dictation").catch(() => {});
+});
+// Safety net: never leave the mic capturing after the window loses focus.
+window.addEventListener("blur", () => {
+  if (buttonHeld) {
+    buttonHeld = false;
+    invoke("release_dictation").catch(() => {});
+  }
+});
+
+listen<DictationPhaseEvent>("dictation", ({ payload }) => {
+  showHoldPhase(
+    payload.phase === "recording"
+      ? "recording"
+      : payload.phase === "transcribing"
+        ? "transcribing"
+        : "idle",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// The rail: one page at a time, and the light/dark cycle at the bottom
+
+type Page = "home" | "voice" | "text" | "keys";
+
+const railButtons = [...document.querySelectorAll<HTMLButtonElement>(".rail-btn[data-page]")];
+const themeBtn = $<HTMLButtonElement>("theme-cycle");
+
+function showPage(page: Page) {
+  document.querySelectorAll<HTMLElement>(".page").forEach((el) => {
+    el.hidden = el.dataset.page !== page;
+  });
+  railButtons.forEach((b) => {
+    b.dataset.current = String(b.dataset.page === page);
+  });
+}
+
+railButtons.forEach((b) => b.addEventListener("click", () => showPage(b.dataset.page as Page)));
+
+const THEME_TITLES: Record<ThemeName, string> = {
+  system: "Theme: System (follows Windows)",
+  light: "Theme: Light",
+  dark: "Theme: Dark",
+};
+const NEXT_THEME: Record<ThemeName, ThemeName> = { system: "light", light: "dark", dark: "system" };
+
+function applyTheme(theme: ThemeName, save: boolean) {
+  document.documentElement.dataset.theme = theme;
+  themeBtn.dataset.theme = theme;
+  themeBtn.title = THEME_TITLES[theme];
+  themeBtn.setAttribute("aria-label", THEME_TITLES[theme]);
+  if (save) invoke("set_theme", { theme }).catch(() => {});
+}
+
+themeBtn.addEventListener("click", () => applyTheme(NEXT_THEME[(themeBtn.dataset.theme ?? "system") as ThemeName], true));
+
+// ---------------------------------------------------------------------------
+// Your dictation: the usage numbers
+
+function savedLabel(min: number) {
+  if (min >= 60) return `${(min / 60).toFixed(1).replace(/.0$/, "")} hours`;
+  if (min >= 1) return `${Math.round(min)} min`;
+  return `${Math.max(1, Math.round(min * 60))} s`;
+}
+
+function renderUsage(s: Status) {
+  const u = s.usage;
+  const has = u.dictations > 0;
+  $("usage-empty").hidden = has;
+  $<HTMLElement>("usage-grid").hidden = !has;
+  $<HTMLElement>("usage-week").hidden = !has;
+  $("usage-extra").textContent = "";
+  if (!has) return;
+
+  $("usage-words").textContent = u.words.toLocaleString();
+  $("usage-today").textContent = u.words_today > 0 ? `${u.words_today.toLocaleString()} today` : "";
+  $("usage-wpm").textContent = u.wpm > 0 ? String(Math.round(u.wpm)) : "–";
+  $("usage-vs").textContent = u.wpm > 0 ? ` · about ${(u.wpm / 40).toFixed(1).replace(/.0$/, "")}× typing` : "";
+  $("usage-saved").textContent = savedLabel(u.saved_min);
+  $("usage-streak").textContent = String(u.streak);
+
+  const most = u.week.reduce((m, d) => Math.max(m, d.words), 1);
+  $<HTMLElement>("usage-week").replaceChildren(
+    ...u.week.map((d) => {
+      const cell = document.createElement("div");
+      cell.className = "day";
+      cell.title = `${d.date}: ${d.words.toLocaleString()} words`;
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.height = `${Math.max(6, Math.round((d.words / most) * 100))}%`;
+      const when = new Date(`${d.date}T00:00:00`);
+      const name = document.createElement("span");
+      name.className = "day-name";
+      name.textContent =
+        when.toDateString() === new Date().toDateString()
+          ? "Today"
+          : when.toLocaleDateString([], { weekday: "short" });
+      cell.append(bar, name);
+      return cell;
+    }),
+  );
+
+  const parts: string[] = [`${u.dictations.toLocaleString()} dictations`];
+  if (u.avg_latency_ms > 0) parts.push(`text lands ${(u.avg_latency_ms / 1000).toFixed(1)} s after release on average`);
+  if (u.cleaned > 0) parts.push(`${u.cleaned.toLocaleString()} words trimmed by formatting`);
+  if (u.longest_streak > u.streak) parts.push(`best streak: ${u.longest_streak} days`);
+  const [topApp] = u.top_apps;
+  if (topApp) {
+    const share = Math.round((topApp.words / Math.max(1, u.words)) * 100);
+    parts.push(`most dictated into ${topApp.name} (${share}%)`);
+  }
+  $("usage-extra").textContent = parts.join(" · ");
+}
+
+$("usage-reset").addEventListener("click", () => {
+  if (confirm("Clear all your dictation stats on this PC?")) run("reset_usage", {});
+});
 
 // ---------------------------------------------------------------------------
 // Recent dictations with playable recordings
@@ -552,6 +746,8 @@ async function checkMicrophones() {
 
 $("mic-check").addEventListener("click", checkMicrophones);
 $("mic-warning-check").addEventListener("click", () => {
+  // The microphone controls live on the Voice page; take the user there.
+  showPage("voice");
   $("mic-check").scrollIntoView({ behavior: "smooth", block: "center" });
   checkMicrophones();
 });

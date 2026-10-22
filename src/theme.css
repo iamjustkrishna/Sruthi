@@ -1,0 +1,96 @@
+/*
+ * The app's palette, in one place: graphite mono, with light/dark variants.
+ *
+ * Every window that wants the theme tokens imports this file and sets
+ * `data-theme` on its <html> to "system" | "light" | "dark" (the main and
+ * result windows do; the overlay pill stays a dark glass island on purpose).
+ *
+ * The dark values are declared twice on purpose — no-JS, no-flash theming
+ * needs both an attribute match and a media-query match. If you tune a
+ * value, tune it in both places.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #f5f5f4;
+  --rail: #ececeb;
+  --card: #ffffff;
+  --raise: #f1f1f0;
+
+  /* Ink */
+  --text: #161616;
+  --muted: #757572;
+
+  /* Lines */
+  --border: #e5e5e4;
+  --border-strong: #cfcfcd;
+  --track: #e4e4e2;
+
+  /* Accent: the ink itself. Highlight = flip to the opposite pole. */
+  --accent: #151515;
+  --accent-ink: #fbfbfa;
+  --accent-soft: #e9e9e8;
+
+  /* Meaning (kept muted — the UI is otherwise colorless) */
+  --ok: #3c7d52;
+  --warn: #9a741b;
+  --err: #ac3c3c;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #151515;
+  --rail: #1a1a1a;
+  --card: #1f1f1f;
+  --raise: #272727;
+
+  --text: #f1f1ef;
+  --muted: #9b9b97;
+
+  --border: #2e2e2d;
+  --border-strong: #474745;
+  --track: #3a3a39;
+
+  --accent: #f8f8f6;
+  --accent-ink: #161616;
+  --accent-soft: #2d2d2c;
+
+  --ok: #79b78e;
+  --warn: #d0a95e;
+  --err: #dd8484;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+
+    --bg: #151515;
+    --rail: #1a1a1a;
+    --card: #1f1f1f;
+    --raise: #272727;
+
+    --text: #f1f1ef;
+    --muted: #9b9b97;
+
+    --border: #2e2e2d;
+    --border-strong: #474745;
+    --track: #3a3a39;
+
+    --accent: #f8f8f6;
+    --accent-ink: #161616;
+    --accent-soft: #2d2d2c;
+
+    --ok: #79b78e;
+    --warn: #d0a95e;
+    --err: #dd8484;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  }
+}
