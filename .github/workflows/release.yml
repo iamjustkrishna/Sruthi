@@ -48,5 +48,5 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Sruthi v__VERSION__"
           releaseBody: "Download the installer for your platform below. The macOS build is unsigned: on first launch, right-click the app and choose Open (see the README)."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
