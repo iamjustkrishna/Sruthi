@@ -5,29 +5,35 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-lerna-debug.log*
 
 node_modules
 dist
 dist-ssr
 *.local
+coverage
+
+# Environment files and secrets
+.env
+.env.*
+*.pem
+
+# Agent tooling (installed locally, not part of the app)
+.agents/
+.superpowers/
+.claude/settings.local.json
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Personal Claude Code settings
-.claude/settings.local.json
-
-# Benchmark audio (downloaded from open datasets, e.g. HiACC / MUCS SLR104);
-# the runner script and refs stay versioned.
+# Benchmark audio (downloaded from open datasets, e.g. HiACC / MUCS SLR104).
+# The runner script, catalog and committed result summaries stay versioned.
 bench/hinglish/
-bench/results-*
-.superpowers/

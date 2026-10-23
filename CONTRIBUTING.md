@@ -1,0 +1,83 @@
+# Contributing to Srutam Dictate
+
+Thanks for helping make offline dictation better. This is a small project, so the
+process is deliberately light.
+
+## Project layout
+
+```
+index.html            main window markup (rail + four pages)
+overlay.html          floating pill markup
+result.html           floating result box markup
+src/                  TypeScript + CSS for the three windows above
+src/theme.css         the design tokens (palette, type scale, spacing, radii)
+src-tauri/src/        the Rust core
+  lib.rs              Tauri commands and app wiring
+  model.rs            the speech-model catalog and downloads
+  whisper.rs          the Whisper runtime family
+  chunks.rs           listened-chunk corrections (no, nope, actually…)
+  format/             number formatting and the LLM/cloud cleanup engines
+  context.rs          what app is focused, for stats
+  stats.rs            usage statistics and backfill
+  settings.rs         settings.json and the app data folder
+  secrets.rs          API keys in the OS credential store
+  capture.rs          microphone selection and probing
+  bench/              the real-audio benchmark runner and results
+.github/workflows/    CI and the release/packaging workflow
+```
+
+## Development setup
+
+Prerequisites: Rust (stable, MSVC on Windows), Node 20+, the Visual Studio C++
+build tools on Windows (or Xcode command-line tools on macOS).
+
+```bash
+npm install
+npm run tauri dev          # run the app against a dev server
+npm run build              # type-check and build the frontend only
+cd src-tauri
+cargo test --release --lib # the test suite
+```
+
+The first `tauri dev` run downloads a speech model (~478 MB) into
+`%LOCALAPPDATA%\SrutamDictate\models` — that is expected and one-time.
+
+## How the code is organized (and what goes where)
+
+- **Anything with logic or edge cases belongs in Rust, with tests.** The Rust
+  crate carries the project's tests; a bug fix or a new formatting rule should
+  come with a `cargo test` case that fails without it.
+- **TypeScript is thin glue** for moving commands and events between HTML and
+  Rust; avoid growing business logic there.
+- **Styling uses the token system.** Reference the roles in `src/theme.css`
+  (surfaces, ink, spacing steps, type roles, radius ladder) rather than raw
+  values, so light, dark and system themes stay in sync.
+
+## Commit and pull-request conventions
+
+- One-line, sentence-style commit messages: first word capitalized, the rest
+  lowercase, e.g. `Keep the clipboard restore honest when paste fails`.
+- Keep pull requests focused; one behavior or fix per PR.
+- CI runs the frontend build and the Rust test suite on Windows and macOS;
+  both need to pass before merge.
+
+## Releasing
+
+The maintainer tags a version and the release workflow builds the installers:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+The workflow (`.github/workflows/release.yml`) builds Windows and macOS
+packages with [tauri-action](https://github.com/tauri-apps/tauri-action) and
+opens a **draft release** with the artifacts attached. Review and publish it
+by hand — macOS binaries are unsigned, so the release notes tell people to
+right-click → Open on first launch.
+
+## Reporting issues
+
+Use the bug report or feature request templates. Include your OS, app version
+and the active speech model — most dictation complaints are model choice, and
+some are microphones, so the details usually solve it quickly.
