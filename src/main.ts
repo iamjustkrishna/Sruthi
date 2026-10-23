@@ -134,8 +134,6 @@ const modelError = $("model-error");
 const llmText = $("llm-text");
 const llmList = $<HTMLUListElement>("llms");
 const smartToggle = $<HTMLInputElement>("smart-toggle");
-const history = $<HTMLUListElement>("history");
-const historyEmpty = $("history-empty");
 
 const STATE_COPY: Record<ModelState, [string, string]> = {
   missing: ["Not installed", "Download a model once to start dictating. Everything runs offline."],
@@ -416,7 +414,7 @@ $("cloud-test").addEventListener("click", async () => {
 
 function render(s: Status) {
   status = s;
-  applyTheme(s.theme, false);
+  document.documentElement.dataset.theme = s.theme;
   const active = s.models.find((m) => m.id === s.active);
   const [label, text] = STATE_COPY[s.model];
   badge.textContent = label;
@@ -434,9 +432,7 @@ function render(s: Status) {
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   renderMicrophones(s);
 
-  renderUsage(s);
   showHoldPhase(holdPhase);
-  renderHistory(s.history);
 }
 
 // ---------------------------------------------------------------------------
@@ -519,206 +515,7 @@ listen<DictationPhaseEvent>("dictation", ({ payload }) => {
 });
 
 // ---------------------------------------------------------------------------
-// The rail: one page at a time, and the light/dark cycle at the bottom
-
-type Page = "home" | "voice" | "text" | "keys";
-
-const railButtons = [...document.querySelectorAll<HTMLButtonElement>(".rail-btn[data-page]")];
-const themeBtn = $<HTMLButtonElement>("theme-cycle");
-
-function showPage(page: Page) {
-  document.querySelectorAll<HTMLElement>(".page").forEach((el) => {
-    el.hidden = el.dataset.page !== page;
-  });
-  railButtons.forEach((b) => {
-    const current = b.dataset.page === page;
-    b.dataset.current = String(current);
-    if (current) b.setAttribute("aria-current", "page");
-    else b.removeAttribute("aria-current");
-  });
-}
-
-railButtons.forEach((b) => b.addEventListener("click", () => showPage(b.dataset.page as Page)));
-
-const THEME_TITLES: Record<ThemeName, string> = {
-  system: "Theme: System (follows Windows)",
-  light: "Theme: Light",
-  dark: "Theme: Dark",
-};
-const NEXT_THEME: Record<ThemeName, ThemeName> = { system: "light", light: "dark", dark: "system" };
-
-function applyTheme(theme: ThemeName, save: boolean) {
-  document.documentElement.dataset.theme = theme;
-  themeBtn.dataset.theme = theme;
-  themeBtn.title = THEME_TITLES[theme];
-  themeBtn.setAttribute("aria-label", THEME_TITLES[theme]);
-  if (save) invoke("set_theme", { theme }).catch(() => {});
-}
-
-themeBtn.addEventListener("click", () => applyTheme(NEXT_THEME[(themeBtn.dataset.theme ?? "system") as ThemeName], true));
-
-// ---------------------------------------------------------------------------
-// Your dictation: the usage numbers
-
-function savedLabel(min: number) {
-  if (min >= 60) return `${(min / 60).toFixed(1).replace(/.0$/, "")} hours`;
-  if (min >= 1) return `${Math.round(min)} min`;
-  return `${Math.max(1, Math.round(min * 60))} s`;
-}
-
-function renderUsage(s: Status) {
-  const u = s.usage;
-  const has = u.dictations > 0;
-  $("usage-empty").hidden = has;
-  $<HTMLElement>("usage-grid").hidden = !has;
-  $<HTMLElement>("usage-week").hidden = !has;
-  $("usage-extra").textContent = "";
-  if (!has) return;
-
-  $("usage-words").textContent = u.words.toLocaleString();
-  $("usage-today").textContent = u.words_today > 0 ? `${u.words_today.toLocaleString()} today` : "";
-  $("usage-wpm").textContent = u.wpm > 0 ? String(Math.round(u.wpm)) : "–";
-  $("usage-vs").textContent = u.wpm > 0 ? ` · about ${(u.wpm / 40).toFixed(1).replace(/.0$/, "")}× typing` : "";
-  $("usage-saved").textContent = savedLabel(u.saved_min);
-  $("usage-streak").textContent = String(u.streak);
-
-  const most = u.week.reduce((m, d) => Math.max(m, d.words), 1);
-  $<HTMLElement>("usage-week").replaceChildren(
-    ...u.week.map((d) => {
-      const cell = document.createElement("button");
-      cell.type = "button";
-      cell.className = "day";
-      cell.title = `${d.date}: ${d.words.toLocaleString()} words`;
-      cell.setAttribute("aria-label", `${d.date}: ${d.words.toLocaleString()} words`);
-      const bar = document.createElement("div");
-      bar.className = "bar";
-      bar.style.height = `${Math.max(6, Math.round((d.words / most) * 100))}%`;
-      const when = new Date(`${d.date}T00:00:00`);
-      const name = document.createElement("span");
-      name.className = "day-name";
-      name.textContent =
-        when.toDateString() === new Date().toDateString()
-          ? "Today"
-          : when.toLocaleDateString([], { weekday: "short" });
-      cell.append(bar, name);
-      return cell;
-    }),
-  );
-
-  const parts: string[] = [`${u.dictations.toLocaleString()} dictations`];
-  if (u.avg_latency_ms > 0) parts.push(`text lands ${(u.avg_latency_ms / 1000).toFixed(1)} s after release on average`);
-  if (u.cleaned > 0) parts.push(`${u.cleaned.toLocaleString()} words trimmed by formatting`);
-  if (u.longest_streak > u.streak) parts.push(`best streak: ${u.longest_streak} days`);
-  const [topApp] = u.top_apps;
-  if (topApp) {
-    const share = Math.round((topApp.words / Math.max(1, u.words)) * 100);
-    parts.push(`most dictated into ${topApp.name} (${share}%)`);
-  }
-  $("usage-extra").textContent = parts.join(" · ");
-}
-
-$("usage-reset").addEventListener("click", () => {
-  if (confirm("Clear all your dictation stats on this PC?")) run("reset_usage", {});
-});
-
-// ---------------------------------------------------------------------------
-// Recent dictations with playable recordings
-
-let player: HTMLAudioElement | null = null;
-let playingId: string | null = null;
-
-function stopPlayback() {
-  if (player) {
-    player.pause();
-    URL.revokeObjectURL(player.src);
-  }
-  player = null;
-  playingId = null;
-  document.querySelectorAll<HTMLButtonElement>(".play").forEach((b) => (b.textContent = "▶"));
-}
-
-async function togglePlay(id: string, button: HTMLButtonElement) {
-  const wasPlaying = playingId === id;
-  stopPlayback();
-  if (wasPlaying) return;
-  try {
-    const bytes = await invoke<ArrayBuffer>("get_recording", { id });
-    const audio = new Audio(URL.createObjectURL(new Blob([bytes], { type: "audio/wav" })));
-    player = audio;
-    playingId = id;
-    button.textContent = "■";
-    audio.addEventListener("ended", stopPlayback);
-    await audio.play();
-  } catch (e) {
-    stopPlayback();
-    showError(`Couldn't play that recording: ${e}`);
-  }
-}
-
-function when(ms: number) {
-  const d = new Date(ms);
-  const today = new Date();
-  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  return d.toDateString() === today.toDateString() ? `Today ${time}` : `${d.toLocaleDateString()} ${time}`;
-}
-
-function renderHistory(entries: HistoryEntry[]) {
-  history.replaceChildren(
-    ...entries.map((e) => {
-      const li = document.createElement("li");
-      li.className = "entry";
-
-      const play = button("▶", () => togglePlay(e.id, play), "ghost play");
-      play.title = "Play recording";
-      play.setAttribute("aria-label", "Play recording");
-      if (playingId === e.id) play.textContent = "■";
-
-      const body = document.createElement("div");
-      body.className = "entry-body";
-      const meta = document.createElement("span");
-      meta.className = "muted small entry-meta";
-      meta.textContent = `${when(e.time_ms)} · ${e.seconds.toFixed(1)}s`;
-      // The dictation text lines up under the time; a native button so
-      // keyboard users can copy it too.
-      const holder = document.createElement("div");
-      if (e.text) {
-        const copy = document.createElement("button");
-        copy.type = "button";
-        copy.className = "entry-copy";
-        copy.textContent = e.text;
-        copy.title = "Click to copy";
-        copy.setAttribute("aria-label", `Copy dictation: ${e.text}`);
-        copy.addEventListener("click", () => navigator.clipboard.writeText(copy.textContent ?? ""));
-        holder.append(copy);
-      } else {
-        const text = document.createElement("span");
-        text.className = "entry-text muted";
-        text.textContent = "(nothing was heard)";
-        holder.append(text);
-      }
-      body.append(meta, holder);
-      // Show the raw transcript when formatting changed it.
-      if (e.heard && e.heard !== e.text) {
-        const heard = document.createElement("span");
-        heard.className = "muted small";
-        heard.textContent = `Heard: ${e.heard}`;
-        body.append(heard);
-      }
-
-      const remove = button("×", () => {
-        if (!confirm(`Delete this recording (${e.seconds.toFixed(1)} s, ${when(e.time_ms)})?`)) return;
-        if (playingId === e.id) stopPlayback();
-        run("delete_recording", { id: e.id });
-      }, "ghost remove");
-      remove.title = "Delete recording";
-      remove.setAttribute("aria-label", "Delete recording");
-
-      li.append(play, body, remove);
-      return li;
-    }),
-  );
-  historyEmpty.hidden = entries.length > 0;
-}
+// Recordings live in one folder; open it from here.
 
 $("open-folder").addEventListener("click", () => run("open_recordings_folder", {}));
 
@@ -789,9 +586,8 @@ async function checkMicrophones() {
 
 $("mic-check").addEventListener("click", checkMicrophones);
 $("mic-warning-check").addEventListener("click", () => {
-  // The microphone controls live on the Voice page; take the user there.
-  showPage("voice");
-  $("mic-check").scrollIntoView({ behavior: "smooth", block: "center" });
+  // The microphone controls sit right below; jump to them and start checking.
+  $("mic-card").scrollIntoView({ behavior: "smooth", block: "center" });
   checkMicrophones();
 });
 

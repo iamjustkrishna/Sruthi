@@ -43,92 +43,52 @@ kbd {
 }
 
 /* ------------------------------------------------------------------ */
-/* Shell: the icon rail on the left, one scrolling page on the right   */
+/* ------------------------------------------------------------------ */
+/* Shell: one scrolling page, no rail                                   */
 
 .app {
-  display: flex;
   height: 100%;
-}
-
-.rail {
-  width: 52px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  /* One connected control group: the tight pitch is deliberate. */
-  gap: 6px;
-  padding: var(--space-3) 0 var(--space-4);
-  background: var(--rail);
-  border-inline-end: 1px solid var(--border);
-}
-
-.rail-logo {
-  width: 26px;
-  height: 26px;
-  margin: 0 0 var(--space-3);
-}
-
-.rail-btn {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.rail-btn:hover {
-  background: var(--accent-soft);
-  color: var(--text);
-}
-.rail-btn[data-current="true"] {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-
-.rail-btn .icon {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-#theme-cycle {
-  margin-top: auto;
-  color: var(--text);
-}
-/* One icon per theme state, chosen in JS. */
-#theme-cycle .icon { display: none; }
-#theme-cycle[data-theme="system"] .icon-system,
-#theme-cycle[data-theme="light"] .icon-light,
-#theme-cycle[data-theme="dark"] .icon-dark {
-  display: block;
-}
-
-.pages {
-  flex: 1;
-  min-width: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-5) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
 }
 
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+.hero {
+  padding-top: var(--space-2);
 }
 
-/* ------------------------------------------------------------------ */
+/* The compact pill used for secondary actions ("Check microphones"). */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  padding: 5px var(--space-3);
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+.pill:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.pill:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.app-foot {
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-2);
+}
 /* Cards and type                                                      */
 
 .card {
@@ -320,162 +280,14 @@ button.ghost:hover:not(:disabled) {
   margin: var(--space-2) 0 var(--space-1);
 }
 
-/* The numbers */
-.usage-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--space-2);
-  margin-top: var(--space-4);
-}
-.usage-cell {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--raise);
-}
-.usage-cell strong {
-  display: block;
-  font-size: var(--text-stat);
-  font-weight: 600;
-  line-height: 1.2;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
-}
-.usage-cell span {
-  font-size: var(--text-caption);
-  color: var(--muted);
-}
-.usage-week {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  height: 48px;
-  margin-top: var(--space-3);
-}
-.usage-week .day {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-1);
-  padding: 2px 0 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.usage-week .bar {
-  width: 100%;
-  border-radius: 3px 3px 0 0;
-  background: var(--border-strong);
-}
-.usage-week .day:hover .bar {
-  background: var(--text);
-}
-.usage-week .day-name {
-  font-size: 11px;
-  color: var(--muted);
-}
-#usage-extra {
-  margin: var(--space-2) 0 0;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ------------------------------------------------------------------ */
-/* History                                                             */
-
-.entry-meta {
-  font-variant-numeric: tabular-nums;
-}
-.history {
-  list-style: none;
-  margin: var(--space-1) 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  max-height: 300px;
-  overflow-y: auto;
-}
-.entry {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--raise);
-}
-.entry-body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-/* The dictation text doubles as a copy button — a native button, so it
-   works from the keyboard too. */
-.entry-copy {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-  font: inherit;
-  font-weight: 400;
-  text-align: left;
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-.entry-copy:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  filter: none;
-}
-.entry-text {
-  overflow-wrap: anywhere;
-}
-.entry .play {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 50%;
-  flex-shrink: 0;
-  font-size: 0.8rem;
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-}
-.entry .play:hover {
-  background: var(--accent-soft);
-  filter: none;
-}
-.entry .remove {
-  padding: 0 var(--space-2);
-  min-width: 24px;
-  min-height: 24px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted);
-  font-size: 1.05rem;
-  flex-shrink: 0;
-}
-.entry .remove:hover {
-  color: var(--err);
-  background: transparent;
-  filter: none;
-}
-
 /* ------------------------------------------------------------------ */
 /* Voice page                                                          */
 
+/* A slim alert strip, not an alarm: tinted, quiet, the pill as its action. */
 .card.warning {
-  border-color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 40%, transparent);
+  background: color-mix(in srgb, var(--err) 7%, var(--card));
+  border-radius: var(--radius-lg);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -485,6 +297,14 @@ button.ghost:hover:not(:disabled) {
   margin: 0;
   color: var(--err);
   font-weight: 600;
+}
+.card.warning .pill {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, transparent);
+}
+.card.warning .pill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--err) 10%, transparent);
+  border-color: var(--err);
 }
 
 .mic-select {

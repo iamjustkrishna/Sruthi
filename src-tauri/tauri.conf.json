@@ -17,7 +17,9 @@
         "url": "index.html",
         "width": 520,
         "height": 640,
-        "resizable": false
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": true
       },
       {
         "label": "overlay",
