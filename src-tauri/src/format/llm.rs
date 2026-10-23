@@ -11,15 +11,14 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Context, Result};
-use serde_json::{json, Value};
+use anyhow::{Context, Result, anyhow, bail};
+use serde_json::{Value, json};
 
 use crate::context::AppKind;
 
 /// Pinned llama.cpp build: the Vulkan binaries also run on CPU when there's
 /// no usable GPU.
-const RUNTIME_URL: &str =
-    "https://github.com/ggml-org/llama.cpp/releases/download/b11681/llama-b11681-bin-win-vulkan-x64.zip";
+const RUNTIME_URL: &str = "https://github.com/ggml-org/llama.cpp/releases/download/b11681/llama-b11681-bin-win-vulkan-x64.zip";
 const RUNTIME_MB: u32 = 31;
 
 pub struct LlmInfo {
@@ -81,7 +80,11 @@ fn runtime_dir() -> PathBuf {
 }
 
 fn server_exe() -> PathBuf {
-    runtime_dir().join(if cfg!(windows) { "llama-server.exe" } else { "llama-server" })
+    runtime_dir().join(if cfg!(windows) {
+        "llama-server.exe"
+    } else {
+        "llama-server"
+    })
 }
 
 pub fn runtime_installed() -> bool {
@@ -116,14 +119,20 @@ impl LlmInfo {
             .connect_timeout(Duration::from_secs(20))
             .build()?;
 
-        let runtime_bytes = if runtime_installed() { 0 } else { RUNTIME_MB as u64 * 1_048_576 };
+        let runtime_bytes = if runtime_installed() {
+            0
+        } else {
+            RUNTIME_MB as u64 * 1_048_576
+        };
         let model_bytes = self.size_mb as u64 * 1_048_576;
         let total = runtime_bytes + model_bytes;
 
         if !runtime_installed() {
             fs::create_dir_all(llm_root())?;
             let zip_path = llm_root().join("runtime.zip.part");
-            crate::model::fetch_resumable(&client, RUNTIME_URL, &zip_path, &mut |done, _| progress(done, total))?;
+            crate::model::fetch_resumable(&client, RUNTIME_URL, &zip_path, &mut |done, _| {
+                progress(done, total)
+            })?;
             install_runtime(&zip_path)?;
             let _ = fs::remove_file(&zip_path);
         }
@@ -131,7 +140,9 @@ impl LlmInfo {
         let models = llm_root().join("models");
         fs::create_dir_all(&models)?;
         let part = models.join(format!("{}.part", self.file));
-        crate::model::fetch_resumable(&client, self.url, &part, &mut |done, _| progress(runtime_bytes + done, total))?;
+        crate::model::fetch_resumable(&client, self.url, &part, &mut |done, _| {
+            progress(runtime_bytes + done, total)
+        })?;
         fs::rename(&part, self.path())?;
         progress(total, total);
         Ok(())
@@ -146,7 +157,8 @@ fn install_runtime(zip_path: &Path) -> Result<()> {
         .context("Failed to unpack llama.cpp")?;
     // The zip may hold the binaries in a sub-folder; find llama-server.
     let exe_name = server_exe().file_name().unwrap().to_owned();
-    let dir = find_dir_with(&staging, &exe_name).ok_or_else(|| anyhow!("llama-server not found in download"))?;
+    let dir = find_dir_with(&staging, &exe_name)
+        .ok_or_else(|| anyhow!("llama-server not found in download"))?;
     let _ = fs::remove_dir_all(runtime_dir());
     fs::rename(&dir, runtime_dir())?;
     let _ = fs::remove_dir_all(&staging);
@@ -157,7 +169,11 @@ fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
     if dir.join(file).is_file() {
         return Some(dir.to_path_buf());
     }
-    fs::read_dir(dir).ok()?.flatten().filter(|e| e.path().is_dir()).find_map(|e| find_dir_with(&e.path(), file))
+    fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .find_map(|e| find_dir_with(&e.path(), file))
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +199,16 @@ impl LlmServer {
             .args(["--host", "127.0.0.1", "--port", &port.to_string()])
             // Small context: transcripts are short. All layers on the GPU
             // when Vulkan finds one; llama.cpp falls back to CPU otherwise.
-            .args(["--ctx-size", "4096", "--n-gpu-layers", "99", "--parallel", "1", "--jinja", "--no-webui"])
+            .args([
+                "--ctx-size",
+                "4096",
+                "--n-gpu-layers",
+                "99",
+                "--parallel",
+                "1",
+                "--jinja",
+                "--no-webui",
+            ])
             .current_dir(runtime_dir())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -196,7 +221,9 @@ impl LlmServer {
         let server = Self {
             child,
             base: format!("http://127.0.0.1:{port}"),
-            client: reqwest::blocking::Client::builder().timeout(Duration::from_secs(30)).build()?,
+            client: reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()?,
             model_id: model.id,
         };
         server.wait_ready(Duration::from_secs(90))?;
@@ -262,7 +289,10 @@ impl Drop for LlmServer {
 
 /// The instructions and worked examples for a clean-up, shared by the local
 /// model and the cloud providers.
-pub(super) fn prompt(glossary: &[String], app: AppKind) -> (String, Vec<(&'static str, &'static str)>) {
+pub(super) fn prompt(
+    glossary: &[String],
+    app: AppKind,
+) -> (String, Vec<(&'static str, &'static str)>) {
     let mut system = SYSTEM_PROMPT.to_string();
     if !glossary.is_empty() {
         system.push_str(&format!(
@@ -276,7 +306,10 @@ pub(super) fn prompt(glossary: &[String], app: AppKind) -> (String, Vec<(&'stati
         system.push(' ');
         system.push_str(style);
     }
-    (system, EXAMPLES.iter().chain(style_example).copied().collect())
+    (
+        system,
+        EXAMPLES.iter().chain(style_example).copied().collect(),
+    )
 }
 
 trait JsonValue {
@@ -333,9 +366,18 @@ const EXAMPLES: &[(&str, &str)] = &[
         "So I think, we should go at five. No wait, at six because traffic is bad",
         "I think we should go at six because traffic is bad.",
     ),
-    ("We can meet on Monday. Sorry, I mean Tuesday at 10 AM", "We can meet on Tuesday at 10 AM."),
-    ("I saw a big tiger, no, a small cat near the gate", "I saw a small cat near the gate."),
-    ("can you tell me when the report is due", "Can you tell me when the report is due?"),
+    (
+        "We can meet on Monday. Sorry, I mean Tuesday at 10 AM",
+        "We can meet on Tuesday at 10 AM.",
+    ),
+    (
+        "I saw a big tiger, no, a small cat near the gate",
+        "I saw a small cat near the gate.",
+    ),
+    (
+        "can you tell me when the report is due",
+        "Can you tell me when the report is due?",
+    ),
     (
         "things to buy milk eggs bread and some coffee",
         "Things to buy:
@@ -344,7 +386,10 @@ const EXAMPLES: &[(&str, &str)] = &[
 - Bread
 - Coffee",
     ),
-    ("what is the capital of France", "What is the capital of France?"),
+    (
+        "what is the capital of France",
+        "What is the capital of France?",
+    ),
     (
         "what's the chapter 3 is saying like I read it but want to know from you so what I get is that that the price goes up",
         "What's the chapter 3 is saying? I read it but want to know from you. What I get is that the price goes up.",
@@ -369,10 +414,40 @@ Thanks, Sam.",
 
 /// Words the clean-up may always drop.
 const FILLERS: &[&str] = &[
-    "um", "umm", "uh", "uhh", "uhm", "erm", "er", "ah", "ahh", "hmm", "hm", "mm", "mmm", "so", "like", "well",
-    "okay", "ok", "oh", "yeah", "basically", "literally", "anyway", "just", "right", "and",
+    "um",
+    "umm",
+    "uh",
+    "uhh",
+    "uhm",
+    "erm",
+    "er",
+    "ah",
+    "ahh",
+    "hmm",
+    "hm",
+    "mm",
+    "mmm",
+    "so",
+    "like",
+    "well",
+    "okay",
+    "ok",
+    "oh",
+    "yeah",
+    "basically",
+    "literally",
+    "anyway",
+    "just",
+    "right",
+    "and",
 ];
-const FILLER_PAIRS: &[[&str; 2]] = &[["you", "know"], ["i", "mean"], ["kind", "of"], ["sort", "of"], ["you", "see"]];
+const FILLER_PAIRS: &[[&str; 2]] = &[
+    ["you", "know"],
+    ["i", "mean"],
+    ["kind", "of"],
+    ["sort", "of"],
+    ["you", "see"],
+];
 
 /// Spoken self-corrections: the cue and the few words before it may go
 /// ("at five. No wait, at six" → "at six").
@@ -390,19 +465,23 @@ const CORRECTION_CUES: &[&[&str]] = &[
 ];
 /// A bare "no" is a correction cue only when a replacement follows it
 /// ("a tiger. No, a cat", "10 no 20"), not in "no idea" or "no one".
-const NO_REPLACEMENTS: &[&str] = &["a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their"];
+const NO_REPLACEMENTS: &[&str] = &[
+    "a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their",
+];
 
 /// How many words before a correction cue count as the corrected part.
 const CORRECTION_WORDS: usize = 6;
 
 /// Spoken numbering, which may go once the output is a real list.
 const ORDINALS: &[&str] = &[
-    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "firstly",
-    "secondly", "thirdly", "lastly", "finally", "next",
+    "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth",
+    "firstly", "secondly", "thirdly", "lastly", "finally", "next",
 ];
 const LIST_WORDS: &[&str] = &["number", "point", "item", "step"];
-const NUMBER_WORDS: &[&str] =
-    &["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+const NUMBER_WORDS: &[&str] = &[
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "1", "2", "3",
+    "4", "5", "6", "7", "8", "9", "10",
+];
 
 /// Most other words dropped in one place, and in the whole text (plus one
 /// per this many words). More than that is the AI cutting what was said.
@@ -438,17 +517,26 @@ fn split_words(text: &str, dictionary: &HashSet<String>) -> (Vec<Word>, bool) {
         while let Some(start) = rest.find(char::is_alphanumeric) {
             let gap = &rest[..start];
             // "3.30" and "john.smith" don't end a sentence; ". " does.
-            if gap.contains(['?', '!', ':']) || (gap.contains('.') && gap.contains(char::is_whitespace)) {
+            if gap.contains(['?', '!', ':'])
+                || (gap.contains('.') && gap.contains(char::is_whitespace))
+            {
                 if !at_start {
                     sentence += 1;
                 }
                 at_start = true;
             }
-            let end = rest[start..].find(|c: char| !c.is_alphanumeric()).map_or(rest.len(), |e| start + e);
+            let end = rest[start..]
+                .find(|c: char| !c.is_alphanumeric())
+                .map_or(rest.len(), |e| start + e);
             let token = &rest[start..end];
             let key = token.to_lowercase();
-            let titled = token.starts_with(char::is_uppercase) && token.contains(char::is_lowercase);
-            words.push(Word { name: (titled && !at_start) || dictionary.contains(&key), key, sentence });
+            let titled =
+                token.starts_with(char::is_uppercase) && token.contains(char::is_lowercase);
+            words.push(Word {
+                name: (titled && !at_start) || dictionary.contains(&key),
+                key,
+                sentence,
+            });
             at_start = false;
             rest = &rest[end..];
         }
@@ -464,7 +552,10 @@ fn strip_list_marker(line: &str) -> &str {
     }
     let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
     if (1..=2).contains(&digits) {
-        if let Some(rest) = line[digits..].strip_prefix(". ").or_else(|| line[digits..].strip_prefix(") ")) {
+        if let Some(rest) = line[digits..]
+            .strip_prefix(". ")
+            .or_else(|| line[digits..].strip_prefix(") "))
+        {
             return rest;
         }
     }
@@ -515,7 +606,8 @@ fn mark_droppable(a: &[Word], cut: Range<usize>, list: bool, free: &mut [bool]) 
         }
         // A word or phrase said twice in a row ("extent extent").
         for n in 1..=4.min(cut.end - i) {
-            let same_as = |j: usize| j + n <= a.len() && (0..n).all(|k| a[i + k].key == a[j + k].key);
+            let same_as =
+                |j: usize| j + n <= a.len() && (0..n).all(|k| a[i + k].key == a[j + k].key);
             if same_as(i + n) || (i >= n && same_as(i - n)) {
                 free[i..i + n].fill(true);
             }
@@ -525,7 +617,9 @@ fn mark_droppable(a: &[Word], cut: Range<usize>, list: bool, free: &mut [bool]) 
         }
         if list
             && (ORDINALS.contains(&key(i))
-                || (LIST_WORDS.contains(&key(i)) && i + 1 < cut.end && NUMBER_WORDS.contains(&key(i + 1))))
+                || (LIST_WORDS.contains(&key(i))
+                    && i + 1 < cut.end
+                    && NUMBER_WORDS.contains(&key(i + 1))))
         {
             free[i] = true;
             if LIST_WORDS.contains(&key(i)) {
@@ -548,7 +642,9 @@ fn mark_droppable(a: &[Word], cut: Range<usize>, list: bool, free: &mut [bool]) 
         const NOT_BUT: &[&str] = &["not", "", "but"];
         let cue = CORRECTION_CUES
             .iter()
-            .find(|cue| cue.len() <= cut.end - i && cue.iter().enumerate().all(|(k, w)| key(i + k) == *w))
+            .find(|cue| {
+                cue.len() <= cut.end - i && cue.iter().enumerate().all(|(k, w)| key(i + k) == *w)
+            })
             .or(bare_no.then_some(&NO))
             .or(not_but.then_some(&NOT_BUT));
         if let Some(cue) = cue {
@@ -566,7 +662,12 @@ pub fn faithful(input: &str, output: &str, dictionary: &[String]) -> bool {
     let entries: HashSet<String> = dictionary
         .iter()
         .flat_map(|e| e.split_whitespace())
-        .map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+                .to_lowercase()
+        })
         .filter(|w| w.chars().count() >= 3)
         .collect();
     let (a, _) = split_words(input, &entries);
@@ -579,14 +680,25 @@ pub fn faithful(input: &str, output: &str, dictionary: &[String]) -> bool {
     let mut cut_total = 0;
     let mut respelled_total = 0;
     for g in 0..=pairs.len() {
-        let (i0, j0) = if g == 0 { (0, 0) } else { (pairs[g - 1].0 + 1, pairs[g - 1].1 + 1) };
+        let (i0, j0) = if g == 0 {
+            (0, 0)
+        } else {
+            (pairs[g - 1].0 + 1, pairs[g - 1].1 + 1)
+        };
         let (i1, j1) = pairs.get(g).copied().unwrap_or((a.len(), b.len()));
         mark_droppable(&a, i0..i1, list, &mut free);
         let cut: Vec<usize> = (i0..i1).filter(|&i| !free[i]).collect();
-        let heard: String = cut.iter().map(|&i| a[i].key.as_str()).collect::<Vec<_>>().join(" ");
+        let heard: String = cut
+            .iter()
+            .map(|&i| a[i].key.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
         let mut respelled = false;
         for w in b[j0..j1].iter().filter(|w| w.name) {
-            if entries.contains(&w.key) && !heard.is_empty() && super::dictionary::sounds_like(&heard, &w.key) {
+            if entries.contains(&w.key)
+                && !heard.is_empty()
+                && super::dictionary::sounds_like(&heard, &w.key)
+            {
                 respelled = true;
                 respelled_total += 1;
             } else {
@@ -621,7 +733,10 @@ pub fn faithful(input: &str, output: &str, dictionary: &[String]) -> bool {
             dropped[w.sentence] = true;
         }
     }
-    !kept.iter().zip(&dropped).any(|(&kept, &dropped)| dropped && !kept)
+    !kept
+        .iter()
+        .zip(&dropped)
+        .any(|(&kept, &dropped)| dropped && !kept)
 }
 
 /// How much of the input must line up with a rejected output for `salvage`
@@ -638,8 +753,19 @@ pub fn salvage(input: &str, output: &str) -> Option<String> {
     fn tokens(text: &str) -> (Vec<&str>, Vec<Word>) {
         text.split_whitespace()
             .map(|t| {
-                let key: String = t.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
-                (t, Word { key: if key.is_empty() { t.to_string() } else { key }, name: false, sentence: 0 })
+                let key: String = t
+                    .chars()
+                    .filter(|c| c.is_alphanumeric())
+                    .collect::<String>()
+                    .to_lowercase();
+                (
+                    t,
+                    Word {
+                        key: if key.is_empty() { t.to_string() } else { key },
+                        name: false,
+                        sentence: 0,
+                    },
+                )
             })
             .unzip()
     }
@@ -650,7 +776,11 @@ pub fn salvage(input: &str, output: &str) -> Option<String> {
     let mut out: Vec<&str> = Vec::with_capacity(a.len());
     let mut used = pairs.len();
     for g in 0..=pairs.len() {
-        let (i0, j0) = if g == 0 { (0, 0) } else { (pairs[g - 1].0 + 1, pairs[g - 1].1 + 1) };
+        let (i0, j0) = if g == 0 {
+            (0, 0)
+        } else {
+            (pairs[g - 1].0 + 1, pairs[g - 1].1 + 1)
+        };
         let (i1, j1) = pairs.get(g).copied().unwrap_or((a.len(), b.len()));
         mark_droppable(&a, i0..i1, false, &mut free);
         let undone = j1 > j0 || (i0..i1).any(|i| !free[i]);
@@ -677,7 +807,11 @@ pub fn salvage(input: &str, output: &str) -> Option<String> {
     }
     let mut text = out.join(" ");
     // The end put back as dictated still gets the AI's closing mark.
-    if let Some(mark) = b_raw.last().and_then(|t| t.chars().last()).filter(|c| ['.', '?', '!'].contains(c)) {
+    if let Some(mark) = b_raw
+        .last()
+        .and_then(|t| t.chars().last())
+        .filter(|c| ['.', '?', '!'].contains(c))
+    {
         if !text.ends_with(['.', '?', '!']) {
             text.push(mark);
         }
@@ -698,19 +832,34 @@ pub(super) mod tests {
 
     #[test]
     fn faithful_accepts_cleanups() {
-        assert!(faithful("So I think, we should go at five. No wait, at six", "We should go at six."));
-        assert!(faithful("So I think we should go at 5, no wait, at 6", "I think we should go at 6."));
-        assert!(faithful("We can meet on Monday. Sorry, I mean Tuesday at 10 AM", "We can meet on Tuesday at 10 AM."));
-        assert!(faithful("I saw a big tiger, no, a small cat near the gate", "I saw a small cat near the gate."));
+        assert!(faithful(
+            "So I think, we should go at five. No wait, at six",
+            "We should go at six."
+        ));
+        assert!(faithful(
+            "So I think we should go at 5, no wait, at 6",
+            "I think we should go at 6."
+        ));
+        assert!(faithful(
+            "We can meet on Monday. Sorry, I mean Tuesday at 10 AM",
+            "We can meet on Tuesday at 10 AM."
+        ));
+        assert!(faithful(
+            "I saw a big tiger, no, a small cat near the gate",
+            "I saw a small cat near the gate."
+        ));
         // Real Groq output for a real dictation: both name corrections applied.
         assert!(faithful(
             "So after a very long time I met my friend Akash. No Rajesh. He's a very good guy. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice.",
             "So after a very long time I met my friend Rajesh. He's a very good guy. He's married. My wife name is Kancha. She's also nice."
         ));
-        assert!(faithful("things to buy milk eggs bread", "Things to buy:
+        assert!(faithful(
+            "things to buy milk eggs bread",
+            "Things to buy:
 - Milk
 - Eggs
-- Bread"));
+- Bread"
+        ));
         assert!(faithful(
             "So, uh, we decided three things. First, launch on Monday. Second, fix the login bug. Third, update the docs.",
             "We decided three things:
@@ -742,18 +891,35 @@ pub(super) mod tests {
     #[test]
     fn faithful_accepts_dictionary_respellings() {
         let dict = ["Srutam".to_string()];
-        assert!(super::faithful("I am building Shrew tam this week", "I am building Srutam this week.", &dict));
+        assert!(super::faithful(
+            "I am building Shrew tam this week",
+            "I am building Srutam this week.",
+            &dict
+        ));
         // A dictionary name that doesn't sound like what was said.
-        assert!(!super::faithful("I am building the app this week", "I am building Srutam this week.", &dict));
+        assert!(!super::faithful(
+            "I am building the app this week",
+            "I am building Srutam this week.",
+            &dict
+        ));
     }
 
     #[test]
     fn faithful_rejects_answers_and_inventions() {
-        assert!(!faithful("What is the capital of France", "The capital of France is Paris, a city known for art."));
-        assert!(!faithful("send the report", "Sure! I have sent the report to the whole team as requested."));
+        assert!(!faithful(
+            "What is the capital of France",
+            "The capital of France is Paris, a city known for art."
+        ));
+        assert!(!faithful(
+            "send the report",
+            "Sure! I have sent the report to the whole team as requested."
+        ));
         assert!(!faithful("hello there everyone", ""));
         // Reworded and reordered: "Can you tell me" dropped, "is" moved.
-        assert!(!faithful("Can you tell me what time the meeting is tomorrow", "What time is the meeting tomorrow?"));
+        assert!(!faithful(
+            "Can you tell me what time the meeting is tomorrow",
+            "What time is the meeting tomorrow?"
+        ));
     }
 
     /// Real Qwen3 0.6B outputs that cut what was said.
@@ -789,8 +955,14 @@ We have to board the flight tomorrow."
             "We'll board the flight from there tomorrow. Thank you.",
             "We'll board the flight from there tomorrow."
         ));
-        assert!(!faithful("Please send the file to Raj by Monday.", "Please send the file to Ravi by Monday."));
-        assert!(!faithful("Please send the file to Raj by Monday.", "Please send the file by Monday."));
+        assert!(!faithful(
+            "Please send the file to Raj by Monday.",
+            "Please send the file to Ravi by Monday."
+        ));
+        assert!(!faithful(
+            "Please send the file to Raj by Monday.",
+            "Please send the file by Monday."
+        ));
     }
 
     /// Real Qwen3 0.6B outputs on pieces of long dictations.
@@ -816,12 +988,20 @@ We have to board the flight tomorrow."
         );
         // "so what" cut: "what" comes back, the filler "so" stays out.
         assert_eq!(
-            salvage("for me to understand so what I understand is", "For me to understand. I understand is").unwrap(),
+            salvage(
+                "for me to understand so what I understand is",
+                "For me to understand. I understand is"
+            )
+            .unwrap(),
             "For me to understand what I understand is"
         );
         // Stutters and fillers dropped, punctuation added.
         assert_eq!(
-            salvage("so what I get is that that the price uh goes up", "What I get is that the price goes up.").unwrap(),
+            salvage(
+                "so what I get is that that the price uh goes up",
+                "What I get is that the price goes up."
+            )
+            .unwrap(),
             "What I get is that the price goes up."
         );
         // An answer, not a clean-up.

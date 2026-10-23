@@ -58,7 +58,19 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { model: None, overlay: OverlayPosition::default(), smart: true, llm: None, dictionary: Vec::new(), hotkey: None, instant_mic: true, microphone: None, cloud: None, cloud_models: HashMap::new(), theme: Theme::default() }
+        Self {
+            model: None,
+            overlay: OverlayPosition::default(),
+            smart: true,
+            llm: None,
+            dictionary: Vec::new(),
+            hotkey: None,
+            instant_mic: true,
+            microphone: None,
+            cloud: None,
+            cloud_models: HashMap::new(),
+            theme: Theme::default(),
+        }
     }
 }
 
@@ -94,7 +106,10 @@ mod tests {
         let settings: Settings = Default::default();
         assert_eq!(settings.theme, Theme::System);
         // Stored lowercase, so the file stays readable by hand.
-        assert_eq!(serde_json::to_string(&settings.theme).unwrap(), "\"system\"");
+        assert_eq!(
+            serde_json::to_string(&settings.theme).unwrap(),
+            "\"system\""
+        );
     }
 
     #[test]

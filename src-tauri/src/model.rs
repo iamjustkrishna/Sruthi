@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
+use transcribe_rs::SpeechModel;
+use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::moonshine::{MoonshineModel, MoonshineVariant, StreamingModel};
 use transcribe_rs::onnx::parakeet::ParakeetModel;
-use transcribe_rs::onnx::Quantization;
-use transcribe_rs::SpeechModel;
 
 use crate::whisper::{self, WhisperKind};
 
@@ -56,7 +56,10 @@ pub struct ModelInfo {
 
 macro_rules! hf_v2 {
     ($file:literal) => {
-        concat!("https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main/", $file)
+        concat!(
+            "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/resolve/main/",
+            $file
+        )
     };
 }
 
@@ -131,7 +134,10 @@ pub const CATALOG: &[ModelInfo] = &[
         engine: Engine::Parakeet,
         source: Source::Files(&[
             (hf_v2!("encoder-model.int8.onnx"), "encoder-model.int8.onnx"),
-            (hf_v2!("decoder_joint-model.int8.onnx"), "decoder_joint-model.int8.onnx"),
+            (
+                hf_v2!("decoder_joint-model.int8.onnx"),
+                "decoder_joint-model.int8.onnx",
+            ),
             (hf_v2!("nemo128.onnx"), "nemo128.onnx"),
             (hf_v2!("vocab.txt"), "vocab.txt"),
         ]),
@@ -186,7 +192,9 @@ impl ModelInfo {
     pub fn is_installed(&self) -> bool {
         match self.engine {
             Engine::Whisper(kind) => whisper::is_installed(kind),
-            Engine::Hybrid => parakeet_v3().is_installed() && whisper::is_installed(WhisperKind::Turbo),
+            Engine::Hybrid => {
+                parakeet_v3().is_installed() && whisper::is_installed(WhisperKind::Turbo)
+            }
             _ => has_required_files(self.engine, &self.dir()),
         }
     }
@@ -194,17 +202,27 @@ impl ModelInfo {
     pub fn load(&self) -> Result<Box<dyn SpeechModel + Send>> {
         let dir = self.dir();
         let model: Box<dyn SpeechModel + Send> = match self.engine {
-            Engine::Parakeet => Box::new(ParakeetModel::load(&dir, &Quantization::Int8).map_err(|e| anyhow!("{e}"))?),
+            Engine::Parakeet => Box::new(
+                ParakeetModel::load(&dir, &Quantization::Int8).map_err(|e| anyhow!("{e}"))?,
+            ),
             Engine::MoonshineBase => Box::new(
                 MoonshineModel::load(&dir, MoonshineVariant::Base, &Quantization::default())
                     .map_err(|e| anyhow!("{e}"))?,
             ),
             Engine::MoonshineStreaming => {
-                let threads = thread::available_parallelism().map(|n| n.get().min(4)).unwrap_or(2);
-                Box::new(StreamingModel::load(&dir, threads, &Quantization::default()).map_err(|e| anyhow!("{e}"))?)
+                let threads = thread::available_parallelism()
+                    .map(|n| n.get().min(4))
+                    .unwrap_or(2);
+                Box::new(
+                    StreamingModel::load(&dir, threads, &Quantization::default())
+                        .map_err(|e| anyhow!("{e}"))?,
+                )
             }
             Engine::Whisper(kind) => whisper::load(kind)?,
-            Engine::Hybrid => Box::new(whisper::Hybrid::new(parakeet_v3().load()?, whisper::load(WhisperKind::Turbo)?)),
+            Engine::Hybrid => Box::new(whisper::Hybrid::new(
+                parakeet_v3().load()?,
+                whisper::load(WhisperKind::Turbo)?,
+            )),
         };
         Ok(model)
     }
@@ -212,7 +230,9 @@ impl ModelInfo {
     pub fn remove(&self) -> Result<()> {
         match self.engine {
             Engine::Whisper(kind) => return whisper::remove(kind),
-            Engine::Hybrid => bail!("Hybrid uses Parakeet V3 and Whisper turbo; delete those instead"),
+            Engine::Hybrid => {
+                bail!("Hybrid uses Parakeet V3 and Whisper turbo; delete those instead")
+            }
             _ => {}
         }
         let dir = self.dir();
@@ -240,19 +260,26 @@ impl ModelInfo {
         match &self.source {
             Source::Archive(url) => {
                 let part = models_root().join(format!("{}.tar.gz.part", self.dir_name));
-                fetch_resumable(&client, url, &part, &mut |done, total| progress(done, total))?;
+                fetch_resumable(&client, url, &part, &mut |done, total| {
+                    progress(done, total)
+                })?;
                 self.install_archive(&part)?;
                 let _ = fs::remove_file(&part);
             }
             Source::Files(files) => {
                 let staging = models_root().join(format!("{}.part", self.dir_name));
                 fs::create_dir_all(&staging)?;
-                let sizes: Vec<u64> = files.iter().map(|(url, _)| remote_size(&client, url).unwrap_or(0)).collect();
+                let sizes: Vec<u64> = files
+                    .iter()
+                    .map(|(url, _)| remote_size(&client, url).unwrap_or(0))
+                    .collect();
                 let total: u64 = sizes.iter().sum();
                 let mut finished = 0u64;
                 for ((url, name), size) in files.iter().zip(&sizes) {
                     let dest = staging.join(name);
-                    fetch_resumable(&client, url, &dest, &mut |done, _| progress(finished + done, total))?;
+                    fetch_resumable(&client, url, &dest, &mut |done, _| {
+                        progress(finished + done, total)
+                    })?;
                     finished += (*size).max(fs::metadata(&dest).map(|m| m.len()).unwrap_or(0));
                 }
                 if !has_required_files(self.engine, &staging) {
@@ -266,14 +293,24 @@ impl ModelInfo {
             Source::Parts => {
                 let parakeet = parakeet_v3();
                 let mb = |n: u32| n as u64 * 1_048_576;
-                let parakeet_bytes = if parakeet.is_installed() { 0 } else { mb(parakeet.size_mb) };
-                let whisper_bytes = if whisper::is_installed(WhisperKind::Turbo) { 0 } else { mb(whisper::RUNTIME_MB + whisper::MODEL_MB) };
+                let parakeet_bytes = if parakeet.is_installed() {
+                    0
+                } else {
+                    mb(parakeet.size_mb)
+                };
+                let whisper_bytes = if whisper::is_installed(WhisperKind::Turbo) {
+                    0
+                } else {
+                    mb(whisper::RUNTIME_MB + whisper::MODEL_MB)
+                };
                 let total = parakeet_bytes + whisper_bytes;
                 if parakeet_bytes > 0 {
                     parakeet.download_with(&mut |done, _| progress(done, total))?;
                 }
                 if whisper_bytes > 0 {
-                    whisper::download(WhisperKind::Turbo, &mut |done, _| progress(parakeet_bytes + done, total))?;
+                    whisper::download(WhisperKind::Turbo, &mut |done, _| {
+                        progress(parakeet_bytes + done, total)
+                    })?;
                 }
             }
         }
@@ -357,7 +394,10 @@ pub(crate) fn fetch_resumable(
     let mut last_err = None;
     for attempt in 0..MAX_ATTEMPTS {
         if attempt > 0 {
-            log::warn!("Download attempt {attempt} failed, retrying: {:?}", last_err);
+            log::warn!(
+                "Download attempt {attempt} failed, retrying: {:?}",
+                last_err
+            );
             thread::sleep(Duration::from_secs(2u64.pow(attempt.min(4))));
         }
         match fetch_once(client, url, dest, progress) {
@@ -442,12 +482,18 @@ mod tests {
     fn the_hinglish_models_are_in_the_catalog() {
         let apex = find("hinglish-apex").expect("hinglish-apex in the catalog");
         assert_eq!(apex.name, "Whisper Hinglish Apex");
-        assert!(matches!(apex.engine, Engine::Whisper(WhisperKind::HinglishApex)));
+        assert!(matches!(
+            apex.engine,
+            Engine::Whisper(WhisperKind::HinglishApex)
+        ));
         assert_eq!(apex.size_mb, whisper::RUNTIME_MB + whisper::APEX_MODEL_MB);
 
         let swift = find("hinglish-swift").expect("hinglish-swift in the catalog");
         assert_eq!(swift.name, "Whisper Hinglish Swift");
-        assert!(matches!(swift.engine, Engine::Whisper(WhisperKind::HinglishSwift)));
+        assert!(matches!(
+            swift.engine,
+            Engine::Whisper(WhisperKind::HinglishSwift)
+        ));
         assert_eq!(swift.size_mb, whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB);
     }
 
@@ -464,7 +510,12 @@ mod tests {
         // A directory runs every .wav in it, in name order.
         let path = Path::new(&wav);
         let mut files: Vec<PathBuf> = if path.is_dir() {
-            fs::read_dir(path).unwrap().flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "wav")).collect()
+            fs::read_dir(path)
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "wav"))
+                .collect()
         } else {
             vec![path.to_path_buf()]
         };
@@ -472,12 +523,19 @@ mod tests {
 
         // SRUTAM_TEST_GAIN=0.02 simulates quiet speech: scales the audio and
         // adds hiss, then runs it through the same boost dictation uses.
-        let gain: Option<f32> = std::env::var("SRUTAM_TEST_GAIN").ok().and_then(|g| g.parse().ok());
+        let gain: Option<f32> = std::env::var("SRUTAM_TEST_GAIN")
+            .ok()
+            .and_then(|g| g.parse().ok());
 
         // SRUTAM_TEST_HOTWORDS="Tauri,Kubernetes" boosts those words while
         // decoding and shows the dictionary correction on top.
         let hotwords: Vec<String> = std::env::var("SRUTAM_TEST_HOTWORDS")
-            .map(|w| w.split(',').map(|x| x.trim().to_string()).filter(|x| !x.is_empty()).collect())
+            .map(|w| {
+                w.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let mut model = info.load().unwrap();
@@ -491,7 +549,10 @@ mod tests {
                 match crate::enhance::prepare(&samples) {
                     Some(boosted) => samples = boosted,
                     None => {
-                        println!("[{id}] {}: rejected as no speech", file.file_name().unwrap().to_string_lossy());
+                        println!(
+                            "[{id}] {}: rejected as no speech",
+                            file.file_name().unwrap().to_string_lossy()
+                        );
                         continue;
                     }
                 }
@@ -502,7 +563,10 @@ mod tests {
                     seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
                     *s = *s * gain + ((seed >> 16) as f32 / 32_768.0 - 1.0) * 0.0004;
                 }
-                let quiet = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
+                let quiet = model
+                    .transcribe(&samples, &transcribe_rs::TranscribeOptions::default())
+                    .unwrap()
+                    .text;
                 println!("  quiet, no boost: {quiet}");
                 samples = match crate::enhance::prepare(&samples) {
                     Some(boosted) => boosted,
@@ -513,12 +577,24 @@ mod tests {
                 };
             }
             let started = std::time::Instant::now();
-            let text = model.transcribe(&samples, &transcribe_rs::TranscribeOptions::default()).unwrap().text;
-            println!("[{id}] {} ({:.1}s audio, {} ms)
+            let text = model
+                .transcribe(&samples, &transcribe_rs::TranscribeOptions::default())
+                .unwrap()
+                .text;
+            println!(
+                "[{id}] {} ({:.1}s audio, {} ms)
   raw:   {text}
-  rules: {}", file.file_name().unwrap().to_string_lossy(), samples.len() as f32 / 16000.0, started.elapsed().as_millis(), crate::format::rules::apply(&text));
+  rules: {}",
+                file.file_name().unwrap().to_string_lossy(),
+                samples.len() as f32 / 16000.0,
+                started.elapsed().as_millis(),
+                crate::format::rules::apply(&text)
+            );
             if !hotwords.is_empty() {
-                println!("  dict:  {}", crate::format::dictionary::apply(&text, &hotwords));
+                println!(
+                    "  dict:  {}",
+                    crate::format::dictionary::apply(&text, &hotwords)
+                );
             }
             if text.trim().is_empty() {
                 println!("  (model heard nothing)");

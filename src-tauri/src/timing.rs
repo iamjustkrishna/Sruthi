@@ -38,17 +38,33 @@ pub fn measure<T>(stage: &'static str, f: impl FnOnce() -> T) -> T {
 
 /// The stages recorded so far, e.g. "parakeet 240  whisper 610".
 pub fn summary() -> String {
-    STAGES.with(|s| s.borrow().iter().map(|(stage, ms)| format!("{stage} {ms}")).collect::<Vec<_>>().join("  "))
+    STAGES.with(|s| {
+        s.borrow()
+            .iter()
+            .map(|(stage, ms)| format!("{stage} {ms}"))
+            .collect::<Vec<_>>()
+            .join("  ")
+    })
 }
 
 /// Writes this dictation's line to the log (and the dev console).
 pub fn write(app: AppKind, audio_secs: f32, total: Duration) {
-    let line = format!("{}  {:<8} audio {audio_secs:.1}s  {}  total {} ms", now(), format!("{app:?}"), summary(), total.as_millis());
+    let line = format!(
+        "{}  {:<8} audio {audio_secs:.1}s  {}  total {} ms",
+        now(),
+        format!("{app:?}"),
+        summary(),
+        total.as_millis()
+    );
     log::info!("Timing: {line}");
     let path = crate::settings::app_root().join("timings.log");
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_LOG_BYTES) {
         if let Ok(text) = std::fs::read_to_string(&path) {
-            let keep = text.lines().skip(text.lines().count() / 2).collect::<Vec<_>>().join("\n");
+            let keep = text
+                .lines()
+                .skip(text.lines().count() / 2)
+                .collect::<Vec<_>>()
+                .join("\n");
             let _ = std::fs::write(&path, keep + "\n");
         }
     }
@@ -65,11 +81,17 @@ fn now() -> String {
         windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut t);
         t
     };
-    format!("{:04}-{:02}-{:02} {:02}:{:02}:{:02}", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond)
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
+    )
 }
 
 #[cfg(not(windows))]
 fn now() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     format!("unix {secs}")
 }

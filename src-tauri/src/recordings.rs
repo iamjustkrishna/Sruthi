@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::audio::TARGET_RATE;
@@ -58,7 +58,10 @@ fn save_index(entries: &[Entry]) -> Result<()> {
 
 /// Saves 16 kHz mono `samples` as a WAV and records the entry.
 pub fn add(samples: &[f32], heard: &str, text: &str) -> Result<Entry> {
-    let time_ms = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    let time_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
     let entry = Entry {
         id: format!("dictation-{time_ms}"),
         time_ms,

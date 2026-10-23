@@ -29,7 +29,10 @@ pub fn apply(text: &str, dictionary: &[String]) -> String {
         for n in 1..=MAX_SPAN_WORDS.min(words.len() - i) {
             let span = &words[i..i + n];
             // Don't match across sentence breaks.
-            if span[..n - 1].iter().any(|w| w.ends_with(['.', '?', '!', ',', ';', ':'])) {
+            if span[..n - 1]
+                .iter()
+                .any(|w| w.ends_with(['.', '?', '!', ',', ';', ':']))
+            {
                 break;
             }
             let joined: String = span.iter().map(|w| letters(w)).collect();
@@ -57,7 +60,11 @@ pub fn apply(text: &str, dictionary: &[String]) -> String {
 
     // Take the best matches first, never overlapping; prefer shorter spans
     // on equal scores so surrounding words aren't swallowed.
-    candidates.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal).then(a.1.cmp(&b.1)));
+    candidates.sort_by(|a, b| {
+        b.3.partial_cmp(&a.3)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.1.cmp(&b.1))
+    });
     let mut taken = vec![false; words.len()];
     let mut chosen: Vec<(usize, usize, &str)> = Vec::new();
     for (i, n, entry, _) in candidates {
@@ -127,8 +134,11 @@ pub fn has_near_miss(text: &str, dictionary: &[String]) -> bool {
     if words.is_empty() || words.len() > NEAR_MISS_MAX_WORDS {
         return false;
     }
-    let entries: Vec<String> =
-        dictionary.iter().map(|e| sound_key(e)).filter(|k| k.len() >= NEAR_MISS_MIN_KEY).collect();
+    let entries: Vec<String> = dictionary
+        .iter()
+        .map(|e| sound_key(e))
+        .filter(|k| k.len() >= NEAR_MISS_MIN_KEY)
+        .collect();
     if entries.is_empty() || apply(text, dictionary) != text {
         return false;
     }
@@ -149,7 +159,9 @@ pub fn has_near_miss(text: &str, dictionary: &[String]) -> bool {
 /// sound-alikes), i.e. a second opinion actually found a name.
 pub fn mentions_entry(text: &str, dictionary: &[String]) -> bool {
     let fixed = apply(text, dictionary).to_lowercase();
-    dictionary.iter().any(|e| !e.trim().is_empty() && fixed.contains(&e.trim().to_lowercase()))
+    dictionary
+        .iter()
+        .any(|e| !e.trim().is_empty() && fixed.contains(&e.trim().to_lowercase()))
 }
 
 /// Letters spelled out one by one ("S-R U T A M", "S R U T A M") that
@@ -159,8 +171,11 @@ fn join_spelled(text: &str, dictionary: &[String]) -> String {
     let letters_of = |token: &str| -> Option<String> {
         let core = token.trim_matches(|c: char| !c.is_alphanumeric());
         let parts: Vec<&str> = core.split('-').collect();
-        (!core.is_empty() && parts.iter().all(|p| p.chars().count() == 1 && p.chars().all(|c| c.is_alphabetic())))
-            .then(|| parts.concat())
+        (!core.is_empty()
+            && parts
+                .iter()
+                .all(|p| p.chars().count() == 1 && p.chars().all(|c| c.is_alphabetic())))
+        .then(|| parts.concat())
     };
     let tokens: Vec<&str> = text.split(' ').collect();
     let mut out: Vec<String> = Vec::with_capacity(tokens.len());
@@ -173,7 +188,11 @@ fn join_spelled(text: &str, dictionary: &[String]) -> String {
             j += 1;
         }
         let entry = (spelled.chars().count() >= 3)
-            .then(|| dictionary.iter().find(|e| close_spelling(&letters(e), &spelled)))
+            .then(|| {
+                dictionary
+                    .iter()
+                    .find(|e| close_spelling(&letters(e), &spelled))
+            })
             .flatten();
         match entry {
             Some(entry) => {
@@ -204,13 +223,22 @@ fn letters(word: &str) -> String {
 }
 
 fn leading_punct(word: &str) -> &str {
-    let end = word.find(|c: char| c.is_alphanumeric()).unwrap_or(word.len());
+    let end = word
+        .find(|c: char| c.is_alphanumeric())
+        .unwrap_or(word.len());
     &word[..end]
 }
 
 fn trailing_punct(word: &str) -> &str {
-    let start = word.rfind(|c: char| c.is_alphanumeric()).map(|i| i + 1).unwrap_or(0);
-    let start = word[start..].char_indices().next().map(|_| start).unwrap_or(word.len());
+    let start = word
+        .rfind(|c: char| c.is_alphanumeric())
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let start = word[start..]
+        .char_indices()
+        .next()
+        .map(|_| start)
+        .unwrap_or(word.len());
     &word[start..]
 }
 
@@ -223,7 +251,11 @@ fn trailing_punct(word: &str) -> &str {
 /// "Shoot them", "Shootham", "Shrutem", "Shutam" and "Sruitam" all share
 /// the key of "Srutam".
 fn sound_key(text: &str) -> String {
-    let s: String = text.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    let s: String = text
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphabetic())
+        .collect();
     let b = s.as_bytes();
     let mut out = String::with_capacity(b.len());
     let mut i = 0;
@@ -287,7 +319,11 @@ fn match_score_raw(a: &str, b: &str) -> f32 {
         row[0] = i + 1;
         for (j, cb) in b.iter().enumerate() {
             let tmp = row[j + 1];
-            row[j + 1] = if ca == cb { prev } else { 1 + prev.min(row[j]).min(row[j + 1]) };
+            row[j + 1] = if ca == cb {
+                prev
+            } else {
+                1 + prev.min(row[j]).min(row[j + 1])
+            };
             prev = tmp;
         }
     }
@@ -299,10 +335,17 @@ mod tests {
     use super::*;
 
     fn dict() -> Vec<String> {
-        ["supercalifragilisticexpialidocious", "Tauri", "Kubernetes", "Bhubaneswar", "Antigravity", "Srutam Dictate"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        [
+            "supercalifragilisticexpialidocious",
+            "Tauri",
+            "Kubernetes",
+            "Bhubaneswar",
+            "Antigravity",
+            "Srutam Dictate",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
     }
 
     #[test]
@@ -310,18 +353,27 @@ mod tests {
         let d = dict();
         // Every input below is real Parakeet output on synthetic speech.
         assert_eq!(
-            apply("The word of the day is Supercalifragalistus expialidos.", &d),
+            apply(
+                "The word of the day is Supercalifragalistus expialidos.",
+                &d
+            ),
             "The word of the day is supercalifragilisticexpialidocious."
         );
         assert_eq!(
-            apply("The word of the day is Supercalifragalistus expalacious.", &d),
+            apply(
+                "The word of the day is Supercalifragalistus expalacious.",
+                &d
+            ),
             "The word of the day is supercalifragilisticexpialidocious."
         );
         assert_eq!(
             apply("I am building Srutam dictate with Tori and Parakeet.", &d),
             "I am building Srutam Dictate with Tauri and Parakeet."
         );
-        assert_eq!(apply("with Taurai and Parakeet.", &d), "with Tauri and Parakeet.");
+        assert_eq!(
+            apply("with Taurai and Parakeet.", &d),
+            "with Tauri and Parakeet."
+        );
         assert_eq!(
             apply("We deployed the service on Cuba Ernets yesterday.", &d),
             "We deployed the service on Kubernetes yesterday."
@@ -334,7 +386,10 @@ mod tests {
             apply("Ask Priyanka about the Babanas War Office.", &d),
             "Ask Priyanka about the Bhubaneswar Office."
         );
-        assert_eq!(apply("Open the anti-gravity IDE", &d), "Open the Antigravity IDE");
+        assert_eq!(
+            apply("Open the anti-gravity IDE", &d),
+            "Open the Antigravity IDE"
+        );
     }
 
     #[test]
@@ -358,7 +413,10 @@ mod tests {
             ("Shoot them.", "Srutam."),
             ("Shoot um", "Srutam"),
             ("Shrutem", "Srutam"),
-            ("Shoot them is gonna be the best app people has ever seen.", "Srutam is gonna be the best app people has ever seen."),
+            (
+                "Shoot them is gonna be the best app people has ever seen.",
+                "Srutam is gonna be the best app people has ever seen.",
+            ),
             ("Return by Shutam dictate.", "Return by Srutam dictate."),
             ("Written by Sruitam Dictate.", "Written by Srutam Dictate."),
             ("Return by Sruotam Dictate.", "Return by Srutam Dictate."),
@@ -373,7 +431,10 @@ mod tests {
     #[test]
     fn spelled_letters_become_the_word() {
         let d = vec!["Srutam".to_string()];
-        assert_eq!(apply("type S-R U T A M to speak", &d), "type Srutam to speak");
+        assert_eq!(
+            apply("type S-R U T A M to speak", &d),
+            "type Srutam to speak"
+        );
         assert_eq!(apply("it is S R U T A M.", &d), "it is Srutam.");
         // Letters that spell nothing in the dictionary stay as they are.
         assert_eq!(apply("press A B C now", &d), "press A B C now");
@@ -391,17 +452,22 @@ mod tests {
         // Already matched, or nothing like it.
         assert!(!has_near_miss("Shoot them.", &d));
         assert!(!has_near_miss("The meeting is at five tomorrow.", &d));
-        assert!(!has_near_miss("I went to the shop and bought some stamps today.", &d));
+        assert!(!has_near_miss(
+            "I went to the shop and bought some stamps today.",
+            &d
+        ));
     }
 
     #[test]
     fn sentences_never_trigger_near_misses() {
         // The user's real dictionary and dictations that wrongly sent
         // everything to Whisper (8 s each) before this rule.
-        let d: Vec<String> = ["Ajay", "Hansi", "Jagjeet", "Jeena", "Mahendra", "Raghav", "Renu", "Srutam"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let d: Vec<String> = [
+            "Ajay", "Hansi", "Jagjeet", "Jeena", "Mahendra", "Raghav", "Renu", "Srutam",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         for text in [
             "There is a very thin line between what is possible and what's not possible, but that line is now faded a lot.",
             "I want you to note down two points. Number one point.",
@@ -416,7 +482,13 @@ mod tests {
     #[test]
     fn similar_ordinary_words_stay() {
         let d = vec!["Srutam".to_string()];
-        for text in ["Show them the way.", "What is shooting?", "Shoot.", "The stem is green.", "Satan and Sudan."] {
+        for text in [
+            "Show them the way.",
+            "What is shooting?",
+            "Shoot.",
+            "The stem is green.",
+            "Satan and Sudan.",
+        ] {
             assert_eq!(apply(text, &d), text);
         }
     }
@@ -434,7 +506,12 @@ mod near_miss_debug {
     #[test]
     #[ignore]
     fn show_triggers() {
-        let dict: Vec<String> = std::env::var("SRUTAM_TEST_DICT").unwrap_or_default().split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let dict: Vec<String> = std::env::var("SRUTAM_TEST_DICT")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         for text in [
             "There is a very thin line between what is possible and what's not possible, but that line is now faded a lot.",
             "I want you to note down two points. Number one point. We have to go to the party. Number two, we have to go in the car.",
@@ -451,7 +528,12 @@ mod near_miss_debug {
                     }
                 }
             }
-            println!("{} -> near_miss={} spans={:?}", text, super::has_near_miss(text, &dict), hits);
+            println!(
+                "{} -> near_miss={} spans={:?}",
+                text,
+                super::has_near_miss(text, &dict),
+                hits
+            );
         }
     }
 }

@@ -16,9 +16,12 @@ pub struct MicInfo {
 pub fn microphones() -> Vec<MicInfo> {
     use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
     use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
-    use windows::Win32::Media::Audio::{eCapture, eConsole, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE};
+    use windows::Win32::Media::Audio::{
+        DEVICE_STATE_ACTIVE, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture, eConsole,
+    };
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ,
+        CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
+        STGM_READ,
     };
 
     // SAFETY: COM is initialized for this call and every interface is
@@ -26,7 +29,8 @@ pub fn microphones() -> Vec<MicInfo> {
     unsafe {
         let initialized = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
         let result = (|| -> windows::core::Result<Vec<MicInfo>> {
-            let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+            let enumerator: IMMDeviceEnumerator =
+                CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
             let default_id = enumerator
                 .GetDefaultAudioEndpoint(eCapture, eConsole)
                 .and_then(|d| d.GetId())

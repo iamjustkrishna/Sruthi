@@ -114,7 +114,11 @@ impl Stats {
     pub fn record(&mut self, input: Input) -> Sample {
         let words = count_words(input.text);
         if words == 0 {
-            return Sample { words: 0, wpm: None, avg_wpm: self.avg_wpm() };
+            return Sample {
+                words: 0,
+                wpm: None,
+                avg_wpm: self.avg_wpm(),
+            };
         }
 
         // Speaking speed only from dictations big enough to say something.
@@ -144,7 +148,11 @@ impl Stats {
             day.latency_n += 1;
         }
 
-        Sample { words, wpm, avg_wpm: self.avg_wpm() }
+        Sample {
+            words,
+            wpm,
+            avg_wpm: self.avg_wpm(),
+        }
     }
 
     /// Replays the recordings index into the stats exactly once, so the card
@@ -188,26 +196,37 @@ impl Stats {
         let mut streak = 0;
         let mut day = today.to_string();
         if self.day(&day).dictations == 0 {
-            let Some(previous) = prev_day_key(&day) else { return 0 };
+            let Some(previous) = prev_day_key(&day) else {
+                return 0;
+            };
             day = previous;
         }
         while self.day(&day).dictations > 0 {
             streak += 1;
-            let Some(previous) = prev_day_key(&day) else { break };
+            let Some(previous) = prev_day_key(&day) else {
+                break;
+            };
             day = previous;
         }
         streak
     }
 
     fn longest_streak(&self) -> u32 {
-        let mut keys: Vec<String> =
-            self.days.iter().filter(|(_, d)| d.dictations > 0).map(|(k, _)| k.clone()).collect();
+        let mut keys: Vec<String> = self
+            .days
+            .iter()
+            .filter(|(_, d)| d.dictations > 0)
+            .map(|(k, _)| k.clone())
+            .collect();
         keys.sort();
         let mut longest = 0;
         let mut chain = 0;
         let mut previous: Option<String> = None;
         for key in keys {
-            if previous.as_deref().is_some_and(|p| next_day_key(p).as_deref() == Some(key.as_str())) {
+            if previous
+                .as_deref()
+                .is_some_and(|p| next_day_key(p).as_deref() == Some(key.as_str()))
+            {
                 chain += 1;
             } else {
                 chain = 1;
@@ -222,12 +241,17 @@ impl Stats {
     pub fn week(&self, today: &str) -> Vec<WeekDay> {
         let mut keys = vec![today.to_string()];
         while keys.len() < 7 {
-            let Some(previous) = prev_day_key(keys.last().expect("starts with today")) else { break };
+            let Some(previous) = prev_day_key(keys.last().expect("starts with today")) else {
+                break;
+            };
             keys.push(previous);
         }
         keys.reverse();
         keys.into_iter()
-            .map(|date| WeekDay { words: self.day(&date).words, date })
+            .map(|date| WeekDay {
+                words: self.day(&date).words,
+                date,
+            })
             .collect()
     }
 
@@ -252,7 +276,10 @@ impl Stats {
                 let mut apps: Vec<AppWords> = self
                     .apps
                     .iter()
-                    .map(|(name, &words)| AppWords { name: name.clone(), words })
+                    .map(|(name, &words)| AppWords {
+                        name: name.clone(),
+                        words,
+                    })
                     .collect();
                 apps.sort_by(|a, b| b.words.cmp(&a.words));
                 apps.truncate(3);
@@ -294,7 +321,10 @@ pub fn today_key() -> String {
 
 #[cfg(not(windows))]
 pub fn today_key() -> String {
-    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let (year, month, day) = civil_from_days((secs / 86_400) as i64);
     format!("{year:04}-{month:02}-{day:02}")
 }
@@ -320,7 +350,11 @@ fn utc_offset_ms() -> i64 {
     // Per the docs, UTC = local time + bias, so local stays ahead of UTC by
     // the negated bias. State 2 is daylight saving time, when the daylight
     // bias applies; otherwise the standard bias is the active adjustment.
-    let bias = if state == 2 { tzi.Bias + tzi.DaylightBias } else { tzi.Bias + tzi.StandardBias };
+    let bias = if state == 2 {
+        tzi.Bias + tzi.DaylightBias
+    } else {
+        tzi.Bias + tzi.StandardBias
+    };
     -i64::from(bias) * 60_000
 }
 
@@ -334,7 +368,10 @@ pub fn load() -> Stats {
 }
 
 pub fn load_from(file: &Path) -> Stats {
-    fs::read_to_string(file).ok().and_then(|s| from_json(&s)).unwrap_or_default()
+    fs::read_to_string(file)
+        .ok()
+        .and_then(|s| from_json(&s))
+        .unwrap_or_default()
 }
 
 fn from_json(text: &str) -> Option<Stats> {
@@ -367,7 +404,12 @@ fn save_stats(file: &Path, stats: &Stats) -> Result<()> {
 pub fn prev_day_key(key: &str) -> Option<String> {
     let (year, month, day) = parse_key(key)?;
     if day > 1 {
-        Some(format!("{year:04}-{month:02}-{day:02}", year = year, month = month, day = day - 1))
+        Some(format!(
+            "{year:04}-{month:02}-{day:02}",
+            year = year,
+            month = month,
+            day = day - 1
+        ))
     } else if month > 1 {
         let previous = month - 1;
         let last = days_in_month(year, previous);
@@ -395,7 +437,11 @@ fn next_day_key(key: &str) -> Option<String> {
 fn parse_key(key: &str) -> Option<(u32, u32, u32)> {
     let mut parts = key.split('-').map(|p| p.parse::<u32>().ok());
     match (parts.next(), parts.next(), parts.next(), parts.next()) {
-        (Some(Some(y)), Some(Some(m)), Some(Some(d)), None) if (1..=12).contains(&m) && (1..=31).contains(&d) => Some((y, m, d)),
+        (Some(Some(y)), Some(Some(m)), Some(Some(d)), None)
+            if (1..=12).contains(&m) && (1..=31).contains(&d) =>
+        {
+            Some((y, m, d))
+        }
         _ => None,
     }
 }
@@ -427,8 +473,23 @@ fn civil_from_days(z: i64) -> (u32, u32, u32) {
 mod tests {
     use super::*;
 
-    fn record(stats: &mut Stats, text: &str, heard: &str, speech_s: f32, app: &str, day: &str, latency_ms: u64) -> Sample {
-        stats.record(Input { heard, text, speech_s, app: Some(app), day, latency_ms: Some(latency_ms) })
+    fn record(
+        stats: &mut Stats,
+        text: &str,
+        heard: &str,
+        speech_s: f32,
+        app: &str,
+        day: &str,
+        latency_ms: u64,
+    ) -> Sample {
+        stats.record(Input {
+            heard,
+            text,
+            speech_s,
+            app: Some(app),
+            day,
+            latency_ms: Some(latency_ms),
+        })
     }
 
     #[test]
@@ -453,13 +514,27 @@ mod tests {
         assert_eq!(usage.cleaned, 2);
         assert_eq!(usage.streak, 1);
         assert_eq!(usage.avg_latency_ms, 900);
-        assert_eq!(usage.top_apps, vec![AppWords { name: "outlook.exe".into(), words: 6 }]);
+        assert_eq!(
+            usage.top_apps,
+            vec![AppWords {
+                name: "outlook.exe".into(),
+                words: 6
+            }]
+        );
     }
 
     #[test]
     fn short_blips_count_words_but_not_speed() {
         let mut stats = Stats::default();
-        let sample = record(&mut stats, "hello there", "hello there", 0.7, "code.exe", "2026-10-22", 400);
+        let sample = record(
+            &mut stats,
+            "hello there",
+            "hello there",
+            0.7,
+            "code.exe",
+            "2026-10-22",
+            400,
+        );
         assert_eq!(sample.words, 2);
         assert_eq!(sample.wpm, None);
         assert_eq!(sample.avg_wpm, None);
@@ -483,7 +558,15 @@ mod tests {
         // Ten brisk samples (150 wpm), then twenty rushed ones (capped 400).
         for i in 0..30 {
             let speech_s = if i < 10 { 4.0 } else { 1.0 };
-            let sample = record(&mut stats, &text, "", speech_s, "code.exe", "2026-10-22", 500);
+            let sample = record(
+                &mut stats,
+                &text,
+                "",
+                speech_s,
+                "code.exe",
+                "2026-10-22",
+                500,
+            );
             if i == 0 {
                 assert_eq!(sample.wpm, Some(150.0));
                 assert_eq!(sample.avg_wpm, Some(150.0));
@@ -497,8 +580,24 @@ mod tests {
     #[test]
     fn streaks_walk_back_from_today_or_yesterday() {
         let mut stats = Stats::default();
-        record(&mut stats, "one two three", "", 3.0, "code.exe", "2026-10-22", 500);
-        record(&mut stats, "one two three", "", 3.0, "code.exe", "2026-10-21", 500);
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "code.exe",
+            "2026-10-22",
+            500,
+        );
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "code.exe",
+            "2026-10-21",
+            500,
+        );
         assert_eq!(stats.usage("2026-10-22").streak, 2);
         // A day without dictation keeps yesterday's streak visible.
         assert_eq!(stats.usage("2026-10-23").streak, 2);
@@ -509,9 +608,33 @@ mod tests {
     #[test]
     fn streaks_and_weeks_cross_months_and_leap_februaries() {
         let mut stats = Stats::default();
-        record(&mut stats, "one two three", "", 3.0, "code.exe", "2026-10-01", 500);
-        record(&mut stats, "one two three", "", 3.0, "code.exe", "2026-10-01", 500);
-        record(&mut stats, "one two three", "", 3.0, "code.exe", "2026-09-30", 500);
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "code.exe",
+            "2026-10-01",
+            500,
+        );
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "code.exe",
+            "2026-10-01",
+            500,
+        );
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "code.exe",
+            "2026-09-30",
+            500,
+        );
         let usage = stats.usage("2026-10-01");
         assert_eq!(usage.streak, 2);
         assert_eq!(usage.week[0].date, "2026-09-25");
@@ -541,9 +664,33 @@ mod tests {
     #[test]
     fn top_apps_rank_by_words() {
         let mut stats = Stats::default();
-        record(&mut stats, "one two three four", "", 4.0, "chrome.exe", "2026-10-22", 500);
-        record(&mut stats, "one two", "", 2.0, "outlook.exe", "2026-10-22", 500);
-        record(&mut stats, "one two three", "", 3.0, "chrome.exe", "2026-10-22", 500);
+        record(
+            &mut stats,
+            "one two three four",
+            "",
+            4.0,
+            "chrome.exe",
+            "2026-10-22",
+            500,
+        );
+        record(
+            &mut stats,
+            "one two",
+            "",
+            2.0,
+            "outlook.exe",
+            "2026-10-22",
+            500,
+        );
+        record(
+            &mut stats,
+            "one two three",
+            "",
+            3.0,
+            "chrome.exe",
+            "2026-10-22",
+            500,
+        );
         let top = stats.usage("2026-10-22").top_apps;
         assert_eq!(top.len(), 2);
         assert_eq!(top[0].name, "chrome.exe");
@@ -556,7 +703,15 @@ mod tests {
         let file = std::env::temp_dir().join("srutam-stats-roundtrip-test.json");
         let _ = std::fs::remove_file(&file);
         let mut stats = Stats::default();
-        record(&mut stats, "one two three four five", "", 5.0, "code.exe", "2026-10-22", 600);
+        record(
+            &mut stats,
+            "one two three four five",
+            "",
+            5.0,
+            "code.exe",
+            "2026-10-22",
+            600,
+        );
         store(&file, &stats);
         let loaded = load_from(&file);
         assert_eq!(loaded.usage("2026-10-22").words, 5);

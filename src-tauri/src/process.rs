@@ -24,8 +24,9 @@ pub fn kill_with_app(child: &Child) {
     use std::sync::OnceLock;
     use windows::Win32::Foundation::HANDLE;
     use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject,
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
     };
 
     // One job for the app's lifetime; its handle is closed by Windows when
@@ -49,7 +50,9 @@ pub fn kill_with_app(child: &Child) {
     });
     if let Some(job) = job {
         // SAFETY: both handles are valid for the duration of the call.
-        if let Err(e) = unsafe { AssignProcessToJobObject(HANDLE(*job as *mut _), HANDLE(child.as_raw_handle())) } {
+        if let Err(e) = unsafe {
+            AssignProcessToJobObject(HANDLE(*job as *mut _), HANDLE(child.as_raw_handle()))
+        } {
             log::warn!("Couldn't tie llama-server to the app's lifetime: {e}");
         }
     }

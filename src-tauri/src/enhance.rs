@@ -98,7 +98,10 @@ mod tests {
         let pad = TARGET_RATE as usize / 2;
         let amp = level * std::f32::consts::SQRT_2;
         let mut out: Vec<f32> = (0..pad).map(|_| noise()).collect();
-        out.extend((0..n).map(|i| amp * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / TARGET_RATE as f32).sin() + noise()));
+        out.extend((0..n).map(|i| {
+            amp * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / TARGET_RATE as f32).sin()
+                + noise()
+        }));
         out.extend((0..pad).map(|_| noise()));
         out
     }
@@ -122,7 +125,11 @@ mod tests {
     fn whisper_over_silent_background_is_kept() {
         let mut audio = vec![0.0f32; TARGET_RATE as usize];
         let whisper: Vec<f32> = (0..TARGET_RATE as usize)
-            .map(|i| 0.0015 * std::f32::consts::SQRT_2 * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / TARGET_RATE as f32).sin())
+            .map(|i| {
+                0.0015
+                    * std::f32::consts::SQRT_2
+                    * (2.0 * std::f32::consts::PI * 300.0 * i as f32 / TARGET_RATE as f32).sin()
+            })
             .collect();
         audio.extend(whisper);
         audio.extend(vec![0.0f32; TARGET_RATE as usize]);

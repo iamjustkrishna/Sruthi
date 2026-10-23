@@ -46,7 +46,7 @@ pub fn text_field_focused() -> Option<bool> {
 fn win32_caret() -> Option<Caret> {
     use windows_sys::Win32::Foundation::POINT;
     use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, GUITHREADINFO};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GUITHREADINFO, GetGUIThreadInfo};
 
     // SAFETY: GUITHREADINFO is plain data; cbSize is set as the API requires,
     // and both calls only write into the structs we pass.
@@ -62,11 +62,18 @@ fn win32_caret() -> Option<Caret> {
         if height <= 0 {
             return None;
         }
-        let mut point = POINT { x: rect.left, y: rect.top };
+        let mut point = POINT {
+            x: rect.left,
+            y: rect.top,
+        };
         if ClientToScreen(info.hwndCaret, &mut point) == 0 {
             return None;
         }
-        Some(Caret { x: point.x, y: point.y, height })
+        Some(Caret {
+            x: point.x,
+            y: point.y,
+            height,
+        })
     }
 }
 
@@ -76,18 +83,21 @@ mod uia {
     use std::thread;
     use std::time::Duration;
 
-    use windows::core::BOOL;
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, SAFEARRAY,
+        CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+        CoUninitialize, SAFEARRAY,
     };
     use windows::Win32::System::Ole::{
-        SafeArrayAccessData, SafeArrayDestroy, SafeArrayGetLBound, SafeArrayGetUBound, SafeArrayUnaccessData,
+        SafeArrayAccessData, SafeArrayDestroy, SafeArrayGetLBound, SafeArrayGetUBound,
+        SafeArrayUnaccessData,
     };
     use windows::Win32::UI::Accessibility::{
-        CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, IUIAutomationTextPattern2,
-        IUIAutomationTextRange, IUIAutomationValuePattern, TextUnit_Character, UIA_ComboBoxControlTypeId,
-        UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_TextPattern2Id, UIA_TextPatternId, UIA_ValuePatternId,
+        CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern,
+        IUIAutomationTextPattern2, IUIAutomationTextRange, IUIAutomationValuePattern,
+        TextUnit_Character, UIA_ComboBoxControlTypeId, UIA_DocumentControlTypeId,
+        UIA_EditControlTypeId, UIA_TextPattern2Id, UIA_TextPatternId, UIA_ValuePatternId,
     };
+    use windows::core::BOOL;
 
     use super::Caret;
 
@@ -121,7 +131,8 @@ mod uia {
         unsafe {
             CoInitializeEx(None, COINIT_MULTITHREADED).ok().ok()?;
             let result = (|| {
-                let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                let automation: IUIAutomation =
+                    CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
                 let element = automation.GetFocusedElement().ok()?;
                 let control = element.CurrentControlType().ok()?;
                 // A value the user can change: a text box, editable combo box.
@@ -129,7 +140,9 @@ mod uia {
                     .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
                     .ok()
                     .map(|v| !v.CurrentIsReadOnly().map(|b| b.as_bool()).unwrap_or(true));
-                let has_text = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).is_ok();
+                let has_text = element
+                    .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+                    .is_ok();
                 Some(if control == UIA_EditControlTypeId {
                     true
                 } else if control == UIA_DocumentControlTypeId {
@@ -154,7 +167,8 @@ mod uia {
         unsafe {
             CoInitializeEx(None, COINIT_MULTITHREADED).ok().ok()?;
             let result = (|| {
-                let automation: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+                let automation: IUIAutomation =
+                    CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
                 let element = automation.GetFocusedElement().ok()?;
                 caret_from_text_pattern(&element).or_else(|| small_field_rect(&element))
             })();
@@ -165,7 +179,9 @@ mod uia {
 
     unsafe fn caret_from_text_pattern(element: &IUIAutomationElement) -> Option<Caret> {
         unsafe {
-            if let Ok(pattern) = element.GetCurrentPatternAs::<IUIAutomationTextPattern2>(UIA_TextPattern2Id) {
+            if let Ok(pattern) =
+                element.GetCurrentPatternAs::<IUIAutomationTextPattern2>(UIA_TextPattern2Id)
+            {
                 let mut active = BOOL(0);
                 if let Ok(range) = pattern.GetCaretRange(&mut active) {
                     if let Some(caret) = range_rect(&range) {
@@ -173,7 +189,9 @@ mod uia {
                     }
                 }
             }
-            let pattern = element.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId).ok()?;
+            let pattern = element
+                .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+                .ok()?;
             let selection = pattern.GetSelection().ok()?;
             if selection.Length().ok()? < 1 {
                 return None;
@@ -230,7 +248,11 @@ mod uia {
         if height <= 0 || height > MAX_FIELD_HEIGHT || rect.right - rect.left <= 0 {
             return None;
         }
-        Some(Caret { x: rect.left, y: rect.top, height })
+        Some(Caret {
+            x: rect.left,
+            y: rect.top,
+            height,
+        })
     }
 }
 

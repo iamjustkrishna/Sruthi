@@ -4,7 +4,7 @@
 use std::thread;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 
 pub fn paste_text(text: &str) -> Result<()> {
@@ -35,9 +35,13 @@ fn send_paste_shortcut() -> Result<()> {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let (modifier, v) = (Key::Control, Key::Unicode('v'));
 
-    enigo.key(modifier, Direction::Press).map_err(|e| anyhow!("{e}"))?;
+    enigo
+        .key(modifier, Direction::Press)
+        .map_err(|e| anyhow!("{e}"))?;
     let clicked = enigo.key(v, Direction::Click).map_err(|e| anyhow!("{e}"));
     // Always release the modifier, even if the click failed.
-    enigo.key(modifier, Direction::Release).map_err(|e| anyhow!("{e}"))?;
+    enigo
+        .key(modifier, Direction::Release)
+        .map_err(|e| anyhow!("{e}"))?;
     clicked
 }

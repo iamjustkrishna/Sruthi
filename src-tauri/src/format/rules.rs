@@ -35,7 +35,9 @@ fn re(pattern: &str) -> Regex {
 
 /// Splits a token into (leading punctuation, word, trailing punctuation).
 pub(super) fn split_punct(token: &str) -> (&str, &str, &str) {
-    let start = token.find(|c: char| c.is_alphanumeric()).unwrap_or(token.len());
+    let start = token
+        .find(|c: char| c.is_alphanumeric())
+        .unwrap_or(token.len());
     let end = token
         .rfind(|c: char| c.is_alphanumeric())
         .map(|i| i + token[i..].chars().next().unwrap().len_utf8())
@@ -87,7 +89,9 @@ fn collapse_loops(s: &str) -> String {
 // ---------------------------------------------------------------------------
 // Fillers
 
-const FILLERS: &[&str] = &["um", "umm", "uh", "uhh", "uhm", "erm", "er", "ah", "ahh", "hmm", "hm", "mm", "mmm"];
+const FILLERS: &[&str] = &[
+    "um", "umm", "uh", "uhh", "uhm", "erm", "er", "ah", "ahh", "hmm", "hm", "mm", "mmm",
+];
 
 fn remove_fillers(s: &str) -> String {
     let mut out: Vec<String> = Vec::new();
@@ -110,23 +114,116 @@ fn remove_fillers(s: &str) -> String {
 }
 
 /// Words after which "like" is a filler ("talking about like some").
-const LIKE_AFTER: &[&str] =
-    &["about", "and", "but", "so", "or", "with", "for", "in", "on", "at", "because", "then", "basically", "literally"];
+const LIKE_AFTER: &[&str] = &[
+    "about",
+    "and",
+    "but",
+    "so",
+    "or",
+    "with",
+    "for",
+    "in",
+    "on",
+    "at",
+    "because",
+    "then",
+    "basically",
+    "literally",
+];
 /// Words that start a clause: "like" right before one is a filler ("which is
 /// like which goes like if there").
-const LIKE_BEFORE_CLAUSE: &[&str] = &["which", "what", "what's", "if", "how", "where", "when", "why"];
+const LIKE_BEFORE_CLAUSE: &[&str] = &[
+    "which", "what", "what's", "if", "how", "where", "when", "why",
+];
 /// Words after which "like" is a verb or means "as" or "similar to": kept.
 const LIKE_KEPT_AFTER: &[&str] = &[
-    "i", "you", "we", "they", "he", "she", "people", "who", "do", "does", "did", "don't", "doesn't", "didn't",
-    "would", "i'd", "you'd", "we'd", "they'd", "will", "won't", "might", "may", "can", "could", "should", "to",
-    "really", "also", "still", "always", "never", "actually", "totally", "definitely", "just", "more", "most",
-    "much", "not", "look", "looks", "looked", "looking", "feel", "feels", "felt", "feeling", "seem", "seems",
-    "seemed", "sound", "sounds", "sounded", "smell", "smells", "taste", "tastes", "something", "anything",
-    "nothing", "exactly", "kind", "sort", "kinda", "sorta", "be", "is", "was", "are", "were", "it's", "that's",
-    "lot", "bit", "little", "almost", "pretty", "very", "quite", "even", "sounding",
+    "i",
+    "you",
+    "we",
+    "they",
+    "he",
+    "she",
+    "people",
+    "who",
+    "do",
+    "does",
+    "did",
+    "don't",
+    "doesn't",
+    "didn't",
+    "would",
+    "i'd",
+    "you'd",
+    "we'd",
+    "they'd",
+    "will",
+    "won't",
+    "might",
+    "may",
+    "can",
+    "could",
+    "should",
+    "to",
+    "really",
+    "also",
+    "still",
+    "always",
+    "never",
+    "actually",
+    "totally",
+    "definitely",
+    "just",
+    "more",
+    "most",
+    "much",
+    "not",
+    "look",
+    "looks",
+    "looked",
+    "looking",
+    "feel",
+    "feels",
+    "felt",
+    "feeling",
+    "seem",
+    "seems",
+    "seemed",
+    "sound",
+    "sounds",
+    "sounded",
+    "smell",
+    "smells",
+    "taste",
+    "tastes",
+    "something",
+    "anything",
+    "nothing",
+    "exactly",
+    "kind",
+    "sort",
+    "kinda",
+    "sorta",
+    "be",
+    "is",
+    "was",
+    "are",
+    "were",
+    "it's",
+    "that's",
+    "lot",
+    "bit",
+    "little",
+    "almost",
+    "pretty",
+    "very",
+    "quite",
+    "even",
+    "sounding",
 ];
 /// After these, "like" takes an object, so it's the verb: "and like it".
-const LIKE_OBJECTS: &[&str] = &["it", "him", "her", "them", "me", "us", "you", "this", "that", "these", "those", "to"];
+const LIKE_OBJECTS: &[&str] = &[
+    "it", "him", "her", "them", "me", "us", "you", "this", "that", "these", "those", "to",
+];
 /// Prepositions that make the next pronoun an object, not the subject of
 /// "like": "want to know from you like what's there".
 const OBJECT_AFTER: &[&str] = &["from", "to", "with", "for", "about", "of", "by"];
@@ -139,17 +236,26 @@ const OBJECT_AFTER: &[&str] = &["from", "to", "with", "for", "about", "of", "by"
 /// "kind of like a car", "countries like France". Only for the AI clean-up:
 /// in plain rules mode and code editors every "like" stays.
 pub fn filler_like(s: &str) -> String {
-    s.split('\n').map(filler_like_in_line).collect::<Vec<_>>().join("\n")
+    s.split('\n')
+        .map(filler_like_in_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn filler_like_in_line(line: &str) -> String {
     let tokens: Vec<&str> = line.split(' ').collect();
-    let key = |i: usize| tokens.get(i).map_or(String::new(), |t| split_punct(t).1.to_lowercase());
+    let key = |i: usize| {
+        tokens
+            .get(i)
+            .map_or(String::new(), |t| split_punct(t).1.to_lowercase())
+    };
     let mut out: Vec<String> = Vec::with_capacity(tokens.len());
     let mut capitalize_next = false;
     for (i, token) in tokens.iter().enumerate() {
         let (lead, word, trail) = split_punct(token);
-        let is_like = word.eq_ignore_ascii_case("like") && lead.is_empty() && !trail.contains(['.', '?', '!']);
+        let is_like = word.eq_ignore_ascii_case("like")
+            && lead.is_empty()
+            && !trail.contains(['.', '?', '!']);
         let prev = if i > 0 { key(i - 1) } else { String::new() };
         let before_prev = if i > 1 { key(i - 2) } else { String::new() };
         let next = key(i + 1);
@@ -158,14 +264,17 @@ fn filler_like_in_line(line: &str) -> String {
         let pronoun_is_object = OBJECT_AFTER.contains(&before_prev.as_str());
         let kept_after = LIKE_KEPT_AFTER.contains(&prev.as_str()) && !pronoun_is_object;
         // "is like which" never means anything.
-        let be_like_which = next == "which" && ["is", "was", "are", "were", "it's", "that's"].contains(&prev.as_str());
+        let be_like_which = next == "which"
+            && ["is", "was", "are", "were", "it's", "that's"].contains(&prev.as_str());
         let filler = is_like
             && !next.is_empty()
             && (next == "like"
                 || (prev_token.ends_with(',') && trail.contains(','))
                 || (sentence_start && trail.contains(','))
                 || (LIKE_AFTER.contains(&prev.as_str()) && !LIKE_OBJECTS.contains(&next.as_str()))
-                || (LIKE_BEFORE_CLAUSE.contains(&next.as_str()) && (!kept_after || be_like_which) && !sentence_start));
+                || (LIKE_BEFORE_CLAUSE.contains(&next.as_str())
+                    && (!kept_after || be_like_which)
+                    && !sentence_start));
         if filler {
             capitalize_next |= sentence_start && word.starts_with(char::is_uppercase);
             continue;
@@ -192,7 +301,10 @@ static VOICE_COMMANDS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
         (re(r"(?i)[\s,.]*\bquestion mark\b[.,]?"), "?"),
         (re(r"(?i)[\s,.]*\bexclamation (?:mark|point)\b[.,]?"), "!"),
         // "comma" as a lone command word, not "a comma" / "the comma".
-        (re(r"(?i)(\b(?:a|the)\s+)?[\s,]*\bcomma\b[,.]?"), "\u{0}COMMA"),
+        (
+            re(r"(?i)(\b(?:a|the)\s+)?[\s,]*\bcomma\b[,.]?"),
+            "\u{0}COMMA",
+        ),
     ]
 });
 
@@ -221,7 +333,9 @@ const LIST_MARKERS: &[&str] = &["number", "point", "item", "step"];
 
 fn list_number(word: &str) -> Option<u64> {
     let w = word.to_lowercase();
-    small_number(&w).filter(|n| (1..=10).contains(n)).or_else(|| w.parse::<u64>().ok().filter(|n| (1..=10).contains(n)))
+    small_number(&w)
+        .filter(|n| (1..=10).contains(n))
+        .or_else(|| w.parse::<u64>().ok().filter(|n| (1..=10).contains(n)))
 }
 
 fn numbered_lists(s: &str) -> String {
@@ -250,7 +364,9 @@ fn numbered_lists(s: &str) -> String {
         let end = markers.get(n + 1).copied().unwrap_or(tokens.len());
         let mut item: Vec<&str> = tokens[start + 2..end].to_vec();
         // "Number one point. We have to…": drop a dangling "point".
-        if item.first().is_some_and(|w| split_punct(w).1.eq_ignore_ascii_case("point") && split_punct(w).2.contains('.')) {
+        if item.first().is_some_and(|w| {
+            split_punct(w).1.eq_ignore_ascii_case("point") && split_punct(w).2.contains('.')
+        }) {
             item.remove(0);
         }
         let text = item.join(" ");
@@ -259,7 +375,10 @@ fn numbered_lists(s: &str) -> String {
             continue;
         }
         let mut chars = text.chars();
-        let first: String = chars.next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+        let first: String = chars
+            .next()
+            .map(|c| c.to_uppercase().collect())
+            .unwrap_or_default();
         lines.push(format!("{}. {first}{}", n + 1, chars.as_str()));
     }
     lines.join("\n")
@@ -325,20 +444,32 @@ fn scale_number(w: &str) -> Option<u64> {
 
 pub(super) fn is_number_word(w: &str) -> bool {
     // "oh" only counts inside a run (e.g. years), never on its own.
-    (small_number(w).is_some() && w != "oh") || tens_number(w).is_some() || scale_number(w).is_some()
+    (small_number(w).is_some() && w != "oh")
+        || tens_number(w).is_some()
+        || scale_number(w).is_some()
 }
 
 /// Words that make even a single small number read better as digits.
 const UNIT_WORDS: &[&str] = &[
-    "percent", "per", "%", "rupees", "rupee", "rs", "dollars", "dollar", "euros", "euro", "am", "pm", "a.m.", "p.m.",
-    "kg", "kgs", "km", "kms", "gb", "mb", "minutes", "hours", "seconds", "o'clock",
+    "percent", "per", "%", "rupees", "rupee", "rs", "dollars", "dollar", "euros", "euro", "am",
+    "pm", "a.m.", "p.m.", "kg", "kgs", "km", "kms", "gb", "mb", "minutes", "hours", "seconds",
+    "o'clock",
 ];
 
 /// Parses number words like ["twenty", "five", "thousand"] (no "and").
 fn parse_number(words: &[&str]) -> Option<u64> {
     // A run of single digits ("nine eight seven six") is a digit string.
-    if words.len() >= 2 && words.iter().all(|w| small_number(w).is_some_and(|v| v < 10)) {
-        return words.iter().map(|w| small_number(w).unwrap().to_string()).collect::<String>().parse().ok();
+    if words.len() >= 2
+        && words
+            .iter()
+            .all(|w| small_number(w).is_some_and(|v| v < 10))
+    {
+        return words
+            .iter()
+            .map(|w| small_number(w).unwrap().to_string())
+            .collect::<String>()
+            .parse()
+            .ok();
     }
     if let Some(year) = parse_year(words) {
         return Some(year);
@@ -381,7 +512,9 @@ fn parse_year(words: &[&str]) -> Option<u64> {
     }
     let two_digit = |ws: &[&str]| -> Option<u64> {
         match ws {
-            [a] => small_number(a).filter(|v| *v >= 10).or_else(|| tens_number(a)),
+            [a] => small_number(a)
+                .filter(|v| *v >= 10)
+                .or_else(|| tens_number(a)),
             ["oh", b] => small_number(b).filter(|v| *v < 10),
             [a, b] => Some(tens_number(a)? + small_number(b).filter(|v| *v < 10 && *v > 0)?),
             _ => None,
@@ -424,7 +557,14 @@ fn number_words(s: &str) -> String {
                 parts
                     .into_iter()
                     .enumerate()
-                    .map(|(i, p)| format!("{}{}{}", if i == 0 { lead } else { "" }, p, if i == n - 1 { trail } else { "" }))
+                    .map(|(i, p)| {
+                        format!(
+                            "{}{}{}",
+                            if i == 0 { lead } else { "" },
+                            p,
+                            if i == n - 1 { trail } else { "" }
+                        )
+                    })
                     .collect::<Vec<_>>()
             } else {
                 vec![t.to_string()]
@@ -459,7 +599,11 @@ fn number_words(s: &str) -> String {
                 .unwrap_or(false);
             if is_number_word(&w) || (w == "oh" && j > i) {
                 words.push(w);
-            } else if (w == "and" || w == "point") && next_is_number && t.is_empty() && !words.is_empty() {
+            } else if (w == "and" || w == "point")
+                && next_is_number
+                && t.is_empty()
+                && !words.is_empty()
+            {
                 if w == "point" {
                     // Digits after "point" are read one by one.
                     let mut k = j + 1;
@@ -491,8 +635,14 @@ fn number_words(s: &str) -> String {
         }
 
         let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-        let next_word = tokens.get(j).map(|n| split_punct(n).1.to_lowercase()).unwrap_or_default();
-        let prev_word = out.last().map(|p| split_punct(p).1.to_lowercase()).unwrap_or_default();
+        let next_word = tokens
+            .get(j)
+            .map(|n| split_punct(n).1.to_lowercase())
+            .unwrap_or_default();
+        let prev_word = out
+            .last()
+            .map(|p| split_punct(p).1.to_lowercase())
+            .unwrap_or_default();
         let value = parse_number(&refs);
         let worth_converting = |v: u64| {
             v >= 10
@@ -503,9 +653,13 @@ fn number_words(s: &str) -> String {
         };
         match value {
             Some(v) if worth_converting(v) => {
-                let mut text = if refs.len() >= 2 && refs.iter().all(|w| small_number(w).is_some_and(|d| d < 10)) {
+                let mut text = if refs.len() >= 2
+                    && refs.iter().all(|w| small_number(w).is_some_and(|d| d < 10))
+                {
                     // Keep leading zeros in digit strings.
-                    refs.iter().map(|w| small_number(w).unwrap().to_string()).collect()
+                    refs.iter()
+                        .map(|w| small_number(w).unwrap().to_string())
+                        .collect()
                 } else if parse_year(&refs).is_some() {
                     v.to_string()
                 } else {
@@ -535,7 +689,8 @@ fn spelled_codes(s: &str) -> String {
         let (lead, w, _) = split_punct(t);
         lead.is_empty()
             && !w.is_empty()
-            && ((w.len() == 1 && w.chars().all(|c| c.is_ascii_uppercase())) || w.chars().all(|c| c.is_ascii_digit()))
+            && ((w.len() == 1 && w.chars().all(|c| c.is_ascii_uppercase()))
+                || w.chars().all(|c| c.is_ascii_digit()))
     };
     let mut out: Vec<String> = Vec::new();
     let mut i = 0;
@@ -549,7 +704,10 @@ fn spelled_codes(s: &str) -> String {
             }
         }
         let run = &tokens[i..j];
-        let letters = run.iter().filter(|t| split_punct(t).1.chars().all(|c| c.is_ascii_alphabetic())).count();
+        let letters = run
+            .iter()
+            .filter(|t| split_punct(t).1.chars().all(|c| c.is_ascii_alphabetic()))
+            .count();
         let digits = run.len() - letters;
         if run.len() >= 3 && letters >= 1 && digits >= 1 {
             let code: String = run.iter().map(|t| split_punct(t).1).collect();
@@ -578,7 +736,11 @@ fn times(s: &str) -> String {
         if !(1..=12).contains(&hour) || minutes.is_some_and(|m| m >= 60) {
             return whole.as_str().to_string();
         }
-        let meridiem = if c[3].eq_ignore_ascii_case("a") { "AM" } else { "PM" };
+        let meridiem = if c[3].eq_ignore_ascii_case("a") {
+            "AM"
+        } else {
+            "PM"
+        };
         let time = match minutes {
             Some(m) => format!("{hour}:{m:02} {meridiem}"),
             None => format!("{hour} {meridiem}"),
@@ -586,8 +748,14 @@ fn times(s: &str) -> String {
         // "p.m." at the end of a sentence was also the full stop.
         let rest = &s[whole.end()..];
         let ends_sentence = whole.as_str().ends_with('.')
-            && (rest.is_empty() || rest.starts_with(['\n']) || rest.trim_start().starts_with(|ch: char| ch.is_uppercase()));
-        if ends_sentence { format!("{time}.") } else { time }
+            && (rest.is_empty()
+                || rest.starts_with(['\n'])
+                || rest.trim_start().starts_with(|ch: char| ch.is_uppercase()));
+        if ends_sentence {
+            format!("{time}.")
+        } else {
+            time
+        }
     })
     .into_owned()
 }
@@ -600,13 +768,20 @@ static MONEY: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     let size = r"(?:\s+(lakhs?|crores?|thousand|million|billion))?";
     vec![
         (re(&format!(r"(?i)\b(?:rs\.?|inr)\s*{amount}{size}")), "₹"),
-        (re(&format!(r"(?i)\b{amount}{size}\s+(?:rupees?|rs\b\.?)")), "₹"),
-        (re(&format!(r"(?i)\b{amount}{size}\s+(?:dollars?|usd\b)")), "$"),
+        (
+            re(&format!(r"(?i)\b{amount}{size}\s+(?:rupees?|rs\b\.?)")),
+            "₹",
+        ),
+        (
+            re(&format!(r"(?i)\b{amount}{size}\s+(?:dollars?|usd\b)")),
+            "$",
+        ),
         (re(&format!(r"(?i)\b{amount}{size}\s+(?:euros?)")), "€"),
     ]
 });
 
-static PERCENT: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(\d[\d,]*(?:\.\d+)?)\s*(?:per\s?cent|percentage)\b"));
+static PERCENT: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)\b(\d[\d,]*(?:\.\d+)?)\s*(?:per\s?cent|percentage)\b"));
 
 fn money_and_percent(s: &str) -> String {
     let mut out = s.to_string();
@@ -624,16 +799,30 @@ fn money_and_percent(s: &str) -> String {
 // ---------------------------------------------------------------------------
 // Emails and web addresses
 
-static DOT_WORD: LazyLock<Regex> =
-    LazyLock::new(|| re(r"(?i)\b([a-z0-9-]+)\s+dot\s+(com|in|org|net|io|ai|co|dev|app|edu|gov|me|info)\b"));
+static DOT_WORD: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"(?i)\b([a-z0-9-]+)\s+dot\s+(com|in|org|net|io|ai|co|dev|app|edu|gov|me|info)\b")
+});
 static LOCAL_DOTS: LazyLock<Regex> =
     LazyLock::new(|| re(r"(?i)\b([a-z0-9]+(?:\s+dot\s+[a-z0-9]+)+)(\s+at\s+[a-z0-9-]+\.[a-z])"));
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)\b([a-z0-9][a-z0-9._%+-]*)\s+at\s+([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|org|net|io|ai|co|dev|app|edu|gov|me|info))\b")
+    re(
+        r"(?i)\b([a-z0-9][a-z0-9._%+-]*)\s+at\s+([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|in|org|net|io|ai|co|dev|app|edu|gov|me|info))\b",
+    )
 });
 const MAIL_PROVIDERS: &[&str] = &[
-    "gmail", "googlemail", "yahoo", "outlook", "hotmail", "live", "icloud", "proton", "protonmail", "rediffmail",
-    "zoho", "aol", "msn",
+    "gmail",
+    "googlemail",
+    "yahoo",
+    "outlook",
+    "hotmail",
+    "live",
+    "icloud",
+    "proton",
+    "protonmail",
+    "rediffmail",
+    "zoho",
+    "aol",
+    "msn",
 ];
 
 fn emails_and_domains(s: &str) -> String {
@@ -644,7 +833,11 @@ fn emails_and_domains(s: &str) -> String {
     }
     out = LOCAL_DOTS
         .replace_all(&out, |c: &Captures| {
-            let local = c[1].split_whitespace().filter(|w| !w.eq_ignore_ascii_case("dot")).collect::<Vec<_>>().join(".");
+            let local = c[1]
+                .split_whitespace()
+                .filter(|w| !w.eq_ignore_ascii_case("dot"))
+                .collect::<Vec<_>>()
+                .join(".");
             format!("{local}{}", &c[2])
         })
         .into_owned();
@@ -698,10 +891,14 @@ static LEADING_PUNCT: LazyLock<Regex> = LazyLock::new(|| re(r"^[\s,.;:]+"));
 // Email layout
 
 static GREETING: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)^((?:hi|hello|hey|dear|good (?:morning|afternoon|evening))(?:\s+[^\s,.!:\n]+){0,3})[,.!:]?\s+(\S)")
+    re(
+        r"(?i)^((?:hi|hello|hey|dear|good (?:morning|afternoon|evening))(?:\s+[^\s,.!:\n]+){0,3})[,.!:]?\s+(\S)",
+    )
 });
 static SIGN_OFF: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"(?i)(^|[.!?]\s+|\n\s*)((?:thanks|thank you|many thanks|regards|best regards|kind regards|warm regards|best|cheers|sincerely)\b[^\n]*)$")
+    re(
+        r"(?i)(^|[.!?]\s+|\n\s*)((?:thanks|thank you|many thanks|regards|best regards|kind regards|warm regards|best|cheers|sincerely)\b[^\n]*)$",
+    )
 });
 
 /// Lays out an email: the greeting on its own line, a blank line, the body,
@@ -710,9 +907,13 @@ static SIGN_OFF: LazyLock<Regex> = LazyLock::new(|| {
 /// a greeting line is left as is.
 pub fn email_layout(s: &str) -> String {
     let mut out = s.trim().to_string();
-    if !out.lines().next().is_some_and(|l| GREETING.is_match(l) && l.trim_end().ends_with(',') && l.split_whitespace().count() <= 4) {
+    if !out.lines().next().is_some_and(|l| {
+        GREETING.is_match(l) && l.trim_end().ends_with(',') && l.split_whitespace().count() <= 4
+    }) {
         out = GREETING
-            .replace(&out, |c: &Captures| format!("{},\n\n{}", &c[1], c[2].to_uppercase()))
+            .replace(&out, |c: &Captures| {
+                format!("{},\n\n{}", &c[1], c[2].to_uppercase())
+            })
             .into_owned();
     }
     if let Some(c) = SIGN_OFF.captures(&out) {
@@ -720,13 +921,19 @@ pub fn email_layout(s: &str) -> String {
         let sign_off = c[2].trim().trim_end_matches('.');
         // "Thanks, Krishna" → "Thanks,\nKrishna"
         let formatted = match sign_off.split_once(',') {
-            Some((phrase, name)) if !name.trim().is_empty() && name.split_whitespace().count() <= 3 => {
+            Some((phrase, name))
+                if !name.trim().is_empty() && name.split_whitespace().count() <= 3 =>
+            {
                 format!("{},\n{}", phrase.trim(), name.trim())
             }
             _ => sign_off.to_string(),
         };
         let body = format!("{}{}", &out[..whole.start()], c[1].trim_end());
-        out = if body.trim().is_empty() { formatted } else { format!("{}\n\n{formatted}", body.trim_end()) };
+        out = if body.trim().is_empty() {
+            formatted
+        } else {
+            format!("{}\n\n{formatted}", body.trim_end())
+        };
     }
     out
 }
@@ -748,7 +955,11 @@ fn tidy(s: &str) -> String {
         .replace_all(&out, |c: &Captures| {
             // Prefer the stronger mark: "word,." → "word."
             let marks = &c[0];
-            if marks.contains(['.', '!', '?']) && !c[1].contains(['!', '?']) { ".".into() } else { c[1].to_string() }
+            if marks.contains(['.', '!', '?']) && !c[1].contains(['!', '?']) {
+                ".".into()
+            } else {
+                c[1].to_string()
+            }
         })
         .into_owned();
     out = MULTI_SPACE.replace_all(&out, " ").into_owned();
@@ -764,7 +975,10 @@ fn capitalize_sentences(s: &str) -> String {
     let mut prev = ' ';
     for (i, c) in s.char_indices() {
         if capitalize_next && c.is_alphabetic() {
-            let word_end = s[i..].find(char::is_whitespace).map(|e| i + e).unwrap_or(s.len());
+            let word_end = s[i..]
+                .find(char::is_whitespace)
+                .map(|e| i + e)
+                .unwrap_or(s.len());
             let word = &s[i..word_end];
             if word.contains(['@', '.']) && !word.ends_with('.') {
                 out.push(c);
@@ -774,7 +988,11 @@ fn capitalize_sentences(s: &str) -> String {
             capitalize_next = false;
         } else {
             out.push(c);
-            if c == '\n' || (prev.is_ascii_punctuation() && matches!(prev, '.' | '!' | '?') && c.is_whitespace()) {
+            if c == '\n'
+                || (prev.is_ascii_punctuation()
+                    && matches!(prev, '.' | '!' | '?')
+                    && c.is_whitespace())
+            {
                 capitalize_next = true;
             } else if !c.is_whitespace() {
                 capitalize_next = false;
@@ -799,17 +1017,34 @@ mod tests {
             filler_like("but want to know from you like what's there for me to understand"),
             "but want to know from you what's there for me to understand"
         );
-        assert_eq!(filler_like("I think this is talking about like some are correlated"), "I think this is talking about some are correlated");
         assert_eq!(
-            filler_like("What's the page 27 is talking about which is like which goes like if there continues"),
+            filler_like("I think this is talking about like some are correlated"),
+            "I think this is talking about some are correlated"
+        );
+        assert_eq!(
+            filler_like(
+                "What's the page 27 is talking about which is like which goes like if there continues"
+            ),
             "What's the page 27 is talking about which is which goes if there continues"
         );
-        assert_eq!(filler_like("It took like two hours and like the whole team came"), "It took like two hours and the whole team came");
-        assert_eq!(filler_like("we waited for like an hour"), "we waited for an hour");
+        assert_eq!(
+            filler_like("It took like two hours and like the whole team came"),
+            "It took like two hours and the whole team came"
+        );
+        assert_eq!(
+            filler_like("we waited for like an hour"),
+            "we waited for an hour"
+        );
         assert_eq!(filler_like("So, like, we went home."), "So, we went home.");
         assert_eq!(filler_like("Like, it was huge."), "It was huge.");
-        assert_eq!(filler_like("it was like like a dream"), "it was like a dream");
-        assert_eq!(filler_like("Hi Raj,\n\nso like we're done"), "Hi Raj,\n\nso we're done");
+        assert_eq!(
+            filler_like("it was like like a dream"),
+            "it was like a dream"
+        );
+        assert_eq!(
+            filler_like("Hi Raj,\n\nso like we're done"),
+            "Hi Raj,\n\nso we're done"
+        );
     }
 
     #[test]
@@ -838,8 +1073,14 @@ mod tests {
 
     #[test]
     fn real_parakeet_outputs() {
-        assert_eq!(apply("Let's meet on 5 March 2026 at 330 p.m."), "Let's meet on 5 March 2026 at 3:30 PM.");
-        assert_eq!(apply("Send it to John.smith at gmail.com"), "Send it to john.smith@gmail.com");
+        assert_eq!(
+            apply("Let's meet on 5 March 2026 at 330 p.m."),
+            "Let's meet on 5 March 2026 at 3:30 PM."
+        );
+        assert_eq!(
+            apply("Send it to John.smith at gmail.com"),
+            "Send it to john.smith@gmail.com"
+        );
         assert_eq!(apply("Call me at 987-6543210."), "Call me at 98765 43210.");
         assert_eq!(
             apply("Um, so I think, uh, we should go at five. No wait, at six"),
@@ -849,15 +1090,23 @@ mod tests {
             apply("Buy milk, eggs and bread full stop new line call mom."),
             "Buy milk, eggs and bread.\nCall mom."
         );
-        assert_eq!(apply("My vehicle number is T52WA"), "My vehicle number is T52WA");
-        assert_eq!(apply("Revenue grew by 12.5% this quarter."), "Revenue grew by 12.5% this quarter.");
+        assert_eq!(
+            apply("My vehicle number is T52WA"),
+            "My vehicle number is T52WA"
+        );
+        assert_eq!(
+            apply("Revenue grew by 12.5% this quarter."),
+            "Revenue grew by 12.5% this quarter."
+        );
     }
 
     #[test]
     fn spoken_numbered_lists() {
         // Real dictation from the user.
         assert_eq!(
-            apply("I want you to note down two points. Number one point. We have to go to the party. Number two, we have to go in the car."),
+            apply(
+                "I want you to note down two points. Number one point. We have to go to the party. Number two, we have to go in the car."
+            ),
             "I want you to note down two points:\n1. We have to go to the party.\n2. We have to go in the car."
         );
         assert_eq!(
@@ -865,8 +1114,14 @@ mod tests {
             "Steps:\n1. Open the app\n2. Sign in\n3. Click dictate."
         );
         // A lone "number one" isn't a list; numbers out of order aren't either.
-        assert_eq!(apply("He is the number one player."), "He is the number one player.");
-        assert_eq!(apply("Point two and point one."), "Point two and point one.");
+        assert_eq!(
+            apply("He is the number one player."),
+            "He is the number one player."
+        );
+        assert_eq!(
+            apply("Point two and point one."),
+            "Point two and point one."
+        );
     }
 
     #[test]
@@ -874,45 +1129,69 @@ mod tests {
         use super::{email_layout, tidy_lines};
         // Rules output for a dictated email with a list (no AI step).
         assert_eq!(
-            email_layout(&apply("Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna")),
+            email_layout(&apply(
+                "Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna"
+            )),
             "Hi team,\n\nQuick update:\n1. The app now records instantly.\n2. Whispers work with the hybrid model.\n\nThanks,\nKrishna"
         );
         // Plain sentence email.
         assert_eq!(
-            email_layout("Hi Ajay, the demo is ready. Can we review it on Monday? Regards, Krishna."),
+            email_layout(
+                "Hi Ajay, the demo is ready. Can we review it on Monday? Regards, Krishna."
+            ),
             "Hi Ajay,\n\nThe demo is ready. Can we review it on Monday?\n\nRegards,\nKrishna"
         );
         // Already laid out by the AI: unchanged apart from tidying.
         let ai = "Hi Ajay,  \n\nHope you are doing well.\n\nThanks,  \nKrishna";
-        assert_eq!(tidy_lines(&email_layout(ai)), "Hi Ajay,\n\nHope you are doing well.\n\nThanks,\nKrishna");
+        assert_eq!(
+            tidy_lines(&email_layout(ai)),
+            "Hi Ajay,\n\nHope you are doing well.\n\nThanks,\nKrishna"
+        );
         // No greeting or sign-off: nothing to do.
-        assert_eq!(email_layout("The report is attached."), "The report is attached.");
+        assert_eq!(
+            email_layout("The report is attached."),
+            "The report is attached."
+        );
     }
 
     #[test]
     fn hallucination_loops() {
         // Real output on quiet audio.
         assert_eq!(
-            apply("And I would love to get a little bit of a little bit of a little bit of a little bit of a case."),
+            apply(
+                "And I would love to get a little bit of a little bit of a little bit of a little bit of a case."
+            ),
             "And I would love to get a little bit of a case."
         );
-        assert_eq!(apply("I really really want this"), "I really really want this");
+        assert_eq!(
+            apply("I really really want this"),
+            "I really really want this"
+        );
         assert_eq!(apply("no no no no no stop"), "No stop");
         assert_eq!(apply("go go go"), "Go go go");
     }
 
     #[test]
     fn spelled_codes() {
-        assert_eq!(apply("My vehicle number is T 5 2 W A."), "My vehicle number is T52WA.");
+        assert_eq!(
+            apply("My vehicle number is T 5 2 W A."),
+            "My vehicle number is T52WA."
+        );
         assert_eq!(apply("Booking ref A B 12 C"), "Booking ref AB12C");
         assert_eq!(apply("I have 3 apples"), "I have 3 apples");
     }
 
     #[test]
     fn number_words() {
-        assert_eq!(apply("it costs twenty five thousand rupees"), "It costs ₹25,000");
+        assert_eq!(
+            apply("it costs twenty five thousand rupees"),
+            "It costs ₹25,000"
+        );
         assert_eq!(apply("twelve point five percent"), "12.5%");
-        assert_eq!(apply("call nine eight seven six five four three two one zero"), "Call 98765 43210");
+        assert_eq!(
+            apply("call nine eight seven six five four three two one zero"),
+            "Call 98765 43210"
+        );
         assert_eq!(apply("in twenty twenty six"), "In 2026");
         assert_eq!(apply("nineteen ninety nine was fun"), "1999 was fun");
         assert_eq!(apply("one hundred and five people"), "105 people");
@@ -932,15 +1211,24 @@ mod tests {
 
     #[test]
     fn emails_and_domains() {
-        assert_eq!(apply("mail me at priya dot k at gmail dot com"), "Mail me at priya.k@gmail.com");
+        assert_eq!(
+            apply("mail me at priya dot k at gmail dot com"),
+            "Mail me at priya.k@gmail.com"
+        );
         assert_eq!(apply("visit srutam dot app"), "Visit srutam.app");
-        assert_eq!(apply("meet at google.com office"), "Meet at google.com office");
+        assert_eq!(
+            apply("meet at google.com office"),
+            "Meet at google.com office"
+        );
     }
 
     #[test]
     fn punctuation_commands() {
         assert_eq!(apply("is it ready question mark"), "Is it ready?");
-        assert_eq!(apply("first point new paragraph second point"), "First point\n\nSecond point");
+        assert_eq!(
+            apply("first point new paragraph second point"),
+            "First point\n\nSecond point"
+        );
         assert_eq!(apply("apples comma oranges"), "Apples, oranges");
         assert_eq!(apply("put a comma here"), "Put a comma here");
     }

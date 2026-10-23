@@ -9,11 +9,12 @@ fn target(name: &str) -> String {
 
 #[cfg(windows)]
 mod store {
-    use anyhow::{anyhow, Result};
-    use windows::core::{HSTRING, PWSTR};
+    use anyhow::{Result, anyhow};
     use windows::Win32::Security::Credentials::{
-        CredDeleteW, CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+        CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree,
+        CredReadW, CredWriteW,
     };
+    use windows::core::{HSTRING, PWSTR};
 
     pub fn set(target: &str, secret: &str) -> Result<()> {
         let name = HSTRING::from(target);
@@ -38,7 +39,10 @@ mod store {
         unsafe {
             CredReadW(&name, CRED_TYPE_GENERIC, None, &mut found).ok()?;
             let credential = &*found;
-            let blob = std::slice::from_raw_parts(credential.CredentialBlob, credential.CredentialBlobSize as usize);
+            let blob = std::slice::from_raw_parts(
+                credential.CredentialBlob,
+                credential.CredentialBlobSize as usize,
+            );
             let secret = String::from_utf8(blob.to_vec()).ok();
             CredFree(found as *const _);
             secret
@@ -65,7 +69,10 @@ mod store {
     }
 
     fn load() -> HashMap<String, String> {
-        std::fs::read_to_string(path()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
     }
 
     fn save(map: &HashMap<String, String>) -> Result<()> {

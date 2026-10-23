@@ -42,9 +42,17 @@ pub fn next_cut(audio: &[f32], ended: bool) -> Option<usize> {
     // for it to finish.
     let finished = |&&(_, end): &&(usize, usize)| ended || end < levels.len();
     let in_range = |run: &&(usize, usize)| (min..=max).contains(&mid(run));
-    let longest = |runs: &mut dyn Iterator<Item = &(usize, usize)>| runs.max_by_key(|(start, end)| end - start).map(mid);
+    let longest = |runs: &mut dyn Iterator<Item = &(usize, usize)>| {
+        runs.max_by_key(|(start, end)| end - start).map(mid)
+    };
 
-    if let Some(cut) = longest(&mut runs.iter().filter(finished).filter(in_range).filter(|(s, e)| e - s >= good)) {
+    if let Some(cut) = longest(
+        &mut runs
+            .iter()
+            .filter(finished)
+            .filter(in_range)
+            .filter(|(s, e)| e - s >= good),
+    ) {
         return Some(cut * FRAME);
     }
     if !ended && levels.len() < max {
@@ -55,18 +63,24 @@ pub fn next_cut(audio: &[f32], ended: bool) -> Option<usize> {
     if let Some(cut) = longest(&mut runs.iter().filter(in_range)) {
         return Some(cut * FRAME);
     }
-    let smoothed = |i: usize| levels[i.saturating_sub(2)..(i + 3).min(levels.len())].iter().sum::<f32>();
-    let quietest = (min..=max.min(levels.len() - 1)).min_by(|&a, &b| smoothed(a).total_cmp(&smoothed(b)))?;
+    let smoothed = |i: usize| {
+        levels[i.saturating_sub(2)..(i + 3).min(levels.len())]
+            .iter()
+            .sum::<f32>()
+    };
+    let quietest =
+        (min..=max.min(levels.len() - 1)).min_by(|&a, &b| smoothed(a).total_cmp(&smoothed(b)))?;
     Some(quietest * FRAME)
 }
 
 /// Words that are only capitalized at the start of a sentence.
 const SENTENCE_WORDS: &[&str] = &[
-    "a", "about", "all", "also", "an", "and", "any", "are", "as", "at", "be", "because", "but", "by", "can", "could", "did",
-    "do", "does", "for", "from", "had", "has", "have", "he", "her", "here", "his", "how", "if", "in", "is", "it", "its",
-    "just", "like", "my", "no", "not", "of", "on", "or", "our", "she", "should", "so", "some", "that", "the", "their",
-    "then", "there", "these", "they", "this", "those", "to", "was", "we", "were", "what", "when", "where", "which", "who",
-    "with", "would", "you", "your",
+    "a", "about", "all", "also", "an", "and", "any", "are", "as", "at", "be", "because", "but",
+    "by", "can", "could", "did", "do", "does", "for", "from", "had", "has", "have", "he", "her",
+    "here", "his", "how", "if", "in", "is", "it", "its", "just", "like", "my", "no", "not", "of",
+    "on", "or", "our", "she", "should", "so", "some", "that", "the", "their", "then", "there",
+    "these", "they", "this", "those", "to", "was", "we", "were", "what", "when", "where", "which",
+    "who", "with", "would", "you", "your",
 ];
 
 /// Joins the pieces' texts. The model writes each piece like a whole
@@ -84,12 +98,18 @@ pub fn join(texts: &[String]) -> String {
         let first = text.split_whitespace().next().unwrap_or_default();
         let bare = first.trim_end_matches(|c: char| !c.is_alphanumeric());
         let last = out.rsplit(' ').next().unwrap_or_default();
-        if text.starts_with(char::is_lowercase) && last.ends_with('.') && last.matches('.').count() == 1 {
+        if text.starts_with(char::is_lowercase)
+            && last.ends_with('.')
+            && last.matches('.').count() == 1
+        {
             out.pop();
             out = out.trim_end().to_string();
             out.push(' ');
             out.push_str(text);
-        } else if out.ends_with(char::is_alphanumeric) && SENTENCE_WORDS.contains(&bare.to_lowercase().as_str()) && bare[1..].chars().all(char::is_lowercase) {
+        } else if out.ends_with(char::is_alphanumeric)
+            && SENTENCE_WORDS.contains(&bare.to_lowercase().as_str())
+            && bare[1..].chars().all(char::is_lowercase)
+        {
             out.push(' ');
             out.extend(text.chars().next().map(|c| c.to_ascii_lowercase()));
             out.push_str(&text[1..]);
@@ -155,7 +175,11 @@ mod tests {
                 seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
                 let hiss = ((seed >> 16) as f32 / 32_768.0 - 1.0) * 0.001;
                 let t = i as f32 / RATE as f32;
-                let voice = if n % 2 == 0 { 0.1 * (6.28 * 200.0 * t).sin() * (0.6 + 0.4 * (6.28 * 3.0 * t).sin()) } else { 0.0 };
+                let voice = if n % 2 == 0 {
+                    0.1 * (6.28 * 200.0 * t).sin() * (0.6 + 0.4 * (6.28 * 3.0 * t).sin())
+                } else {
+                    0.0
+                };
                 out.push(voice + hiss);
             }
         }
@@ -223,7 +247,9 @@ mod tests {
     #[test]
     fn digital_silence_counts_as_quiet() {
         // The mic gates silence to exact zeros.
-        let mut a: Vec<f32> = (0..13 * RATE).map(|i| 0.1 * (i as f32 * 0.08).sin()).collect();
+        let mut a: Vec<f32> = (0..13 * RATE)
+            .map(|i| 0.1 * (i as f32 * 0.08).sin())
+            .collect();
         a.extend(vec![0.0; RATE]);
         a.extend((0..2 * RATE).map(|i| 0.1 * (i as f32 * 0.08).sin()));
         let cut = secs(next_cut(&a, false).expect("cut"));
@@ -233,20 +259,39 @@ mod tests {
     #[test]
     fn join_mends_sentences_split_by_a_pause() {
         let join2 = |a: &str, b: &str| join(&[a.to_string(), b.to_string()]);
-        assert_eq!(join2("safer than the collateral.", "is the extent."), "safer than the collateral is the extent.");
-        assert_eq!(join2("on paper it looks like", "The probability is low."), "on paper it looks like the probability is low.");
-        assert_eq!(join2("Because we have", "Because, you see"), "Because we have because, you see");
+        assert_eq!(
+            join2("safer than the collateral.", "is the extent."),
+            "safer than the collateral is the extent."
+        );
+        assert_eq!(
+            join2("on paper it looks like", "The probability is low."),
+            "on paper it looks like the probability is low."
+        );
+        assert_eq!(
+            join2("Because we have", "Because, you see"),
+            "Because we have because, you see"
+        );
         // Real sentence ends, names and "I" are kept.
-        assert_eq!(join2("We'll go.", "The flight is late."), "We'll go. The flight is late.");
+        assert_eq!(
+            join2("We'll go.", "The flight is late."),
+            "We'll go. The flight is late."
+        );
         assert_eq!(join2("thank you", "Krishna."), "thank you Krishna.");
         assert_eq!(join2("and then", "I left."), "and then I left.");
-        assert_eq!(join2("based in the U.S.", "for now"), "based in the U.S. for now");
+        assert_eq!(
+            join2("based in the U.S.", "for now"),
+            "based in the U.S. for now"
+        );
         assert_eq!(join2("call", "THE office"), "call THE office");
     }
 
     #[test]
     fn join_skips_empty_pieces() {
-        let texts = vec!["Hello there.".to_string(), " ".to_string(), "How are you? ".to_string()];
+        let texts = vec![
+            "Hello there.".to_string(),
+            " ".to_string(),
+            "How are you? ".to_string(),
+        ];
         assert_eq!(join(&texts), "Hello there. How are you?");
     }
 }

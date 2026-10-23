@@ -19,12 +19,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context, Result};
-use transcribe_rs::{ModelCapabilities, SpeechModel, TranscribeError, TranscribeOptions, TranscriptionResult};
+use anyhow::{Context, Result, anyhow};
+use transcribe_rs::{
+    ModelCapabilities, SpeechModel, TranscribeError, TranscribeOptions, TranscriptionResult,
+};
 
 use crate::audio::TARGET_RATE;
 
-const RUNTIME_URL: &str = "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
+const RUNTIME_URL: &str =
+    "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
 pub const RUNTIME_MB: u32 = 21;
 pub const MODEL_MB: u32 = 547;
 pub const TINY_MODEL_MB: u32 = 75;
@@ -51,7 +54,9 @@ pub enum WhisperKind {
 impl WhisperKind {
     fn model_url(self) -> &'static str {
         match self {
-            Self::Turbo => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+            Self::Turbo => {
+                "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin"
+            }
             Self::Tiny => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin",
             Self::HinglishApex => {
                 "https://huggingface.co/Marquestra/Whisper-Hindi2Hinglish-Apex-GGML/resolve/main/ggml-apex-hinglish-q8_0.bin"
@@ -122,18 +127,42 @@ const MIN_AUDIO_CTX: u32 = 384;
 
 fn capabilities(kind: WhisperKind) -> ModelCapabilities {
     match kind {
-        WhisperKind::Turbo => {
-            ModelCapabilities { name: "Whisper large-v3-turbo", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
-        }
-        WhisperKind::Tiny => {
-            ModelCapabilities { name: "Whisper tiny", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["en", "hi"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
-        }
-        WhisperKind::HinglishApex => {
-            ModelCapabilities { name: "Whisper Hinglish Apex", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["hi", "en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
-        }
-        WhisperKind::HinglishSwift => {
-            ModelCapabilities { name: "Whisper Hinglish Swift", engine_id: "whisper_cli", sample_rate: TARGET_RATE, languages: &["hi", "en"], supports_timestamps: false, supports_translation: false, supports_streaming: false }
-        }
+        WhisperKind::Turbo => ModelCapabilities {
+            name: "Whisper large-v3-turbo",
+            engine_id: "whisper_cli",
+            sample_rate: TARGET_RATE,
+            languages: &["en"],
+            supports_timestamps: false,
+            supports_translation: false,
+            supports_streaming: false,
+        },
+        WhisperKind::Tiny => ModelCapabilities {
+            name: "Whisper tiny",
+            engine_id: "whisper_cli",
+            sample_rate: TARGET_RATE,
+            languages: &["en", "hi"],
+            supports_timestamps: false,
+            supports_translation: false,
+            supports_streaming: false,
+        },
+        WhisperKind::HinglishApex => ModelCapabilities {
+            name: "Whisper Hinglish Apex",
+            engine_id: "whisper_cli",
+            sample_rate: TARGET_RATE,
+            languages: &["hi", "en"],
+            supports_timestamps: false,
+            supports_translation: false,
+            supports_streaming: false,
+        },
+        WhisperKind::HinglishSwift => ModelCapabilities {
+            name: "Whisper Hinglish Swift",
+            engine_id: "whisper_cli",
+            sample_rate: TARGET_RATE,
+            languages: &["hi", "en"],
+            supports_timestamps: false,
+            supports_translation: false,
+            supports_streaming: false,
+        },
     }
 }
 
@@ -146,7 +175,11 @@ fn runtime_dir() -> PathBuf {
 }
 
 fn cli_path() -> PathBuf {
-    runtime_dir().join(if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" })
+    runtime_dir().join(if cfg!(windows) {
+        "whisper-cli.exe"
+    } else {
+        "whisper-cli"
+    })
 }
 
 /// whisper.cpp built with Vulkan, for the graphics card. The official
@@ -157,7 +190,11 @@ fn gpu_runtime_dir() -> PathBuf {
 }
 
 fn gpu_server_path() -> PathBuf {
-    gpu_runtime_dir().join(if cfg!(windows) { "whisper-server.exe" } else { "whisper-server" })
+    gpu_runtime_dir().join(if cfg!(windows) {
+        "whisper-server.exe"
+    } else {
+        "whisper-server"
+    })
 }
 
 fn model_path(kind: WhisperKind) -> PathBuf {
@@ -167,9 +204,14 @@ fn model_path(kind: WhisperKind) -> PathBuf {
 /// Is any whisper model file left in the shared models folder? Removing
 /// the last one takes the runtime with it.
 fn model_left_in(models: &Path) -> bool {
-    [WhisperKind::Turbo, WhisperKind::Tiny, WhisperKind::HinglishApex, WhisperKind::HinglishSwift]
-        .iter()
-        .any(|k| models.join(k.model_file()).is_file())
+    [
+        WhisperKind::Turbo,
+        WhisperKind::Tiny,
+        WhisperKind::HinglishApex,
+        WhisperKind::HinglishSwift,
+    ]
+    .iter()
+    .any(|k| models.join(k.model_file()).is_file())
 }
 
 pub fn is_installed(kind: WhisperKind) -> bool {
@@ -183,20 +225,30 @@ pub fn download(kind: WhisperKind, progress: &mut dyn FnMut(u64, u64)) -> Result
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(20))
         .build()?;
-    let runtime_bytes = if cli_path().is_file() { 0 } else { RUNTIME_MB as u64 * 1_048_576 };
+    let runtime_bytes = if cli_path().is_file() {
+        0
+    } else {
+        RUNTIME_MB as u64 * 1_048_576
+    };
     let total = runtime_bytes + kind.model_mb() as u64 * 1_048_576;
 
     if !cli_path().is_file() {
         fs::create_dir_all(root())?;
         let zip_path = root().join("runtime.zip.part");
-        crate::model::fetch_resumable(&client, RUNTIME_URL, &zip_path, &mut |done, _| progress(done, total))?;
+        crate::model::fetch_resumable(&client, RUNTIME_URL, &zip_path, &mut |done, _| {
+            progress(done, total)
+        })?;
         install_runtime(&zip_path)?;
         let _ = fs::remove_file(&zip_path);
     }
     if !model_path(kind).is_file() {
         fs::create_dir_all(root().join("models"))?;
-        let part = root().join("models").join(format!("{}.part", kind.model_file()));
-        crate::model::fetch_resumable(&client, kind.model_url(), &part, &mut |done, _| progress(runtime_bytes + done, total))?;
+        let part = root()
+            .join("models")
+            .join(format!("{}.part", kind.model_file()));
+        crate::model::fetch_resumable(&client, kind.model_url(), &part, &mut |done, _| {
+            progress(runtime_bytes + done, total)
+        })?;
         fs::rename(&part, model_path(kind))?;
     }
     progress(total, total);
@@ -210,7 +262,8 @@ fn install_runtime(zip_path: &Path) -> Result<()> {
         .extract(&staging)
         .context("Failed to unpack whisper.cpp")?;
     let exe = cli_path().file_name().unwrap().to_owned();
-    let dir = find_dir_with(&staging, &exe).ok_or_else(|| anyhow!("whisper-cli not found in download"))?;
+    let dir = find_dir_with(&staging, &exe)
+        .ok_or_else(|| anyhow!("whisper-cli not found in download"))?;
     let _ = fs::remove_dir_all(runtime_dir());
     fs::rename(&dir, runtime_dir())?;
     let _ = fs::remove_dir_all(&staging);
@@ -221,7 +274,11 @@ fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
     if dir.join(file).is_file() {
         return Some(dir.to_path_buf());
     }
-    fs::read_dir(dir).ok()?.flatten().filter(|e| e.path().is_dir()).find_map(|e| find_dir_with(&e.path(), file))
+    fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().is_dir())
+        .find_map(|e| find_dir_with(&e.path(), file))
 }
 
 /// Removes the model's file; the shared runtime goes away too once no
@@ -238,10 +295,16 @@ pub fn remove(kind: WhisperKind) -> Result<()> {
                 fs::remove_dir_all(dir)?;
             }
         }
-        if fs::read_dir(&models).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if fs::read_dir(&models)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
             let _ = fs::remove_dir(&models);
         }
-        if fs::read_dir(root()).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if fs::read_dir(root())
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
             let _ = fs::remove_dir(root());
         }
     }
@@ -253,7 +316,11 @@ pub fn remove(kind: WhisperKind) -> Result<()> {
 fn audio_ctx(seconds: f32) -> u32 {
     let positions = ((seconds * 1.5 + 3.0) * 50.0).ceil() as u32;
     let rounded = positions.div_ceil(64) * 64;
-    if rounded >= FULL_AUDIO_CTX { 0 } else { rounded.max(MIN_AUDIO_CTX) }
+    if rounded >= FULL_AUDIO_CTX {
+        0
+    } else {
+        rounded.max(MIN_AUDIO_CTX)
+    }
 }
 
 /// Longest a Whisper run may take: about 1 s to load, ~1.5x the audio to
@@ -277,8 +344,14 @@ impl WhisperCli {
         }
         // One thread per physical core: on a 6-core/12-thread CPU, 6
         // threads took 4.2 s where 10 took 8.0 s (SMT threads just contend).
-        let threads = std::thread::available_parallelism().map(|n| (n.get() / 2).max(4)).unwrap_or(4);
-        Ok(Self { kind, threads, prompt: None })
+        let threads = std::thread::available_parallelism()
+            .map(|n| (n.get() / 2).max(4))
+            .unwrap_or(4);
+        Ok(Self {
+            kind,
+            threads,
+            prompt: None,
+        })
     }
 
     fn run(&self, samples: &[f32]) -> Result<String> {
@@ -293,7 +366,14 @@ impl WhisperCli {
             .arg("-f")
             .arg(&wav)
             .args(self.kind.language_args())
-            .args(["-nt", "-np", "-t", &self.threads.to_string(), "-ac", &ctx.to_string()])
+            .args([
+                "-nt",
+                "-np",
+                "-t",
+                &self.threads.to_string(),
+                "-ac",
+                &ctx.to_string(),
+            ])
             // Greedy decoding, no temperature retries: ~3.6 s instead of
             // 4-8 s on short whispers, with the same text. Retries mostly
             // re-ran hallucination loops.
@@ -324,7 +404,8 @@ impl WhisperCli {
             std::thread::sleep(Duration::from_millis(25));
         };
         let _ = fs::remove_file(&wav);
-        let status = status.ok_or_else(|| anyhow!("Whisper took too long ({seconds:.1}s of audio)"))?;
+        let status =
+            status.ok_or_else(|| anyhow!("Whisper took too long ({seconds:.1}s of audio)"))?;
         if !status.success() {
             return Err(anyhow!("whisper.cpp failed ({status})"));
         }
@@ -334,9 +415,18 @@ impl WhisperCli {
             out.read_to_string(&mut stdout)?;
         }
         let text = stdout;
-        let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        let joined = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
         let text = drop_repeated_sentences(&joined);
-        Ok(if echoes_prompt(&text, self.prompt.as_deref()) { String::new() } else { text })
+        Ok(if echoes_prompt(&text, self.prompt.as_deref()) {
+            String::new()
+        } else {
+            text
+        })
     }
 }
 
@@ -344,7 +434,12 @@ impl WhisperCli {
 /// was said. A one-word prompt can't be told apart from saying that word,
 /// so only multi-word prompts are checked.
 fn echoes_prompt(text: &str, prompt: Option<&str>) -> bool {
-    let norm = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
     prompt.is_some_and(|p| p.contains(',') && !text.is_empty() && norm(text) == norm(p))
 }
 
@@ -363,7 +458,12 @@ fn drop_repeated_sentences(text: &str) -> String {
     if start < text.len() {
         sentences.push(text[start..].trim());
     }
-    let norm = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+    let norm = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
+    };
     let mut out: Vec<&str> = Vec::new();
     for s in sentences.into_iter().filter(|s| !s.is_empty()) {
         if out.last().is_some_and(|last| norm(last) == norm(s)) {
@@ -381,7 +481,10 @@ pub fn load(kind: WhisperKind) -> Result<Box<dyn SpeechModel + Send>> {
     if !is_installed(kind) {
         return Err(anyhow!("Whisper {} isn't downloaded", kind.label()));
     }
-    if matches!(kind, WhisperKind::Turbo) && gpu_server_path().is_file() && std::env::var_os("SRUTAM_WHISPER_CPU").is_none() {
+    if matches!(kind, WhisperKind::Turbo)
+        && gpu_server_path().is_file()
+        && std::env::var_os("SRUTAM_WHISPER_CPU").is_none()
+    {
         match WhisperServer::start() {
             Ok(server) => return Ok(Box::new(server)),
             Err(e) => log::warn!("Whisper on the graphics card didn't start, using the CPU: {e:#}"),
@@ -428,7 +531,10 @@ impl WhisperServer {
         // during the first dictation.
         let warm = Instant::now();
         server.request(&vec![0.0; TARGET_RATE as usize], Duration::from_secs(60))?;
-        log::info!("Whisper turbo ready on the graphics card (warm-up {} ms)", warm.elapsed().as_millis());
+        log::info!(
+            "Whisper turbo ready on the graphics card (warm-up {} ms)",
+            warm.elapsed().as_millis()
+        );
         Ok(server)
     }
 
@@ -439,7 +545,13 @@ impl WhisperServer {
             if let Some(status) = self.child.try_wait()? {
                 return Err(anyhow!("whisper-server exited ({status})"));
             }
-            if self.client.get(&self.base).timeout(Duration::from_secs(2)).send().is_ok() {
+            if self
+                .client
+                .get(&self.base)
+                .timeout(Duration::from_secs(2))
+                .send()
+                .is_ok()
+            {
                 return Ok(());
             }
             std::thread::sleep(Duration::from_millis(200));
@@ -460,7 +572,12 @@ impl WhisperServer {
         if let Some(prompt) = &self.prompt {
             form = form.text("prompt", prompt.clone());
         }
-        let resp = self.client.post(format!("{}/inference", self.base)).multipart(form).timeout(timeout).send()?;
+        let resp = self
+            .client
+            .post(format!("{}/inference", self.base))
+            .multipart(form)
+            .timeout(timeout)
+            .send()?;
         if !resp.status().is_success() {
             return Err(anyhow!("whisper-server answered {}", resp.status()));
         }
@@ -478,12 +595,23 @@ impl WhisperServer {
                 let prompt = self.prompt.take();
                 *self = Self::start()?;
                 self.prompt = prompt;
-                return Err(e.context(format!("Whisper on the graphics card failed ({seconds:.1}s of audio)")));
+                return Err(e.context(format!(
+                    "Whisper on the graphics card failed ({seconds:.1}s of audio)"
+                )));
             }
         };
-        let joined = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" ");
+        let joined = text
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
         let text = drop_repeated_sentences(&joined);
-        Ok(if echoes_prompt(&text, self.prompt.as_deref()) { String::new() } else { text })
+        Ok(if echoes_prompt(&text, self.prompt.as_deref()) {
+            String::new()
+        } else {
+            text
+        })
     }
 }
 
@@ -508,12 +636,25 @@ impl SpeechModel for WhisperServer {
         self.prompt = prompt_for(words);
     }
 
-    fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+    fn transcribe_raw(
+        &mut self,
+        samples: &[f32],
+        _options: &TranscribeOptions,
+    ) -> Result<TranscriptionResult, TranscribeError> {
         let started = Instant::now();
-        let text = self.run(samples).map_err(|e| TranscribeError::Inference(format!("{e:#}")))?;
+        let text = self
+            .run(samples)
+            .map_err(|e| TranscribeError::Inference(format!("{e:#}")))?;
         crate::timing::add("whisper-gpu", started.elapsed());
-        log::info!("Whisper turbo (GPU): {:.1}s of audio in {} ms", samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
-        Ok(TranscriptionResult { text, segments: None })
+        log::info!(
+            "Whisper turbo (GPU): {:.1}s of audio in {} ms",
+            samples.len() as f32 / TARGET_RATE as f32,
+            started.elapsed().as_millis()
+        );
+        Ok(TranscriptionResult {
+            text,
+            segments: None,
+        })
     }
 }
 
@@ -521,7 +662,11 @@ impl SpeechModel for WhisperServer {
 /// models. Just the words: a label like "Glossary:" got echoed back on
 /// short clips.
 fn prompt_for(words: &[String]) -> Option<String> {
-    let words: Vec<&str> = words.iter().map(|w| w.trim()).filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = words
+        .iter()
+        .map(|w| w.trim())
+        .filter(|w| !w.is_empty())
+        .collect();
     (!words.is_empty()).then(|| format!("{}.", words.join(", ")))
 }
 
@@ -533,15 +678,33 @@ impl SpeechModel for WhisperCli {
     fn set_hotwords(&mut self, words: &[String]) {
         // The Oriserve fine-tunes shouldn't see the dictionary (see
         // accepts_prompt).
-        self.prompt = if self.kind.accepts_prompt() { prompt_for(words) } else { None };
+        self.prompt = if self.kind.accepts_prompt() {
+            prompt_for(words)
+        } else {
+            None
+        };
     }
 
-    fn transcribe_raw(&mut self, samples: &[f32], _options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+    fn transcribe_raw(
+        &mut self,
+        samples: &[f32],
+        _options: &TranscribeOptions,
+    ) -> Result<TranscriptionResult, TranscribeError> {
         let started = std::time::Instant::now();
-        let text = self.run(samples).map_err(|e| TranscribeError::Inference(e.to_string()))?;
+        let text = self
+            .run(samples)
+            .map_err(|e| TranscribeError::Inference(e.to_string()))?;
         crate::timing::add("whisper", started.elapsed());
-        log::info!("Whisper {}: {:.1}s of audio in {} ms", self.kind.label(), samples.len() as f32 / TARGET_RATE as f32, started.elapsed().as_millis());
-        Ok(TranscriptionResult { text, segments: None })
+        log::info!(
+            "Whisper {}: {:.1}s of audio in {} ms",
+            self.kind.label(),
+            samples.len() as f32 / TARGET_RATE as f32,
+            started.elapsed().as_millis()
+        );
+        Ok(TranscriptionResult {
+            text,
+            segments: None,
+        })
     }
 }
 
@@ -576,7 +739,11 @@ pub struct Hybrid {
 
 impl Hybrid {
     pub fn new(fast: Box<dyn SpeechModel + Send>, slow: Box<dyn SpeechModel + Send>) -> Self {
-        Self { fast, slow, words: Vec::new() }
+        Self {
+            fast,
+            slow,
+            words: Vec::new(),
+        }
     }
 }
 
@@ -595,7 +762,11 @@ impl SpeechModel for Hybrid {
         self.fast.set_latin_only(on);
     }
 
-    fn transcribe_raw(&mut self, samples: &[f32], options: &TranscribeOptions) -> Result<TranscriptionResult, TranscribeError> {
+    fn transcribe_raw(
+        &mut self,
+        samples: &[f32],
+        options: &TranscribeOptions,
+    ) -> Result<TranscriptionResult, TranscribeError> {
         // `transcribe` (not `_raw`) keeps Parakeet's own silence padding.
         let fast = crate::timing::measure("parakeet", || self.fast.transcribe(samples, options))?;
         let speech = speech_seconds(samples);
@@ -603,11 +774,15 @@ impl SpeechModel for Hybrid {
         // not quite like, a dictionary word: with the dictionary as its
         // prompt, Whisper heard "Srutam" where Parakeet wrote "Shop".
         let missed_words = needs_second_opinion(&fast.text, speech);
-        let near_miss = !missed_words && crate::format::dictionary::has_near_miss(&fast.text, &self.words);
+        let near_miss =
+            !missed_words && crate::format::dictionary::has_near_miss(&fast.text, &self.words);
         if !missed_words && !near_miss {
             return Ok(fast);
         }
-        log::info!("Hybrid: Parakeet heard {:?} in {speech:.1}s of speech; asking Whisper", fast.text);
+        log::info!(
+            "Hybrid: Parakeet heard {:?} in {speech:.1}s of speech; asking Whisper",
+            fast.text
+        );
         let slow = self.slow.transcribe_raw(samples, options)?;
         let use_slow = if missed_words {
             !slow.text.trim().is_empty()
@@ -666,7 +841,12 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("srutam-whisper-test-{}", std::process::id()));
         let models = dir.join("models");
         std::fs::create_dir_all(&models).unwrap();
-        for kind in [WhisperKind::Turbo, WhisperKind::Tiny, WhisperKind::HinglishApex, WhisperKind::HinglishSwift] {
+        for kind in [
+            WhisperKind::Turbo,
+            WhisperKind::Tiny,
+            WhisperKind::HinglishApex,
+            WhisperKind::HinglishSwift,
+        ] {
             std::fs::write(models.join(kind.model_file()), b"x").unwrap();
         }
 
@@ -726,11 +906,16 @@ mod tests {
     fn repeated_sentences_are_dropped() {
         // Real Whisper outputs on short whispered clips.
         assert_eq!(
-            drop_repeated_sentences("Don't you know about whisper flow? Don't you know about whisper flow?"),
+            drop_repeated_sentences(
+                "Don't you know about whisper flow? Don't you know about whisper flow?"
+            ),
             "Don't you know about whisper flow?"
         );
         assert_eq!(drop_repeated_sentences("Yes. No. Yes."), "Yes. No. Yes.");
-        assert_eq!(drop_repeated_sentences("No trailing stop"), "No trailing stop");
+        assert_eq!(
+            drop_repeated_sentences("No trailing stop"),
+            "No trailing stop"
+        );
     }
 
     #[test]
@@ -748,8 +933,14 @@ mod tests {
     #[test]
     #[ignore]
     fn stage_speed() {
-        let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
-        let count: usize = std::env::var("SRUTAM_BENCH_COUNT").ok().and_then(|n| n.parse().ok()).unwrap_or(8);
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .try_init();
+        let count: usize = std::env::var("SRUTAM_BENCH_COUNT")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(8);
         let words = crate::settings::load().dictionary;
         let mut files: Vec<_> = fs::read_dir(crate::recordings::folder())
             .unwrap()
@@ -766,7 +957,10 @@ mod tests {
         parakeet.set_latin_only(true);
         let started = Instant::now();
         let mut gpu = WhisperServer::start().expect("GPU Whisper");
-        println!("GPU Whisper loaded and warmed up in {} ms", started.elapsed().as_millis());
+        println!(
+            "GPU Whisper loaded and warmed up in {} ms",
+            started.elapsed().as_millis()
+        );
         gpu.set_hotwords(&words);
         let mut cpu = WhisperCli::new(WhisperKind::Turbo).unwrap();
         cpu.set_hotwords(&words);
@@ -777,19 +971,36 @@ mod tests {
         let options = TranscribeOptions::default();
         for file in files {
             let raw = transcribe_rs::audio::read_wav_samples(&file).unwrap();
-            let Some(samples) = crate::enhance::prepare(&raw) else { continue };
+            let Some(samples) = crate::enhance::prepare(&raw) else {
+                continue;
+            };
             let secs = samples.len() as f32 / TARGET_RATE as f32;
             let time = |f: &mut dyn FnMut() -> String| {
                 let t = Instant::now();
                 let text = f();
                 (text, t.elapsed().as_millis())
             };
-            let (p_text, p_ms) = time(&mut || parakeet.transcribe(&samples, &options).unwrap().text);
-            let (g_text, g_ms) = time(&mut || gpu.transcribe_raw(&samples, &options).map(|r| r.text).unwrap_or_else(|e| format!("<{e}>")));
+            let (p_text, p_ms) =
+                time(&mut || parakeet.transcribe(&samples, &options).unwrap().text);
+            let (g_text, g_ms) = time(&mut || {
+                gpu.transcribe_raw(&samples, &options)
+                    .map(|r| r.text)
+                    .unwrap_or_else(|e| format!("<{e}>"))
+            });
             // SRUTAM_BENCH_SKIP_CPU=1 skips the (slow) CPU Whisper run.
             let skip_cpu = std::env::var_os("SRUTAM_BENCH_SKIP_CPU").is_some();
-            let (c_text, c_ms) = if skip_cpu { (String::from("(skipped)"), 0) } else { time(&mut || cpu.transcribe_raw(&samples, &options).map(|r| r.text).unwrap_or_else(|e| format!("<{e}>"))) };
-            let (out, ai_ms) = time(&mut || formatter.format(&p_text, true, &words, crate::context::AppKind::Other));
+            let (c_text, c_ms) = if skip_cpu {
+                (String::from("(skipped)"), 0)
+            } else {
+                time(&mut || {
+                    cpu.transcribe_raw(&samples, &options)
+                        .map(|r| r.text)
+                        .unwrap_or_else(|e| format!("<{e}>"))
+                })
+            };
+            let (out, ai_ms) = time(&mut || {
+                formatter.format(&p_text, true, &words, crate::context::AppKind::Other)
+            });
             println!(
                 "\n{} ({secs:.1}s)\n  parakeet {p_ms:>5} ms  {p_text}\n  gpu      {g_ms:>5} ms  {g_text}\n  cpu      {c_ms:>5} ms  {c_text}\n  format   {ai_ms:>5} ms  {out}",
                 file.file_name().unwrap().to_string_lossy()

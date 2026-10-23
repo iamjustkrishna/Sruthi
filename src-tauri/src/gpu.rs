@@ -16,8 +16,12 @@ pub fn dedicated() -> Option<usize> {
     *FOUND.get_or_init(|| {
         let found = find_dedicated();
         match &found {
-            Some((index, name)) => log::info!("Graphics card for Whisper and the AI: {name} (Vulkan device {index})"),
-            None => log::info!("No dedicated graphics card found; whisper.cpp and llama.cpp pick their own"),
+            Some((index, name)) => {
+                log::info!("Graphics card for Whisper and the AI: {name} (Vulkan device {index})")
+            }
+            None => log::info!(
+                "No dedicated graphics card found; whisper.cpp and llama.cpp pick their own"
+            ),
         }
         found.map(|(index, _)| index)
     })
@@ -40,13 +44,30 @@ fn find_dedicated() -> Option<(usize, String)> {
     unsafe {
         let entry = ash::Entry::load().ok()?;
         let app = vk::ApplicationInfo::default().api_version(vk::API_VERSION_1_1);
-        let instance = entry.create_instance(&vk::InstanceCreateInfo::default().application_info(&app), None).ok()?;
+        let instance = entry
+            .create_instance(
+                &vk::InstanceCreateInfo::default().application_info(&app),
+                None,
+            )
+            .ok()?;
         // Same order whisper.cpp and llama.cpp number them in.
-        let found = instance.enumerate_physical_devices().unwrap_or_default().into_iter().enumerate().find_map(|(index, device)| {
-            let props = instance.get_physical_device_properties(device);
-            (props.device_type == vk::PhysicalDeviceType::DISCRETE_GPU)
-                .then(|| (index, props.device_name_as_c_str().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()))
-        });
+        let found = instance
+            .enumerate_physical_devices()
+            .unwrap_or_default()
+            .into_iter()
+            .enumerate()
+            .find_map(|(index, device)| {
+                let props = instance.get_physical_device_properties(device);
+                (props.device_type == vk::PhysicalDeviceType::DISCRETE_GPU).then(|| {
+                    (
+                        index,
+                        props
+                            .device_name_as_c_str()
+                            .map(|n| n.to_string_lossy().into_owned())
+                            .unwrap_or_default(),
+                    )
+                })
+            });
         instance.destroy_instance(None);
         found
     }

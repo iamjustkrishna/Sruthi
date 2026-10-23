@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use transcribe_rs::{SpeechModel, TranscribeOptions};
 
 use crate::audio::{Recording, TARGET_RATE};
@@ -50,7 +50,15 @@ impl Session {
     ) -> Self {
         let recording = Arc::new(recording);
         let early = Early::start(recording.clone(), engine.clone());
-        Self { recording, engine, formatter, smart, words, app, early }
+        Self {
+            recording,
+            engine,
+            formatter,
+            smart,
+            words,
+            app,
+            early,
+        }
     }
 
     /// The app the text is going to.
@@ -65,13 +73,22 @@ impl Session {
         // Pieces done while the key was held (waiting for one in progress).
         let early = self.early.finish();
         let device = self.recording.device().to_string();
-        let audio = crate::timing::measure("resample", || self.recording.slice_16k(0, self.recording.len()));
+        let audio = crate::timing::measure("resample", || {
+            self.recording.slice_16k(0, self.recording.len())
+        });
         if (audio.len() as f32) / (TARGET_RATE as f32) < MIN_DICTATION_SECS {
-            return Ok(Outcome { device, ..Outcome::default() });
+            return Ok(Outcome {
+                device,
+                ..Outcome::default()
+            });
         }
         // Digital silence: the microphone itself delivers nothing.
         if crate::audio::rms(&audio) < crate::audio::DEAD_MIC_RMS {
-            return Ok(Outcome { device, dead_mic: true, ..Outcome::default() });
+            return Ok(Outcome {
+                device,
+                dead_mic: true,
+                ..Outcome::default()
+            });
         }
 
         // The rest, in pieces too if it's long (the background thread
@@ -84,19 +101,32 @@ impl Session {
         }
         texts.push(transcribe_piece(&self.engine, &rest)?);
         if texts.len() > 1 {
-            log::info!("Transcribed in {} pieces, {} while the key was held", texts.len(), early.pieces);
+            log::info!(
+                "Transcribed in {} pieces, {} while the key was held",
+                texts.len(),
+                early.pieces
+            );
         }
 
         let heard = chunks::join(&texts);
         let text = if heard.is_empty() {
             String::new()
         } else {
-            crate::timing::measure("format", || self.formatter.format(&heard, self.smart, &self.words, self.app))
+            crate::timing::measure("format", || {
+                self.formatter
+                    .format(&heard, self.smart, &self.words, self.app)
+            })
         };
         // Local debug log only (stdout in dev builds); helps tune the rules.
         log::info!("Heard:  {heard:?}");
         log::info!("Pasted: {text:?}");
-        Ok(Outcome { audio, heard, text, device, dead_mic: false })
+        Ok(Outcome {
+            audio,
+            heard,
+            text,
+            device,
+            dead_mic: false,
+        })
     }
 }
 
@@ -104,14 +134,19 @@ impl Session {
 /// without running the model.
 fn transcribe_piece(engine: &Engine, audio: &[f32]) -> Result<String> {
     let Some(prepared) = crate::timing::measure("prepare", || enhance::prepare(audio)) else {
-        log::info!("No speech in {:.1}s of audio", audio.len() as f32 / TARGET_RATE as f32);
+        log::info!(
+            "No speech in {:.1}s of audio",
+            audio.len() as f32 / TARGET_RATE as f32
+        );
         return Ok(String::new());
     };
     let stages_before = crate::timing::summary();
     let started = Instant::now();
     let heard = {
         let mut engine = engine.lock().unwrap();
-        let model = engine.as_mut().ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
+        let model = engine
+            .as_mut()
+            .ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
         model
             .transcribe(&prepared, &TranscribeOptions::default())
             .map_err(|e| anyhow!("Transcription failed: {e}"))?
@@ -153,7 +188,9 @@ impl Early {
             let mut progress = Progress::default();
             while matches!(stopped.recv_timeout(POLL), Err(RecvTimeoutError::Timeout)) {
                 let rest = recording.slice_16k(progress.done, recording.len());
-                let Some(cut) = chunks::next_cut(&rest, false) else { continue };
+                let Some(cut) = chunks::next_cut(&rest, false) else {
+                    continue;
+                };
                 let started = Instant::now();
                 match transcribe_piece(&engine, &rest[..cut]) {
                     Ok(text) => {
@@ -216,7 +253,15 @@ mod tests {
     /// Word-level differences between two transcripts: (edits, words).
     fn word_diff(a: &str, b: &str) -> (usize, usize, Vec<String>) {
         let words = |s: &str| -> Vec<String> {
-            s.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).filter(|w| !w.is_empty()).collect()
+            s.split_whitespace()
+                .map(|w| {
+                    w.chars()
+                        .filter(|c| c.is_alphanumeric())
+                        .collect::<String>()
+                        .to_lowercase()
+                })
+                .filter(|w| !w.is_empty())
+                .collect()
         };
         let (a, b) = (words(a), words(b));
         let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
@@ -229,7 +274,9 @@ mod tests {
         for i in 1..=a.len() {
             for j in 1..=b.len() {
                 let same = if a[i - 1] == b[j - 1] { 0 } else { 1 };
-                d[i][j] = (d[i - 1][j - 1] + same).min(d[i - 1][j] + 1).min(d[i][j - 1] + 1);
+                d[i][j] = (d[i - 1][j - 1] + same)
+                    .min(d[i - 1][j] + 1)
+                    .min(d[i][j - 1] + 1);
             }
         }
         let (mut i, mut j, mut changes) = (a.len(), b.len(), Vec::new());
@@ -261,7 +308,10 @@ mod tests {
     #[test]
     #[ignore]
     fn pieces_match_whole() {
-        let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Warn).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Warn)
+            .try_init();
         let id = std::env::var("SRUTAM_TEST_MODEL").unwrap_or_else(|_| "parakeet-v3".into());
         let words = crate::settings::load().dictionary;
         let mut model = crate::model::find(&id).unwrap().load().unwrap();
@@ -289,7 +339,8 @@ mod tests {
             let whole_ms = started.elapsed().as_millis();
 
             // Key held: the background thread polls every 250 ms while free.
-            let (mut done, mut busy_until, mut texts, mut cuts) = (0usize, 0f32, Vec::new(), Vec::new());
+            let (mut done, mut busy_until, mut texts, mut cuts) =
+                (0usize, 0f32, Vec::new(), Vec::new());
             let step = (POLL.as_secs_f32() * rate as f32) as usize;
             let mut now = step;
             while now <= audio.len() {

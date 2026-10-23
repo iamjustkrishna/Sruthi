@@ -27,11 +27,22 @@ pub struct ActiveApp {
 pub fn active_app() -> ActiveApp {
     let (process, title) = foreground_window();
     let kind = classify(&process, &title);
-    ActiveApp { process, title, kind }
+    ActiveApp {
+        process,
+        title,
+        kind,
+    }
 }
 
 const BROWSERS: &[&str] = &[
-    "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "arc.exe", "vivaldi.exe", "zen.exe",
+    "chrome.exe",
+    "msedge.exe",
+    "firefox.exe",
+    "brave.exe",
+    "opera.exe",
+    "arc.exe",
+    "vivaldi.exe",
+    "zen.exe",
 ];
 
 fn classify(process: &str, title: &str) -> AppKind {
@@ -40,34 +51,96 @@ fn classify(process: &str, title: &str) -> AppKind {
     let is = |names: &[&str]| names.iter().any(|n| process == *n);
     let titled = |words: &[&str]| words.iter().any(|w| title.contains(w));
 
-    if is(&["outlook.exe", "olk.exe", "hxoutlook.exe", "thunderbird.exe", "mailspring.exe"]) {
+    if is(&[
+        "outlook.exe",
+        "olk.exe",
+        "hxoutlook.exe",
+        "thunderbird.exe",
+        "mailspring.exe",
+    ]) {
         return AppKind::Email;
     }
-    if is(&["slack.exe", "discord.exe", "whatsapp.exe", "teams.exe", "ms-teams.exe", "telegram.exe", "signal.exe"]) {
+    if is(&[
+        "slack.exe",
+        "discord.exe",
+        "whatsapp.exe",
+        "teams.exe",
+        "ms-teams.exe",
+        "telegram.exe",
+        "signal.exe",
+    ]) {
         return AppKind::Chat;
     }
     if is(&[
-        "code.exe", "cursor.exe", "windsurf.exe", "zed.exe", "devenv.exe", "idea64.exe", "pycharm64.exe",
-        "webstorm64.exe", "studio64.exe", "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
-        "wezterm-gui.exe", "alacritty.exe", "antigravity ide.exe", "antigravity.exe",
+        "code.exe",
+        "cursor.exe",
+        "windsurf.exe",
+        "zed.exe",
+        "devenv.exe",
+        "idea64.exe",
+        "pycharm64.exe",
+        "webstorm64.exe",
+        "studio64.exe",
+        "windowsterminal.exe",
+        "cmd.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "wezterm-gui.exe",
+        "alacritty.exe",
+        "antigravity ide.exe",
+        "antigravity.exe",
     ]) {
         return AppKind::Code;
     }
-    if is(&["winword.exe", "notion.exe", "obsidian.exe", "onenote.exe", "notepad.exe", "wordpad.exe"]) {
+    if is(&[
+        "winword.exe",
+        "notion.exe",
+        "obsidian.exe",
+        "onenote.exe",
+        "notepad.exe",
+        "wordpad.exe",
+    ]) {
         return AppKind::Document;
     }
     if is(BROWSERS) {
         // Browsers put the site in the window title ("Inbox (3) - … - Gmail").
-        if titled(&["gmail", "outlook", "yahoo mail", "proton mail", "zoho mail", "- mail", "compose", "inbox"]) {
+        if titled(&[
+            "gmail",
+            "outlook",
+            "yahoo mail",
+            "proton mail",
+            "zoho mail",
+            "- mail",
+            "compose",
+            "inbox",
+        ]) {
             return AppKind::Email;
         }
-        if titled(&["whatsapp", "slack", "discord", "messenger", "telegram", "microsoft teams", "| teams", "chatgpt", "claude"]) {
+        if titled(&[
+            "whatsapp",
+            "slack",
+            "discord",
+            "messenger",
+            "telegram",
+            "microsoft teams",
+            "| teams",
+            "chatgpt",
+            "claude",
+        ]) {
             return AppKind::Chat;
         }
         if titled(&["github", "gitlab", "stack overflow", "codepen", "replit"]) {
             return AppKind::Code;
         }
-        if titled(&["google docs", "- docs", "notion", "confluence", "microsoft word", "dropbox paper", "linkedin"]) {
+        if titled(&[
+            "google docs",
+            "- docs",
+            "notion",
+            "confluence",
+            "microsoft word",
+            "dropbox paper",
+            "linkedin",
+        ]) {
             return AppKind::Document;
         }
     }
@@ -78,9 +151,12 @@ fn classify(process: &str, title: &str) -> AppKind {
 fn foreground_window() -> (String, String) {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
     };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
+    };
 
     // SAFETY: plain Win32 queries into local buffers; the process handle is
     // closed before returning.
@@ -100,7 +176,9 @@ fn foreground_window() -> (String, String) {
         if !handle.is_null() {
             let mut path = [0u16; 1024];
             let mut size = path.len() as u32;
-            if QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, path.as_mut_ptr(), &mut size) != 0 {
+            if QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, path.as_mut_ptr(), &mut size)
+                != 0
+            {
                 let full = String::from_utf16_lossy(&path[..size as usize]);
                 process = full.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
             }
@@ -121,14 +199,26 @@ mod tests {
 
     #[test]
     fn classifies_common_apps() {
-        assert_eq!(classify("chrome.exe", "Inbox (3) - krish@gmail.com - Gmail"), AppKind::Email);
-        assert_eq!(classify("msedge.exe", "Mail - Krishna - Outlook"), AppKind::Email);
+        assert_eq!(
+            classify("chrome.exe", "Inbox (3) - example@gmail.com - Gmail"),
+            AppKind::Email
+        );
+        assert_eq!(
+            classify("msedge.exe", "Mail - Krishna - Outlook"),
+            AppKind::Email
+        );
         assert_eq!(classify("OUTLOOK.EXE", "Inbox"), AppKind::Email);
         assert_eq!(classify("chrome.exe", "(2) WhatsApp"), AppKind::Chat);
         assert_eq!(classify("slack.exe", "general - Team"), AppKind::Chat);
-        assert_eq!(classify("code.exe", "main.rs - Srutam_Dictate"), AppKind::Code);
+        assert_eq!(
+            classify("code.exe", "main.rs - Srutam_Dictate"),
+            AppKind::Code
+        );
         assert_eq!(classify("WindowsTerminal.exe", "PowerShell"), AppKind::Code);
-        assert_eq!(classify("chrome.exe", "Project plan - Google Docs"), AppKind::Document);
+        assert_eq!(
+            classify("chrome.exe", "Project plan - Google Docs"),
+            AppKind::Document
+        );
         assert_eq!(classify("winword.exe", "Report.docx"), AppKind::Document);
         assert_eq!(classify("chrome.exe", "YouTube"), AppKind::Other);
     }

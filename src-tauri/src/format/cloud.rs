@@ -6,9 +6,9 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::context::AppKind;
 
@@ -27,7 +27,12 @@ const TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Claude models that accept server-side refusal fallbacks
 /// (`fallbacks: "default"`).
-const CLAUDE_FALLBACK_MODELS: &[&str] = &["claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"];
+const CLAUDE_FALLBACK_MODELS: &[&str] = &[
+    "claude-opus-5-5",
+    "claude-opus-5",
+    "claude-fable-5-1",
+    "claude-sonnet-5-5",
+];
 
 impl Provider {
     pub fn id(self) -> &'static str {
@@ -78,9 +83,19 @@ pub struct Cloud {
 
 impl Cloud {
     pub fn new(provider: Provider, model: Option<String>) -> Result<Self> {
-        let key = crate::secrets::get(provider.id()).ok_or_else(|| anyhow!("No API key saved for {}", provider.name()))?;
-        let model = model.filter(|m| !m.trim().is_empty()).unwrap_or_else(|| provider.default_model().to_string());
-        Ok(Self { provider, model: model.trim().to_string(), key, client: reqwest::blocking::Client::builder().timeout(TIMEOUT).build()? })
+        let key = crate::secrets::get(provider.id())
+            .ok_or_else(|| anyhow!("No API key saved for {}", provider.name()))?;
+        let model = model
+            .filter(|m| !m.trim().is_empty())
+            .unwrap_or_else(|| provider.default_model().to_string());
+        Ok(Self {
+            provider,
+            model: model.trim().to_string(),
+            key,
+            client: reqwest::blocking::Client::builder()
+                .timeout(TIMEOUT)
+                .build()?,
+        })
     }
 
     /// Same contract as the local model's `clean_up`.
@@ -96,7 +111,10 @@ impl Cloud {
     }
 
     fn post(&self, request: reqwest::blocking::RequestBuilder, body: Value) -> Result<Value> {
-        let resp = request.header(reqwest::header::CONTENT_TYPE, "application/json").body(body.to_string()).send()?;
+        let resp = request
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body.to_string())
+            .send()?;
         let status = resp.status();
         let text = resp.text()?;
         if !status.is_success() {
@@ -164,13 +182,30 @@ impl Cloud {
             "contents": contents,
             "generationConfig": { "maxOutputTokens": 8000 },
         });
-        let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", self.model);
-        let resp = self.post(self.client.post(url).header("x-goog-api-key", &self.key), body)?;
-        let parts = resp["candidates"][0]["content"]["parts"].as_array().ok_or_else(|| {
-            anyhow!("no text in the reply ({})", resp["candidates"][0]["finishReason"].as_str().unwrap_or("blocked"))
-        })?;
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            self.model
+        );
+        let resp = self.post(
+            self.client.post(url).header("x-goog-api-key", &self.key),
+            body,
+        )?;
+        let parts = resp["candidates"][0]["content"]["parts"]
+            .as_array()
+            .ok_or_else(|| {
+                anyhow!(
+                    "no text in the reply ({})",
+                    resp["candidates"][0]["finishReason"]
+                        .as_str()
+                        .unwrap_or("blocked")
+                )
+            })?;
         // Skip thought summaries, if any.
-        Ok(parts.iter().filter(|p| p["thought"] != true).filter_map(|p| p["text"].as_str()).collect())
+        Ok(parts
+            .iter()
+            .filter(|p| p["thought"] != true)
+            .filter_map(|p| p["text"].as_str())
+            .collect())
     }
 
     /// Groq's OpenAI-compatible chat completions.
@@ -186,8 +221,14 @@ impl Cloud {
             // Reasoning models: a quick look is plenty for a clean-up.
             body["reasoning_effort"] = json!("low");
         }
-        let request = self.client.post("https://api.groq.com/openai/v1/chat/completions").bearer_auth(&self.key);
+        let request = self
+            .client
+            .post("https://api.groq.com/openai/v1/chat/completions")
+            .bearer_auth(&self.key);
         let resp = self.post(request, body)?;
-        resp["choices"][0]["message"]["content"].as_str().map(str::to_string).ok_or_else(|| anyhow!("unexpected reply"))
+        resp["choices"][0]["message"]["content"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| anyhow!("unexpected reply"))
     }
 }

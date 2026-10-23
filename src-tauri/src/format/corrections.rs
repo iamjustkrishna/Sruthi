@@ -34,17 +34,46 @@ const STRONG_CUES: &[&[&str]] = &[
 const WEAK_CUES: &[&[&str]] = &[&["no"], &["sorry"], &["wait"], &["oops"]];
 
 /// After a finished sentence, these drop it: "Meet Monday. Scratch that."
-const DROP_CUES: &[&[&str]] = &[&["scratch", "that"], &["delete", "that"], &["strike", "that"], &["erase", "that"]];
+const DROP_CUES: &[&[&str]] = &[
+    &["scratch", "that"],
+    &["delete", "that"],
+    &["strike", "that"],
+    &["erase", "that"],
+];
 
 /// Words that may come before the value and get repeated with the
 /// correction ("at five, no wait, at six").
-const PREPOSITIONS: &[&str] = &["at", "on", "in", "by", "for", "to", "from", "until", "till", "before", "after", "around", "about"];
+const PREPOSITIONS: &[&str] = &[
+    "at", "on", "in", "by", "for", "to", "from", "until", "till", "before", "after", "around",
+    "about",
+];
 
 const DAYS: &[&str] = &[
-    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "today", "tomorrow", "yesterday", "tonight",
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "tonight",
 ];
 const MONTHS: &[&str] = &[
-    "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
 ];
 
 /// How far back (in words) the corrected value may be from the cue.
@@ -71,14 +100,19 @@ fn kind(token: &str, sentence_start: bool) -> Option<Kind> {
     let lower = w.to_lowercase();
     let numeric = !w.is_empty()
         && w.starts_with(|c: char| c.is_ascii_digit())
-        && w.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ',' | ':' | '%'));
+        && w.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | ',' | ':' | '%'));
     if numeric || is_number_word(&lower) {
         Some(Kind::Number)
     } else if DAYS.contains(&lower.as_str()) {
         Some(Kind::Day)
     } else if MONTHS.contains(&lower.as_str()) && lower != "may" {
         Some(Kind::Month)
-    } else if !sentence_start && w.len() > 1 && w.starts_with(|c: char| c.is_uppercase()) && w != "I" {
+    } else if !sentence_start
+        && w.len() > 1
+        && w.starts_with(|c: char| c.is_uppercase())
+        && w != "I"
+    {
         Some(Kind::Name)
     } else {
         None
@@ -92,7 +126,13 @@ fn starts_sentence(tokens: &[String], i: usize) -> bool {
 /// Length of the cue starting at `i`, longest first.
 fn cue_at(tokens: &[String], i: usize, cues: &[&[&str]]) -> Option<usize> {
     cues.iter()
-        .filter(|cue| i + cue.len() <= tokens.len() && cue.iter().enumerate().all(|(k, c)| word(&tokens[i + k]) == *c))
+        .filter(|cue| {
+            i + cue.len() <= tokens.len()
+                && cue
+                    .iter()
+                    .enumerate()
+                    .all(|(k, c)| word(&tokens[i + k]) == *c)
+        })
         .map(|cue| cue.len())
         .max()
 }
@@ -108,14 +148,21 @@ fn capitalize(token: &str) -> String {
 
 /// "I have 10 no 20 dogs" → "I have 20 dogs".
 pub fn values(text: &str) -> String {
-    text.split('\n').map(|line| values_in_line(&not_but_in_line(line))).collect::<Vec<_>>().join("\n")
+    text.split('\n')
+        .map(|line| values_in_line(&not_but_in_line(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// "His wife's name is Disha. No, not Disha but Akansha." → "His wife's
 /// name is Akansha.": "not X but Y" right after saying X. Without the
 /// earlier X it's a plain contrast ("I want not tea but coffee") and stays.
 fn not_but_in_line(line: &str) -> String {
-    let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
+    let mut tokens: Vec<String> = line
+        .split(' ')
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect();
     let mut i = 1;
     while i + 3 < tokens.len() {
         let shape = word(&tokens[i]) == "not"
@@ -129,7 +176,12 @@ fn not_but_in_line(line: &str) -> String {
         let earlier = if shape {
             (i.saturating_sub(MAX_GAP + 1)..i).rev().find(|&j| {
                 word(&tokens[j]) == word(&tokens[i + 1])
-                    && tokens[j + 1..i].iter().all(|t| matches!(word(t).as_str(), "no" | "uh" | "um" | "sorry" | "wait" | "oh"))
+                    && tokens[j + 1..i].iter().all(|t| {
+                        matches!(
+                            word(t).as_str(),
+                            "no" | "uh" | "um" | "sorry" | "wait" | "oh"
+                        )
+                    })
             })
         } else {
             None
@@ -156,23 +208,34 @@ fn not_but_in_line(line: &str) -> String {
 }
 
 fn values_in_line(line: &str) -> String {
-    let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
+    let mut tokens: Vec<String> = line
+        .split(' ')
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect();
     let mut i = 1;
     while i < tokens.len() {
-        match correct_at(&tokens, i).or_else(|| phrase_at(&tokens, i)).or_else(|| swap_at(&tokens, i)) {
+        match correct_at(&tokens, i)
+            .or_else(|| phrase_at(&tokens, i))
+            .or_else(|| swap_at(&tokens, i))
+        {
             Some((start, cue_end, tail)) => {
                 let capital = starts_sentence(&tokens, start);
                 let mut rest: Vec<String> = tokens.split_off(cue_end);
                 // Words between the old value and the cue ("10 dogs, no,
                 // 20") belong after the new one when it doesn't repeat them.
                 if !tail.is_empty() {
-                    let y = rest.iter().position(|t| kind(t, false).is_some()).unwrap_or(0);
+                    let y = rest
+                        .iter()
+                        .position(|t| kind(t, false).is_some())
+                        .unwrap_or(0);
                     let repeated = rest.get(y + 1).is_some_and(|t| word(t) == word(&tail[0]));
                     if !repeated {
                         let (lead, w, trail) = split_punct(&rest[y]);
                         let (bare, trail) = (format!("{lead}{w}"), trail.to_string());
                         rest[y] = bare;
-                        let mut moved: Vec<String> = tail.iter().map(|t| split_punct(t).1.to_string()).collect();
+                        let mut moved: Vec<String> =
+                            tail.iter().map(|t| split_punct(t).1.to_string()).collect();
                         if let Some(last) = moved.last_mut() {
                             last.push_str(&trail);
                         }
@@ -206,7 +269,9 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
     let cue_end = i + len;
     // The new value, maybe after a repeated preposition.
     let mut y = cue_end;
-    let new_prep = tokens.get(y).is_some_and(|t| PREPOSITIONS.contains(&word(t).as_str()));
+    let new_prep = tokens
+        .get(y)
+        .is_some_and(|t| PREPOSITIONS.contains(&word(t).as_str()));
     if new_prep {
         y += 1;
     }
@@ -215,14 +280,20 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
     // its own: "my friend Akash. No, Rajesh." (not "I told Raghav no
     // Jagjeet would come").
     if y_kind == Kind::Name && !strong {
-        let alone = split_punct(&tokens[y]).2.contains(['.', ',', '!', ';']) || y + 1 == tokens.len();
+        let alone =
+            split_punct(&tokens[y]).2.contains(['.', ',', '!', ';']) || y + 1 == tokens.len();
         let x_done = split_punct(&tokens[i - 1]).2.contains(['.', ',', '!', ';']);
-        if !(alone && x_done && kind(&tokens[i - 1], starts_sentence(tokens, i - 1)) == Some(Kind::Name)) {
+        if !(alone
+            && x_done
+            && kind(&tokens[i - 1], starts_sentence(tokens, i - 1)) == Some(Kind::Name))
+        {
             return None;
         }
     }
     // The old value: the nearest same-kind word just before the cue.
-    let j = (i.saturating_sub(MAX_GAP)..i).rev().find(|&j| kind(&tokens[j], starts_sentence(tokens, j)) == Some(y_kind))?;
+    let j = (i.saturating_sub(MAX_GAP)..i)
+        .rev()
+        .find(|&j| kind(&tokens[j], starts_sentence(tokens, j)) == Some(y_kind))?;
     let tail: Vec<String> = tokens[j + 1..i].to_vec();
     if y_kind == Kind::Name && !tail.is_empty() {
         return None;
@@ -241,7 +312,9 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
     // not a correction.
     if !strong && ends_sentence(&tokens[i - 1]) {
         let after = tokens.get(y + 1);
-        let ends = split_punct(&tokens[y]).2.contains(['.', ',', '!', '?', ';', ':']);
+        let ends = split_punct(&tokens[y])
+            .2
+            .contains(['.', ',', '!', '?', ';', ':']);
         if !(ends || after.is_none()) {
             return None;
         }
@@ -251,24 +324,54 @@ fn correct_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)
     Some((start, cue_end, tail))
 }
 
-const DETERMINERS: &[&str] = &["a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their", "some"];
+const DETERMINERS: &[&str] = &[
+    "a", "an", "the", "this", "that", "my", "our", "your", "his", "her", "their", "some",
+];
 
 /// Words that may follow a corrected phrase ("No, a cat and it was…").
 /// Anything else is likely a new clause: "I bought a car. No, a friend gave
 /// it to me" isn't a correction.
 const FOLLOWERS: &[&str] = &[
-    "and", "but", "so", "or", "because", "then", "here", "there", "yesterday", "today", "tomorrow", "now", "too", "again", "with",
-    "at", "on", "in", "by", "for", "to", "from", "near", "outside", "inside",
+    "and",
+    "but",
+    "so",
+    "or",
+    "because",
+    "then",
+    "here",
+    "there",
+    "yesterday",
+    "today",
+    "tomorrow",
+    "now",
+    "too",
+    "again",
+    "with",
+    "at",
+    "on",
+    "in",
+    "by",
+    "for",
+    "to",
+    "from",
+    "near",
+    "outside",
+    "inside",
 ];
 
 fn negated(token: &str) -> bool {
     let w = word(token);
-    matches!(w.as_str(), "not" | "never" | "no" | "nothing" | "nobody" | "none" | "neither" | "nor" | "without") || w.ends_with("n't")
+    matches!(
+        w.as_str(),
+        "not" | "never" | "no" | "nothing" | "nobody" | "none" | "neither" | "nor" | "without"
+    ) || w.ends_with("n't")
 }
 
 fn plain_word(token: &str) -> bool {
     let (_, w, _) = split_punct(token);
-    !w.is_empty() && w.chars().all(char::is_alphabetic) && !DETERMINERS.contains(&w.to_lowercase().as_str())
+    !w.is_empty()
+        && w.chars().all(char::is_alphabetic)
+        && !DETERMINERS.contains(&w.to_lowercase().as_str())
 }
 
 /// "I watched a tiger. No, a cat and…" → "I watched a cat and…": an
@@ -301,9 +404,12 @@ fn swap_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)> {
         }
         let said: Vec<String> = tokens[x + 1..i].iter().map(|t| word(t)).collect();
         let again: Vec<String> = tokens[y + 1..y + 1 + p].iter().map(|t| word(t)).collect();
-        let plain = said.iter().all(|w| !w.is_empty() && w.chars().all(|c| c.is_alphabetic() || c == '\''));
+        let plain = said
+            .iter()
+            .all(|w| !w.is_empty() && w.chars().all(|c| c.is_alphabetic() || c == '\''));
         // Nothing ends a sentence inside the abandoned attempt.
-        let open = !tokens[x..i - 1].iter().any(|t| ends_sentence(t)) && !split_punct(&tokens[i - 1]).2.contains('?');
+        let open = !tokens[x..i - 1].iter().any(|t| ends_sentence(t))
+            && !split_punct(&tokens[i - 1]).2.contains('?');
         (said == again && plain && open).then(|| (x, y, Vec::new()))
     })
 }
@@ -317,10 +423,16 @@ fn phrase_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)>
     (1..=2).find_map(|m| {
         // Old phrase: determiner + m words right before the cue.
         let x = i.checked_sub(m + 1)?;
-        if !DETERMINERS.contains(&word(&tokens[x]).as_str()) || !tokens[x + 1..i].iter().all(|t| plain_word(t)) {
+        if !DETERMINERS.contains(&word(&tokens[x]).as_str())
+            || !tokens[x + 1..i].iter().all(|t| plain_word(t))
+        {
             return None;
         }
-        if tokens[x..i - 1].iter().any(|t| !split_punct(t).2.is_empty()) || split_punct(&tokens[i - 1]).2.contains('?') {
+        if tokens[x..i - 1]
+            .iter()
+            .any(|t| !split_punct(t).2.is_empty())
+            || split_punct(&tokens[i - 1]).2.contains('?')
+        {
             return None;
         }
         // New phrase: determiner + m words, then a natural break.
@@ -329,11 +441,17 @@ fn phrase_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)>
             return None;
         }
         let breaks = !split_punct(&tokens[y_end - 1]).2.is_empty()
-            || tokens.get(y_end).is_none_or(|t| FOLLOWERS.contains(&word(t).as_str()));
+            || tokens
+                .get(y_end)
+                .is_none_or(|t| FOLLOWERS.contains(&word(t).as_str()));
         if !breaks {
             return None;
         }
-        let sentence = (0..x).rev().find(|&k| ends_sentence(&tokens[k])).map(|k| k + 1).unwrap_or(0);
+        let sentence = (0..x)
+            .rev()
+            .find(|&k| ends_sentence(&tokens[k]))
+            .map(|k| k + 1)
+            .unwrap_or(0);
         if tokens[sentence..x].iter().any(|t| negated(t)) {
             return None;
         }
@@ -345,17 +463,28 @@ fn phrase_at(tokens: &[String], i: usize) -> Option<(usize, usize, Vec<String>)>
 /// goes). Only after a finished sentence; mid-sentence ones are handled as
 /// value corrections or left alone.
 pub fn scratch_that(text: &str) -> String {
-    text.split('\n').map(scratch_in_line).collect::<Vec<_>>().join("\n")
+    text.split('\n')
+        .map(scratch_in_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn scratch_in_line(line: &str) -> String {
-    let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
+    let mut tokens: Vec<String> = line
+        .split(' ')
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect();
     let mut i = 1;
     while i < tokens.len() {
         match cue_at(&tokens, i, DROP_CUES) {
             Some(len) if ends_sentence(&tokens[i - 1]) => {
                 // Start of the sentence that ends at i - 1.
-                let start = (0..i - 1).rev().find(|&k| ends_sentence(&tokens[k])).map(|k| k + 1).unwrap_or(0);
+                let start = (0..i - 1)
+                    .rev()
+                    .find(|&k| ends_sentence(&tokens[k]))
+                    .map(|k| k + 1)
+                    .unwrap_or(0);
                 tokens.drain(start..i + len);
                 if let Some(first) = tokens.get_mut(start) {
                     *first = capitalize(first);
@@ -374,13 +503,15 @@ const MAX_RESTART_WORDS: usize = 4;
 /// A restart may swap its first word for one of these ("I went to the, we
 /// went to the store")...
 const SWAPPABLE: &[&str] = &[
-    "i", "we", "you", "he", "she", "they", "it", "the", "a", "an", "this", "that", "my", "our", "your", "his", "her", "their",
+    "i", "we", "you", "he", "she", "they", "it", "the", "a", "an", "this", "that", "my", "our",
+    "your", "his", "her", "their",
 ];
 /// ...when the abandoned attempt stops mid-phrase, on one of these. "I like
 /// it, you like it" ends on a full thought and is left alone.
 const DANGLING: &[&str] = &[
-    "the", "a", "an", "to", "of", "in", "on", "at", "for", "with", "from", "and", "or", "but", "is", "are", "was", "were", "my", "our",
-    "your", "his", "her", "their", "this", "that", "will", "would", "can", "should",
+    "the", "a", "an", "to", "of", "in", "on", "at", "for", "with", "from", "and", "or", "but",
+    "is", "are", "was", "were", "my", "our", "your", "his", "her", "their", "this", "that", "will",
+    "would", "can", "should",
 ];
 
 /// "I want to, I want to go" → "I want to go": a phrase of 2-4 words said
@@ -388,11 +519,18 @@ const DANGLING: &[&str] = &[
 /// PIN is 1 2 1 2", spelled codes), and so are sentences repeated after a
 /// full stop.
 pub fn restarts(text: &str) -> String {
-    text.split('\n').map(restarts_in_line).collect::<Vec<_>>().join("\n")
+    text.split('\n')
+        .map(restarts_in_line)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn restarts_in_line(line: &str) -> String {
-    let mut tokens: Vec<String> = line.split(' ').filter(|t| !t.is_empty()).map(String::from).collect();
+    let mut tokens: Vec<String> = line
+        .split(' ')
+        .filter(|t| !t.is_empty())
+        .map(String::from)
+        .collect();
     let mut i = 0;
     while i < tokens.len() {
         let found = (2..=MAX_RESTART_WORDS).rev().find(|&n| {
@@ -407,8 +545,11 @@ fn restarts_in_line(line: &str) -> String {
                     && SWAPPABLE.contains(&first[0].as_str())
                     && SWAPPABLE.contains(&second[0].as_str())
                     && DANGLING.contains(&first[n - 1].as_str()));
-            same && first.iter().all(|w| (w.chars().count() > 1 || w == "i" || w == "a") && !is_number_word(w) && !w.starts_with(|c: char| c.is_ascii_digit()))
-                && !tokens[i..i + n].iter().any(|t| ends_sentence(t))
+            same && first.iter().all(|w| {
+                (w.chars().count() > 1 || w == "i" || w == "a")
+                    && !is_number_word(w)
+                    && !w.starts_with(|c: char| c.is_ascii_digit())
+            }) && !tokens[i..i + n].iter().any(|t| ends_sentence(t))
         });
         match found {
             Some(n) => {
@@ -435,16 +576,19 @@ mod tests {
     #[ignore]
     fn saved_dictations() {
         let path = crate::recordings::folder().join("history.json");
-        let history: Vec<serde_json::Value> = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let history: Vec<serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let mut changed = 0;
         for entry in &history {
             let heard = entry["heard"].as_str().unwrap_or_default();
             let out = scratch_that(&values(&restarts(heard)));
             if out != heard {
                 changed += 1;
-                println!("IN : {heard}
+                println!(
+                    "IN : {heard}
 OUT: {out}
-");
+"
+                );
             }
         }
         println!("{changed} of {} dictations changed", history.len());
@@ -456,11 +600,23 @@ OUT: {out}
         assert_eq!(values("I have 10, no, 20 dogs."), "I have 20 dogs.");
         assert_eq!(values("I have 10 dogs no 20"), "I have 20 dogs");
         assert_eq!(values("I have 10 dogs, no, 20 dogs."), "I have 20 dogs.");
-        assert_eq!(values("It costs 500 I mean 600 rupees"), "It costs 600 rupees");
-        assert_eq!(values("We should go at five. No wait, at six"), "We should go at six");
-        assert_eq!(values("We should go at 5. No wait, at 6 because traffic is bad"), "We should go at 6 because traffic is bad");
+        assert_eq!(
+            values("It costs 500 I mean 600 rupees"),
+            "It costs 600 rupees"
+        );
+        assert_eq!(
+            values("We should go at five. No wait, at six"),
+            "We should go at six"
+        );
+        assert_eq!(
+            values("We should go at 5. No wait, at 6 because traffic is bad"),
+            "We should go at 6 because traffic is bad"
+        );
         assert_eq!(values("Meet at 5. No, 6."), "Meet at 6.");
-        assert_eq!(values("Call me at 3:30 PM sorry 4:30 PM"), "Call me at 4:30 PM");
+        assert_eq!(
+            values("Call me at 3:30 PM sorry 4:30 PM"),
+            "Call me at 4:30 PM"
+        );
         // Several in a row: the last one wins.
         assert_eq!(values("Give me 5 no 6 no 7 apples"), "Give me 7 apples");
     }
@@ -469,19 +625,28 @@ OUT: {out}
     fn real_name_corrections() {
         // Real dictations.
         assert_eq!(
-            values("So after a very long time I met my friend Akash. No, Rajesh. He's a very good guy. He's married. And Her wife name is Disha. No, not Disha but Akansha. She's all so nice."),
+            values(
+                "So after a very long time I met my friend Akash. No, Rajesh. He's a very good guy. He's married. And Her wife name is Disha. No, not Disha but Akansha. She's all so nice."
+            ),
             "So after a very long time I met my friend Rajesh. He's a very good guy. He's married. And Her wife name is Akansha. She's all so nice."
         );
         assert_eq!(
-            values("I met my friend Akash. No Rajesh. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice."),
+            values(
+                "I met my friend Akash. No Rajesh. He's married. My wife name is. Disha. Not Disha but Kancha. She's also nice."
+            ),
             "I met my friend Rajesh. He's married. My wife name is Kancha. She's also nice."
         );
         // Real dictation: a restart with a different name.
         assert_eq!(
-            values("So today we are going to have a meeting at 8 AM and Krishna will be no. Ajay will be joining the meeting as well."),
+            values(
+                "So today we are going to have a meeting at 8 AM and Krishna will be no. Ajay will be joining the meeting as well."
+            ),
             "So today we are going to have a meeting at 8 AM and Ajay will be joining the meeting as well."
         );
-        assert_eq!(values("Send it to Raghav by Monday sorry Jagjeet by Monday."), "Send it to Jagjeet by Monday.");
+        assert_eq!(
+            values("Send it to Raghav by Monday sorry Jagjeet by Monday."),
+            "Send it to Jagjeet by Monday."
+        );
         assert_eq!(values("We need 5 boxes no 6 boxes."), "We need 6 boxes.");
         for text in [
             "I want not tea but coffee.",
@@ -499,24 +664,47 @@ OUT: {out}
 
     #[test]
     fn days_months_and_names() {
-        assert_eq!(values("We can meet on Monday. Sorry, I mean Tuesday at 10 AM"), "We can meet on Tuesday at 10 AM");
-        assert_eq!(values("Let's do it tomorrow no wait today"), "Let's do it today");
-        assert_eq!(values("The launch is in March no April"), "The launch is in April");
-        assert_eq!(values("Send it to Raghav, I mean Jagjeet, by Friday."), "Send it to Jagjeet, by Friday.");
+        assert_eq!(
+            values("We can meet on Monday. Sorry, I mean Tuesday at 10 AM"),
+            "We can meet on Tuesday at 10 AM"
+        );
+        assert_eq!(
+            values("Let's do it tomorrow no wait today"),
+            "Let's do it today"
+        );
+        assert_eq!(
+            values("The launch is in March no April"),
+            "The launch is in April"
+        );
+        assert_eq!(
+            values("Send it to Raghav, I mean Jagjeet, by Friday."),
+            "Send it to Jagjeet, by Friday."
+        );
         // A name needs a strong cue: a bare "no" isn't enough.
-        assert_eq!(values("I told Raghav no Jagjeet would come"), "I told Raghav no Jagjeet would come");
+        assert_eq!(
+            values("I told Raghav no Jagjeet would come"),
+            "I told Raghav no Jagjeet would come"
+        );
     }
 
     #[test]
     fn phrases_corrected_on_the_spot() {
         // Real dictation.
         assert_eq!(
-            values("So I was walking nearby a lake and I watched a tiger. No a cat and it was so dangerous."),
+            values(
+                "So I was walking nearby a lake and I watched a tiger. No a cat and it was so dangerous."
+            ),
             "So I was walking nearby a lake and I watched a cat and it was so dangerous."
         );
-        assert_eq!(values("Pass me the red one, no, the blue one."), "Pass me the blue one.");
+        assert_eq!(
+            values("Pass me the red one, no, the blue one."),
+            "Pass me the blue one."
+        );
         assert_eq!(values("I need a pen sorry a pencil"), "I need a pencil");
-        assert_eq!(values("We bought a car. No wait, a bike."), "We bought a bike.");
+        assert_eq!(
+            values("We bought a car. No wait, a bike."),
+            "We bought a bike."
+        );
         for text in [
             "It wasn't a tiger. No, a cat.",
             "Was it a tiger? No, a cat.",
@@ -547,24 +735,51 @@ OUT: {out}
 
     #[test]
     fn scratch_that_drops_the_sentence() {
-        assert_eq!(scratch_that("Let's meet Monday. Scratch that. Let's meet Tuesday."), "Let's meet Tuesday.");
-        assert_eq!(scratch_that("Hi Raj. The report is late. Delete that."), "Hi Raj.");
+        assert_eq!(
+            scratch_that("Let's meet Monday. Scratch that. Let's meet Tuesday."),
+            "Let's meet Tuesday."
+        );
+        assert_eq!(
+            scratch_that("Hi Raj. The report is late. Delete that."),
+            "Hi Raj."
+        );
         // Mid-sentence it's a value correction, not a sentence drop.
-        assert_eq!(scratch_that("Meet Monday, scratch that, Tuesday"), "Meet Monday, scratch that, Tuesday");
+        assert_eq!(
+            scratch_that("Meet Monday, scratch that, Tuesday"),
+            "Meet Monday, scratch that, Tuesday"
+        );
         assert_eq!(values("Meet Monday, scratch that, Tuesday"), "Meet Tuesday");
     }
 
     #[test]
     fn restarted_phrases() {
         // Real Parakeet output.
-        assert_eq!(restarts("And I'll try to do to do that."), "And I'll try to do that.");
-        assert_eq!(restarts("I want to, I want to go home"), "I want to go home");
+        assert_eq!(
+            restarts("And I'll try to do to do that."),
+            "And I'll try to do that."
+        );
+        assert_eq!(
+            restarts("I want to, I want to go home"),
+            "I want to go home"
+        );
         assert_eq!(restarts("we should we should leave"), "we should leave");
         // A false start with a different first word.
-        assert_eq!(restarts("I went to the, we went to the store."), "We went to the store.");
+        assert_eq!(
+            restarts("I went to the, we went to the store."),
+            "We went to the store."
+        );
         assert_eq!(restarts("so my car is our car is red"), "so our car is red");
-        assert_eq!(restarts("I like it, you like it, everyone likes it."), "I like it, you like it, everyone likes it.");
-        for text in ["My PIN is 1 2 1 2", "It was very very good", "I did it. I did it.", "that that is", "A B A B"] {
+        assert_eq!(
+            restarts("I like it, you like it, everyone likes it."),
+            "I like it, you like it, everyone likes it."
+        );
+        for text in [
+            "My PIN is 1 2 1 2",
+            "It was very very good",
+            "I did it. I did it.",
+            "that that is",
+            "A B A B",
+        ] {
             assert_eq!(restarts(text), text, "{text}");
         }
     }

@@ -45,7 +45,11 @@ impl Formatter {
     pub fn format(&self, raw: &str, smart: bool, words: &[String], app: AppKind) -> String {
         let ruled = rules::apply(&dictionary::apply(raw, words));
         let text = self.polish(ruled, smart, words, app);
-        let text = if app == AppKind::Email { rules::email_layout(&text) } else { text };
+        let text = if app == AppKind::Email {
+            rules::email_layout(&text)
+        } else {
+            text
+        };
         rules::tidy_lines(&text)
     }
 
@@ -54,8 +58,10 @@ impl Formatter {
     fn polish(&self, ruled: String, smart: bool, words: &[String], app: AppKind) -> String {
         // A list the rules already built is kept as is: rewriting it, the
         // small model dropped intro sentences ("We decided three things.").
-        let has_list = ruled.contains("
-1. ");
+        let has_list = ruled.contains(
+            "
+1. ",
+        );
         if !smart || app == AppKind::Code {
             return ruled;
         }
@@ -76,10 +82,19 @@ impl Formatter {
             if let Some(cloud) = cloud {
                 match cloud.clean_up(piece, words, app) {
                     Ok(out) => return Ok(out),
-                    Err(e) => log::warn!("Cloud clean-up failed{}: {e:#}", if server.is_some() { ", using the local model" } else { "" }),
+                    Err(e) => log::warn!(
+                        "Cloud clean-up failed{}: {e:#}",
+                        if server.is_some() {
+                            ", using the local model"
+                        } else {
+                            ""
+                        }
+                    ),
                 }
             }
-            server.ok_or_else(|| anyhow::anyhow!("no local model running"))?.clean_up(piece, words, app)
+            server
+                .ok_or_else(|| anyhow::anyhow!("no local model running"))?
+                .clean_up(piece, words, app)
         };
         let started = std::time::Instant::now();
         // Given a long dictation in one go, the small model summarizes it;
@@ -117,13 +132,17 @@ impl Formatter {
             match kept {
                 Some(kept) => {
                     if kept != out {
-                        log::info!("LLM changed more than fillers and punctuation, kept only those edits: {out:?}");
+                        log::info!(
+                            "LLM changed more than fillers and punctuation, kept only those edits: {out:?}"
+                        );
                     }
                     cleaned += 1;
                     outs.push(dictionary::apply(&kept, words));
                 }
                 None => {
-                    log::warn!("LLM output drifted from the dictation, using rules output instead: {out:?}");
+                    log::warn!(
+                        "LLM output drifted from the dictation, using rules output instead: {out:?}"
+                    );
                     outs.push(piece.to_string());
                 }
             }
@@ -143,11 +162,7 @@ impl Formatter {
             started.elapsed().as_millis(),
             pieces.len()
         );
-        if cleaned == 0 {
-            ruled
-        } else {
-            text
-        }
+        if cleaned == 0 { ruled } else { text }
     }
 }
 
@@ -159,8 +174,22 @@ const CHUNK_WORDS: usize = 25;
 const CHUNK_MIN_WORDS: usize = 8;
 /// Words a long unpunctuated sentence is best cut before.
 const BREAK_BEFORE: &[&str] = &[
-    "so", "and", "but", "therefore", "because", "then", "also", "or", "though", "although", "maybe", "which",
-    "what's", "what", "when", "if",
+    "so",
+    "and",
+    "but",
+    "therefore",
+    "because",
+    "then",
+    "also",
+    "or",
+    "though",
+    "although",
+    "maybe",
+    "which",
+    "what's",
+    "what",
+    "when",
+    "if",
 ];
 
 /// Splits `text` into pieces of whole sentences, each up to about `max`
@@ -182,7 +211,10 @@ fn chunks(text: &str, max: usize) -> Vec<(&str, &str)> {
     let gap_after = |i: usize| &text[words[i].1..words.get(i + 1).map_or(text.len(), |w| w.0)];
     let line_end = |i: usize| gap_after(i).contains('\n');
     let sentence_end = |i: usize| {
-        line_end(i) || text[words[i].0..words[i].1].trim_end_matches(['"', '\'', ')', ']']).ends_with(['.', '?', '!'])
+        line_end(i)
+            || text[words[i].0..words[i].1]
+                .trim_end_matches(['"', '\'', ')', ']'])
+                .ends_with(['.', '?', '!'])
     };
 
     // Where a new thought likely starts: after a comma, or before "so",
@@ -230,7 +262,10 @@ fn chunks(text: &str, max: usize) -> Vec<(&str, &str)> {
             pieces.last_mut().unwrap().1 = last.1;
         }
     }
-    pieces.into_iter().map(|(s, e)| (&text[words[s].0..words[e - 1].1], gap_after(e - 1))).collect()
+    pieces
+        .into_iter()
+        .map(|(s, e)| (&text[words[s].0..words[e - 1].1], gap_after(e - 1)))
+        .collect()
 }
 
 /// Joins the cleaned `outs` of `pieces`. Where a piece was cut mid-sentence,
@@ -239,12 +274,16 @@ fn chunks(text: &str, max: usize) -> Vec<(&str, &str)> {
 fn join_pieces(pieces: &[(&str, &str)], mut outs: Vec<String>) -> String {
     let first_word = |s: &str| {
         let word = s.split_whitespace().next().unwrap_or("");
-        word.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
+        word.chars()
+            .filter(|c| c.is_alphanumeric())
+            .collect::<String>()
+            .to_lowercase()
     };
     for k in 1..outs.len() {
         let (prev, gap) = pieces[k - 1];
         let cut_mid = !gap.contains('\n') && !prev.ends_with(['.', '?', '!', ':', '"', ')']);
-        let goes_on = pieces[k].0.starts_with(char::is_lowercase) && first_word(&outs[k]) == first_word(pieces[k].0);
+        let goes_on = pieces[k].0.starts_with(char::is_lowercase)
+            && first_word(&outs[k]) == first_word(pieces[k].0);
         if !cut_mid || !goes_on {
             continue;
         }
@@ -256,19 +295,25 @@ fn join_pieces(pieces: &[(&str, &str)], mut outs: Vec<String>) -> String {
             next.replace_range(..c.len_utf8(), &c.to_lowercase().to_string());
         }
     }
-    outs.iter().zip(pieces).map(|(out, (_, gap))| format!("{out}{gap}")).collect()
+    outs.iter()
+        .zip(pieces)
+        .map(|(out, (_, gap))| format!("{out}{gap}"))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{chunks, llm, AppKind, Formatter, CHUNK_WORDS};
+    use super::{AppKind, CHUNK_WORDS, Formatter, chunks, llm};
 
     fn joined(pieces: &[(&str, &str)]) -> String {
         pieces.iter().map(|(p, gap)| format!("{p}{gap}")).collect()
     }
 
     fn word_counts(pieces: &[(&str, &str)]) -> Vec<usize> {
-        pieces.iter().map(|(p, _)| p.split_whitespace().count()).collect()
+        pieces
+            .iter()
+            .map(|(p, _)| p.split_whitespace().count())
+            .collect()
     }
 
     #[test]
@@ -290,7 +335,11 @@ mod tests {
         assert_eq!(joined(&pieces), text);
         // Even parts, none over the limit, cut between words.
         assert_eq!(word_counts(&pieces), [33, 33, 34]);
-        assert!(pieces.iter().all(|(p, _)| p.split(' ').all(|w| words.contains(&w.to_string()))));
+        assert!(
+            pieces
+                .iter()
+                .all(|(p, _)| p.split(' ').all(|w| words.contains(&w.to_string())))
+        );
     }
 
     #[test]
@@ -318,11 +367,18 @@ mod tests {
         let pieces = chunks(text, CHUNK_WORDS);
         assert_eq!(joined(&pieces), text);
         assert!(pieces.len() >= 3, "{pieces:?}");
-        assert!(word_counts(&pieces).iter().all(|&n| n <= CHUNK_WORDS * 3 / 2), "{pieces:#?}");
+        assert!(
+            word_counts(&pieces)
+                .iter()
+                .all(|&n| n <= CHUNK_WORDS * 3 / 2),
+            "{pieces:#?}"
+        );
         // Cut where a thought starts ("so", "and"...), all but once.
         let mid_phrase = pieces[1..]
             .iter()
-            .filter(|(p, _)| !super::BREAK_BEFORE.contains(&p.split(' ').next().unwrap().to_lowercase().as_str()))
+            .filter(|(p, _)| {
+                !super::BREAK_BEFORE.contains(&p.split(' ').next().unwrap().to_lowercase().as_str())
+            })
             .count();
         assert!(mid_phrase <= 1, "{pieces:#?}");
     }
@@ -348,8 +404,14 @@ mod tests {
         );
         // The AI dropped a leading filler and started a new sentence.
         let pieces = [("we were late", " "), ("so we took a cab home", "")];
-        let outs = vec!["We were late.".to_string(), "We took a cab home.".to_string()];
-        assert_eq!(super::join_pieces(&pieces, outs), "We were late. We took a cab home.");
+        let outs = vec![
+            "We were late.".to_string(),
+            "We took a cab home.".to_string(),
+        ];
+        assert_eq!(
+            super::join_pieces(&pieces, outs),
+            "We were late. We took a cab home."
+        );
     }
 
     /// Downloads the default LLM if needed, starts llama-server and formats
@@ -358,7 +420,12 @@ mod tests {
     #[test]
     #[ignore]
     fn llm_end_to_end() {
-        let info = llm::find(std::env::var("SRUTAM_TEST_LLM").as_deref().unwrap_or(llm::DEFAULT_LLM)).unwrap();
+        let info = llm::find(
+            std::env::var("SRUTAM_TEST_LLM")
+                .as_deref()
+                .unwrap_or(llm::DEFAULT_LLM),
+        )
+        .unwrap();
         if !info.is_installed() || !llm::runtime_installed() {
             let mut last = 0;
             info.download(|done, total| {
@@ -370,11 +437,18 @@ mod tests {
             })
             .unwrap();
         }
-        let _ = env_logger::builder().is_test(true).filter_level(log::LevelFilter::Info).try_init();
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Info)
+            .try_init();
         let started = std::time::Instant::now();
         let formatter = Formatter::default();
         formatter.set_server(Some(llm::LlmServer::start(info).unwrap()));
-        println!("[{}] server ready in {} ms", info.id, started.elapsed().as_millis());
+        println!(
+            "[{}] server ready in {} ms",
+            info.id,
+            started.elapsed().as_millis()
+        );
 
         let samples = [
             "Um, so I think, uh, we should go at five. No wait, at six",
@@ -412,11 +486,22 @@ mod tests {
             let ruled = super::rules::apply(raw);
             for (piece, _) in chunks(&ruled, CHUNK_WORDS) {
                 let server = formatter.server.lock().unwrap();
-                let out = server.as_ref().unwrap().clean_up(piece, &[], AppKind::Other).unwrap();
+                let out = server
+                    .as_ref()
+                    .unwrap()
+                    .clean_up(piece, &[], AppKind::Other)
+                    .unwrap();
                 let pass = llm::faithful(piece, &out, &[]);
-                println!("{} {piece}\n   -> {out}\n   => {:?}", if pass { "OK " } else { "BAD" }, llm::salvage(piece, &out));
+                println!(
+                    "{} {piece}\n   -> {out}\n   => {:?}",
+                    if pass { "OK " } else { "BAD" },
+                    llm::salvage(piece, &out)
+                );
             }
-            println!("\nFORMATTED: {}\n", formatter.format(raw, true, &[], AppKind::Other));
+            println!(
+                "\nFORMATTED: {}\n",
+                formatter.format(raw, true, &[], AppKind::Other)
+            );
         }
     }
 
@@ -432,20 +517,35 @@ mod tests {
         let formatter = Formatter::default();
         formatter.set_server(Some(llm::LlmServer::start(info).unwrap()));
         let samples = [
-            (AppKind::Email, "hi ajay hope you are doing well I wanted to let you know that the demo is ready we can review it on monday at 11 am let me know if that works thanks krishna"),
-            (AppKind::Email, "Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna"),
-            (AppKind::Chat, "hey are you coming to the party tonight let me know"),
-            (AppKind::Document, "Meeting notes. We decided three things. Number one, launch on Monday. Number two, fix the login bug. Number three, update the docs."),
+            (
+                AppKind::Email,
+                "hi ajay hope you are doing well I wanted to let you know that the demo is ready we can review it on monday at 11 am let me know if that works thanks krishna",
+            ),
+            (
+                AppKind::Email,
+                "Hi team, quick update. Number one, the app now records instantly. Number two, whispers work with the hybrid model. Thanks, Krishna",
+            ),
+            (
+                AppKind::Chat,
+                "hey are you coming to the party tonight let me know",
+            ),
+            (
+                AppKind::Document,
+                "Meeting notes. We decided three things. Number one, launch on Monday. Number two, fix the login bug. Number three, update the docs.",
+            ),
             (AppKind::Code, "um create a function called parse config"),
         ];
         for (app, raw) in samples {
             let t = std::time::Instant::now();
             let out = formatter.format(raw, true, &["Srutam".to_string()], app);
-            println!("
+            println!(
+                "
 [{app:?}] ({} ms)
 IN : {raw}
 OUT:
-{out}", t.elapsed().as_millis());
+{out}",
+                t.elapsed().as_millis()
+            );
         }
     }
 }

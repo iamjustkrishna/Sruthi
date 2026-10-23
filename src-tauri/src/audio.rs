@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Sample rate every speech model in this app expects.
 pub const TARGET_RATE: u32 = 16_000;
@@ -152,7 +152,11 @@ impl Mic {
 
     fn detach(&self, buffer: &Arc<Mutex<Vec<f32>>>) {
         let mut state = self.state.lock().unwrap();
-        if state.target.as_ref().is_some_and(|t| Arc::ptr_eq(t, buffer)) {
+        if state
+            .target
+            .as_ref()
+            .is_some_and(|t| Arc::ptr_eq(t, buffer))
+        {
             state.target = None;
         }
     }
@@ -172,7 +176,12 @@ impl Mic {
 /// The always-ready mic's thread: keeps capturing, reopening the device
 /// after errors, and following the system default when it changes
 /// (between recordings) unless a specific device was chosen.
-fn keep_open(mic: Weak<Mic>, device: Option<String>, stop_rx: mpsc::Receiver<()>, ready_tx: mpsc::Sender<Result<(), String>>) {
+fn keep_open(
+    mic: Weak<Mic>,
+    device: Option<String>,
+    stop_rx: mpsc::Receiver<()>,
+    ready_tx: mpsc::Sender<Result<(), String>>,
+) {
     let mut ready_tx = Some(ready_tx);
     loop {
         let mut stopped = false;
@@ -220,7 +229,10 @@ fn keep_open(mic: Weak<Mic>, device: Option<String>, stop_rx: mpsc::Receiver<()>
                 return;
             }
             log::warn!("Microphone stopped working ({e}); retrying");
-            if !matches!(stop_rx.recv_timeout(RETRY_DELAY), Err(mpsc::RecvTimeoutError::Timeout)) {
+            if !matches!(
+                stop_rx.recv_timeout(RETRY_DELAY),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ) {
                 return;
             }
         }
@@ -243,7 +255,10 @@ pub struct Recording {
 
 enum Source {
     /// Opened just for this recording.
-    Own { stop_tx: mpsc::Sender<()>, thread: Mutex<Option<JoinHandle<()>>> },
+    Own {
+        stop_tx: mpsc::Sender<()>,
+        thread: Mutex<Option<JoinHandle<()>>>,
+    },
     /// Taken from the always-ready mic.
     Shared(Arc<Mic>),
 }
@@ -284,7 +299,10 @@ impl Recording {
                 buffer,
                 rate,
                 device,
-                source: Source::Own { stop_tx, thread: Mutex::new(Some(thread)) },
+                source: Source::Own {
+                    stop_tx,
+                    thread: Mutex::new(Some(thread)),
+                },
             }),
             Ok(Err(e)) => Err(anyhow!(e)),
             Err(_) => Err(anyhow!("Microphone thread stopped unexpectedly")),
@@ -325,7 +343,9 @@ impl Recording {
             Source::Own { stop_tx, thread } => {
                 let _ = stop_tx.send(());
                 if let Some(handle) = thread.lock().unwrap().take() {
-                    handle.join().map_err(|_| anyhow!("Microphone thread panicked"))?;
+                    handle
+                        .join()
+                        .map_err(|_| anyhow!("Microphone thread panicked"))?;
                 }
             }
             Source::Shared(mic) => mic.detach(&self.buffer),
@@ -348,12 +368,14 @@ mod cpal_capture {
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
-    use anyhow::{anyhow, bail, Result};
+    use anyhow::{Result, anyhow, bail};
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     use cpal::{FromSample, SampleFormat, SizedSample};
 
     pub fn default_device_name() -> Option<String> {
-        cpal::default_host().default_input_device().map(|d| d.to_string())
+        cpal::default_host()
+            .default_input_device()
+            .map(|d| d.to_string())
     }
 
     pub fn capture(
@@ -374,10 +396,34 @@ mod cpal_capture {
         let queue = Arc::new(Mutex::new(Vec::<f32>::new()));
         let failed = Arc::new(Mutex::new(None::<String>));
         let stream = match supported.sample_format() {
-            SampleFormat::F32 => build::<f32>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
-            SampleFormat::I16 => build::<i16>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
-            SampleFormat::U16 => build::<u16>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
-            SampleFormat::I32 => build::<i32>(&device, supported.config(), channels, queue.clone(), failed.clone())?,
+            SampleFormat::F32 => build::<f32>(
+                &device,
+                supported.config(),
+                channels,
+                queue.clone(),
+                failed.clone(),
+            )?,
+            SampleFormat::I16 => build::<i16>(
+                &device,
+                supported.config(),
+                channels,
+                queue.clone(),
+                failed.clone(),
+            )?,
+            SampleFormat::U16 => build::<u16>(
+                &device,
+                supported.config(),
+                channels,
+                queue.clone(),
+                failed.clone(),
+            )?,
+            SampleFormat::I32 => build::<i32>(
+                &device,
+                supported.config(),
+                channels,
+                queue.clone(),
+                failed.clone(),
+            )?,
             other => bail!("Unsupported microphone sample format: {other:?}"),
         };
         stream.play()?;
@@ -409,10 +455,12 @@ mod cpal_capture {
         Ok(device.build_input_stream(
             config,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
-                queue.lock().unwrap().extend(
-                    data.chunks(channels)
-                        .map(|frame| frame.iter().map(|s| f32::from_sample_(*s)).sum::<f32>() / channels as f32),
-                );
+                queue
+                    .lock()
+                    .unwrap()
+                    .extend(data.chunks(channels).map(|frame| {
+                        frame.iter().map(|s| f32::from_sample_(*s)).sum::<f32>() / channels as f32
+                    }));
             },
             move |err| *failed.lock().unwrap() = Some(err.to_string()),
             None,
@@ -537,7 +585,11 @@ mod latency {
             while rec.len() == 0 && pressed.elapsed() < Duration::from_secs(3) {
                 std::thread::sleep(Duration::from_millis(1));
             }
-            println!("on demand, attempt {attempt}: open {} ms, first audio {} ms", opened.as_millis(), pressed.elapsed().as_millis());
+            println!(
+                "on demand, attempt {attempt}: open {} ms, first audio {} ms",
+                opened.as_millis(),
+                pressed.elapsed().as_millis()
+            );
             rec.stop().unwrap();
         }
 

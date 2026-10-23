@@ -9,16 +9,21 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
-use windows::core::Interface;
+use anyhow::{Result, anyhow};
 use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_FriendlyName;
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, AudioCategory_Speech, AudioClientProperties, IAudioCaptureClient, IAudioClient, IAudioClient2,
-    IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
-    AUDCLNT_STREAMOPTIONS_RAW, DEVICE_STATE_ACTIVE,
+    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMOPTIONS_RAW,
+    AudioCategory_Speech, AudioClientProperties, DEVICE_STATE_ACTIVE, IAudioCaptureClient,
+    IAudioClient, IAudioClient2, IMMDevice, IMMDeviceEnumerator, MMDeviceEnumerator, eCapture,
+    eConsole,
 };
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ};
-use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST};
+use windows::Win32::System::Com::{
+    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree, STGM_READ,
+};
+use windows::Win32::System::Threading::{
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_HIGHEST,
+};
+use windows::core::Interface;
 
 /// How often captured audio is collected.
 const POLL: Duration = Duration::from_millis(10);
@@ -46,17 +51,28 @@ fn friendly_name(device: &IMMDevice) -> String {
 pub fn default_device_name() -> Option<String> {
     let enumerator = enumerator().ok()?;
     // SAFETY: plain COM call on a valid enumerator.
-    let device = unsafe { enumerator.GetDefaultAudioEndpoint(eCapture, eConsole).ok()? };
+    let device = unsafe {
+        enumerator
+            .GetDefaultAudioEndpoint(eCapture, eConsole)
+            .ok()?
+    };
     Some(friendly_name(&device))
 }
 
 /// Names of all active recording devices.
 pub fn device_names() -> Vec<String> {
-    let Ok(enumerator) = enumerator() else { return Vec::new() };
+    let Ok(enumerator) = enumerator() else {
+        return Vec::new();
+    };
     // SAFETY: plain COM enumeration.
     unsafe {
-        let Ok(all) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) else { return Vec::new() };
-        (0..all.GetCount().unwrap_or(0)).filter_map(|i| all.Item(i).ok()).map(|d| friendly_name(&d)).collect()
+        let Ok(all) = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE) else {
+            return Vec::new();
+        };
+        (0..all.GetCount().unwrap_or(0))
+            .filter_map(|i| all.Item(i).ok())
+            .map(|d| friendly_name(&d))
+            .collect()
     }
 }
 
@@ -111,7 +127,11 @@ pub fn capture(
         }
         let client: IAudioClient = client2.cast()?;
         let format = client.GetMixFormat()?;
-        let (rate, channels, bits) = ((*format).nSamplesPerSec, (*format).nChannels as usize, (*format).wBitsPerSample);
+        let (rate, channels, bits) = (
+            (*format).nSamplesPerSec,
+            (*format).nChannels as usize,
+            (*format).wBitsPerSample,
+        );
         // Room for 100 ms of audio, and a high thread priority: the speech
         // model transcribes in the background while the key is held, and
         // the microphone must not lose audio when the CPU is busy.
@@ -166,9 +186,12 @@ pub fn capture(
 pub fn probe(device: &str, secs: f32) -> Result<(f32, f32)> {
     let deadline = std::time::Instant::now() + Duration::from_secs_f32(secs);
     let mut samples: Vec<f32> = Vec::new();
-    capture(Some(device), &mut |_, _| {}, &mut |chunk| samples.extend_from_slice(chunk), &mut || {
-        std::time::Instant::now() < deadline
-    })?;
+    capture(
+        Some(device),
+        &mut |_, _| {},
+        &mut |chunk| samples.extend_from_slice(chunk),
+        &mut || std::time::Instant::now() < deadline,
+    )?;
     let rms = (samples.iter().map(|v| v * v).sum::<f32>() / samples.len().max(1) as f32).sqrt();
     let peak = samples.iter().fold(0f32, |m, v| m.max(v.abs()));
     Ok((rms, peak))

@@ -24,14 +24,14 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use format::cloud::{self, Cloud, Provider};
+use format::llm::{self, LlmInfo, LlmServer};
 use serde::Serialize;
+use settings::OverlayPosition;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, State, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-use format::cloud::{self, Cloud, Provider};
-use format::llm::{self, LlmInfo, LlmServer};
-use settings::OverlayPosition;
 
 /// Push-to-talk key when the user hasn't picked one.
 const DEFAULT_HOTKEY: &str = "Ctrl+Shift+Space";
@@ -156,13 +156,21 @@ struct CloudEntry {
 fn cloud_status() -> CloudStatus {
     let saved = settings::load();
     CloudStatus {
-        active: saved.cloud.as_deref().and_then(Provider::find).map(Provider::id),
+        active: saved
+            .cloud
+            .as_deref()
+            .and_then(Provider::find)
+            .map(Provider::id),
         providers: cloud::PROVIDERS
             .iter()
             .map(|&p| CloudEntry {
                 id: p.id(),
                 name: p.name(),
-                model: saved.cloud_models.get(p.id()).cloned().unwrap_or_else(|| p.default_model().to_string()),
+                model: saved
+                    .cloud_models
+                    .get(p.id())
+                    .cloned()
+                    .unwrap_or_else(|| p.default_model().to_string()),
                 default_model: p.default_model(),
                 key_saved: secrets::get(p.id()).is_some(),
                 key_url: p.key_url(),
@@ -175,17 +183,26 @@ fn cloud_status() -> CloudStatus {
 /// local model).
 fn sync_cloud(app: &AppHandle) {
     let saved = settings::load();
-    let cloud = saved.cloud.as_deref().and_then(Provider::find).filter(|_| saved.smart).and_then(|p| {
-        match Cloud::new(p, saved.cloud_models.get(p.id()).cloned()) {
-            Ok(cloud) => Some(cloud),
-            Err(e) => {
-                log::warn!("Cloud clean-up is off: {e}");
-                None
-            }
-        }
-    });
+    let cloud = saved
+        .cloud
+        .as_deref()
+        .and_then(Provider::find)
+        .filter(|_| saved.smart)
+        .and_then(
+            |p| match Cloud::new(p, saved.cloud_models.get(p.id()).cloned()) {
+                Ok(cloud) => Some(cloud),
+                Err(e) => {
+                    log::warn!("Cloud clean-up is off: {e}");
+                    None
+                }
+            },
+        );
     if let Some(cloud) = &cloud {
-        log::info!("Smart formatting uses {} ({})", cloud.provider.name(), cloud.model);
+        log::info!(
+            "Smart formatting uses {} ({})",
+            cloud.provider.name(),
+            cloud.model
+        );
     }
     app.state::<AppState>().formatter.set_cloud(cloud);
     emit_status(app);
@@ -350,7 +367,11 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
                 *state.engine.lock().unwrap() = Some(m);
                 set_model_state(&app, ModelState::Ready, None);
             }
-            Err(e) => set_model_state(&app, ModelState::Error, Some(format!("Couldn't load {}: {e}", info.name))),
+            Err(e) => set_model_state(
+                &app,
+                ModelState::Error,
+                Some(format!("Couldn't load {}: {e}", info.name)),
+            ),
         }
     });
 }
@@ -394,14 +415,19 @@ fn sync_llm(app: AppHandle) {
         let started = LlmServer::start(info);
         let state = app.state::<AppState>();
         // The user may have switched model or turned Smart off meanwhile.
-        let still_wanted = settings::load().smart && state.inner.lock().unwrap().llm_active.id == info.id;
+        let still_wanted =
+            settings::load().smart && state.inner.lock().unwrap().llm_active.id == info.id;
         match started {
             Ok(server) if still_wanted => {
                 state.formatter.set_server(Some(server));
                 set_llm_state(&app, LlmState::Ready, None);
             }
             Ok(_) => {} // Dropping it stops the process.
-            Err(e) => set_llm_state(&app, LlmState::Error, Some(format!("Couldn't start {}: {e}", info.name))),
+            Err(e) => set_llm_state(
+                &app,
+                LlmState::Error,
+                Some(format!("Couldn't start {}: {e}", info.name)),
+            ),
         }
     });
 }
@@ -419,18 +445,22 @@ fn sync_mic(app: AppHandle) {
     if state.mic.lock().unwrap().is_some() {
         return;
     }
-    thread::spawn(move || match audio::Mic::start(settings::load().microphone) {
-        Ok(mic) => {
-            let state = app.state::<AppState>();
-            if settings::load().instant_mic {
-                *state.mic.lock().unwrap() = Some(mic);
-            } else {
-                mic.stop();
+    thread::spawn(
+        move || match audio::Mic::start(settings::load().microphone) {
+            Ok(mic) => {
+                let state = app.state::<AppState>();
+                if settings::load().instant_mic {
+                    *state.mic.lock().unwrap() = Some(mic);
+                } else {
+                    mic.stop();
+                }
             }
-        }
-        // Dictation still works, opening the mic on each key press.
-        Err(e) => log::warn!("Couldn't keep the microphone ready ({e}); will open it per dictation"),
-    });
+            // Dictation still works, opening the mic on each key press.
+            Err(e) => {
+                log::warn!("Couldn't keep the microphone ready ({e}); will open it per dictation")
+            }
+        },
+    );
 }
 
 fn show_main(app: &AppHandle) {
@@ -442,7 +472,9 @@ fn show_main(app: &AppHandle) {
 }
 
 fn show_overlay(app: &AppHandle) {
-    app.state::<AppState>().overlay_generation.fetch_add(1, Ordering::SeqCst);
+    app.state::<AppState>()
+        .overlay_generation
+        .fetch_add(1, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window("overlay") {
         let _ = w.show();
     }
@@ -451,10 +483,17 @@ fn show_overlay(app: &AppHandle) {
 /// Plays the pill's exit animation after `delay`, then hides the window,
 /// unless the pill was shown again in the meantime.
 fn schedule_hide(app: &AppHandle, delay: Duration) {
-    let generation = app.state::<AppState>().overlay_generation.load(Ordering::SeqCst);
+    let generation = app
+        .state::<AppState>()
+        .overlay_generation
+        .load(Ordering::SeqCst);
     let app = app.clone();
     thread::spawn(move || {
-        let current = || app.state::<AppState>().overlay_generation.load(Ordering::SeqCst);
+        let current = || {
+            app.state::<AppState>()
+                .overlay_generation
+                .load(Ordering::SeqCst)
+        };
         thread::sleep(delay);
         if current() != generation {
             return;
@@ -472,7 +511,9 @@ fn schedule_hide(app: &AppHandle, delay: Duration) {
 /// Moves the pill under the text field being typed into, or centered just
 /// above the taskbar, per the setting. Never follows the mouse.
 fn place_overlay(app: &AppHandle) {
-    let Some(w) = app.get_webview_window("overlay") else { return };
+    let Some(w) = app.get_webview_window("overlay") else {
+        return;
+    };
     let Ok(size) = w.outer_size() else { return };
     let (width, height) = (size.width as i32, size.height as i32);
 
@@ -483,7 +524,11 @@ fn place_overlay(app: &AppHandle) {
     // The field's screen, else the screen the user is on, else the primary.
     let monitor = field
         .as_ref()
-        .and_then(|c| app.monitor_from_point(c.x as f64, c.y as f64).ok().flatten())
+        .and_then(|c| {
+            app.monitor_from_point(c.x as f64, c.y as f64)
+                .ok()
+                .flatten()
+        })
         .or_else(|| {
             let p = app.cursor_position().ok()?;
             app.monitor_from_point(p.x, p.y).ok().flatten()
@@ -501,13 +546,21 @@ fn place_overlay(app: &AppHandle) {
             let gap = (CARET_GAP * scale) as i32;
             // Below the insertion point, or above it when there's no room.
             let below = c.y + c.height + gap;
-            let y = if below + height <= bottom { below } else { c.y - gap - height };
+            let y = if below + height <= bottom {
+                below
+            } else {
+                c.y - gap - height
+            };
             let x = (c.x - (8.0 * scale) as i32).clamp(left, right - width);
             (x, y.clamp(top, bottom - height), "start")
         }
         None => {
             let margin = (BOTTOM_MARGIN * scale) as i32;
-            (left + (right - left - width) / 2, bottom - height - margin, "center")
+            (
+                left + (right - left - width) / 2,
+                bottom - height - margin,
+                "center",
+            )
         }
     };
     let _ = w.set_position(PhysicalPosition::new(x, y));
@@ -527,7 +580,14 @@ struct ResultText {
 fn show_result(app: &AppHandle, text: &str, meta: Option<String>) {
     // The box takes the pill's place at the bottom of the screen.
     schedule_hide(app, Duration::ZERO);
-    let _ = app.emit_to("result", "result-show", ResultText { text: text.to_owned(), meta });
+    let _ = app.emit_to(
+        "result",
+        "result-show",
+        ResultText {
+            text: text.to_owned(),
+            meta,
+        },
+    );
 }
 
 fn hide_result_box(app: &AppHandle) {
@@ -543,13 +603,22 @@ fn hide_result_box(app: &AppHandle) {
 /// recording.
 fn stream_levels(app: &AppHandle, level: Arc<AtomicU32>) {
     let app = app.clone();
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(33));
-        if app.state::<AppState>().inner.lock().unwrap().session.is_none() {
-            break;
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_millis(33));
+            if app
+                .state::<AppState>()
+                .inner
+                .lock()
+                .unwrap()
+                .session
+                .is_none()
+            {
+                break;
+            }
+            let value = f32::from_bits(level.load(Ordering::Relaxed));
+            let _ = app.emit_to("overlay", "audio-level", value);
         }
-        let value = f32::from_bits(level.load(Ordering::Relaxed));
-        let _ = app.emit_to("overlay", "audio-level", value);
     });
 }
 
@@ -586,7 +655,12 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     let level = rec.level();
                     let saved = settings::load();
                     let target = context::active_app();
-                    log::info!("Dictating into {} ({:?}): {:?}", target.process, target.kind, target.title);
+                    log::info!(
+                        "Dictating into {} ({:?}): {:?}",
+                        target.process,
+                        target.kind,
+                        target.title
+                    );
                     inner.app_target = Some(target.process.clone());
                     inner.session = Some(dictation::Session::start(
                         rec,
@@ -602,7 +676,14 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     let app = app.clone();
                     thread::spawn(move || {
                         place_overlay(&app);
-                        if app.state::<AppState>().inner.lock().unwrap().session.is_none() {
+                        if app
+                            .state::<AppState>()
+                            .inner
+                            .lock()
+                            .unwrap()
+                            .session
+                            .is_none()
+                        {
                             return; // Key already released; the pill shows "transcribing" instead.
                         }
                         let _ = app.emit("dictation", Dictation::Recording);
@@ -619,7 +700,9 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
         ShortcutState::Released => {
             let session = {
                 let mut inner = state.inner.lock().unwrap();
-                let Some(session) = inner.session.take() else { return };
+                let Some(session) = inner.session.take() else {
+                    return;
+                };
                 inner.busy = true;
                 session
             };
@@ -630,7 +713,11 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 app.state::<AppState>().inner.lock().unwrap().busy = false;
                 match result {
                     Ok(text) => {
-                        let linger = if text.is_empty() { Duration::ZERO } else { DONE_LINGER };
+                        let linger = if text.is_empty() {
+                            Duration::ZERO
+                        } else {
+                            DONE_LINGER
+                        };
                         let _ = app.emit("dictation", Dictation::Done { text });
                         schedule_hide(&app, linger);
                         emit_status(&app);
@@ -647,7 +734,10 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     timing::reset();
     let app_kind = session.app();
     let outcome = session.finish()?;
-    log::info!("Final text ready {} ms after release", released.elapsed().as_millis());
+    log::info!(
+        "Final text ready {} ms after release",
+        released.elapsed().as_millis()
+    );
 
     let state = app.state::<AppState>();
     if outcome.dead_mic {
@@ -667,8 +757,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
         if caret::text_field_focused() == Some(false) {
             // Nowhere to type: show the text with a Copy button instead.
-            let sample =
-                record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
+            let sample = record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
             timing::measure("result-box", || {
                 show_result(app, &outcome.text, result_meta(&sample, speech_s))
             });
@@ -680,7 +769,11 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         }
     }
     if !outcome.audio.is_empty() {
-        timing::write(app_kind, outcome.audio.len() as f32 / audio::TARGET_RATE as f32, released.elapsed());
+        timing::write(
+            app_kind,
+            outcome.audio.len() as f32 / audio::TARGET_RATE as f32,
+            released.elapsed(),
+        );
     }
 
     // Keep the recording (even when nothing was heard, to help tune).
@@ -700,10 +793,22 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
 /// Counts this dictation in the usage stats and tells the overlay windows
 /// the new pace. `released` is the key-release instant; the wait is
 /// computed here, which happens right after the text has landed.
-fn record_usage(app: &AppHandle, heard: &str, text: &str, speech_s: f32, released: Instant) -> stats::Sample {
+fn record_usage(
+    app: &AppHandle,
+    heard: &str,
+    text: &str,
+    speech_s: f32,
+    released: Instant,
+) -> stats::Sample {
     let state = app.state::<AppState>();
     // Captured at press time (the session keeps only the app kind).
-    let app_name = state.inner.lock().unwrap().app_target.take().unwrap_or_else(|| "unknown".to_owned());
+    let app_name = state
+        .inner
+        .lock()
+        .unwrap()
+        .app_target
+        .take()
+        .unwrap_or_else(|| "unknown".to_owned());
     let mut stats = state.stats.lock().unwrap();
     let sample = stats.record(stats::Input {
         heard,
@@ -782,10 +887,21 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
         let mut last_percent = u64::MAX;
         let result = info.download(|downloaded, total| {
             // Emit at most once per percent to keep the UI responsive.
-            let percent = if total > 0 { downloaded * 100 / total } else { downloaded >> 20 };
+            let percent = if total > 0 {
+                downloaded * 100 / total
+            } else {
+                downloaded >> 20
+            };
             if percent != last_percent {
                 last_percent = percent;
-                let _ = app.emit("download-progress", DownloadProgress { id: info.id, downloaded, total });
+                let _ = app.emit(
+                    "download-progress",
+                    DownloadProgress {
+                        id: info.id,
+                        downloaded,
+                        total,
+                    },
+                );
             }
         });
 
@@ -798,12 +914,17 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
         match result {
             Ok(()) if is_active => load_model(app.clone(), info),
             Ok(()) => emit_status(&app),
-            Err(e) if is_active => {
-                set_model_state(&app, ModelState::Error, Some(format!("Download failed: {e}")))
-            }
+            Err(e) if is_active => set_model_state(
+                &app,
+                ModelState::Error,
+                Some(format!("Download failed: {e}")),
+            ),
             Err(e) => {
                 emit_status(&app);
-                let _ = app.emit("download-error", format!("{} download failed: {e}", info.name));
+                let _ = app.emit(
+                    "download-error",
+                    format!("{} download failed: {e}", info.name),
+                );
             }
         }
     });
@@ -834,7 +955,10 @@ fn delete_model(app: AppHandle, id: String) -> Result<(), String> {
             return Err("Switch to another model before deleting this one".into());
         }
         if model::parts_of(inner.active.id).contains(&info.id) {
-            return Err(format!("{} is in use by {}; switch models first", info.name, inner.active.name));
+            return Err(format!(
+                "{} is in use by {}; switch models first",
+                info.name, inner.active.name
+            ));
         }
         if inner.downloading == Some(info.id) {
             return Err("Wait for the download to finish".into());
@@ -920,7 +1044,9 @@ fn set_cloud_model(app: AppHandle, provider: String, model: String) -> Result<()
     if model.is_empty() || model == p.default_model() {
         saved.cloud_models.remove(p.id());
     } else {
-        saved.cloud_models.insert(p.id().to_string(), model.to_string());
+        saved
+            .cloud_models
+            .insert(p.id().to_string(), model.to_string());
     }
     settings::save(&saved).map_err(|e| e.to_string())?;
     sync_cloud(&app);
@@ -939,12 +1065,18 @@ async fn test_cloud(provider: String) -> Result<CloudTest, String> {
     let p = lookup_provider(&provider)?;
     tauri::async_runtime::spawn_blocking(move || {
         let saved = settings::load();
-        let cloud = Cloud::new(p, saved.cloud_models.get(p.id()).cloned()).map_err(|e| e.to_string())?;
+        let cloud =
+            Cloud::new(p, saved.cloud_models.get(p.id()).cloned()).map_err(|e| e.to_string())?;
         let started = Instant::now();
         let sample = "um so I have ten no twenty dogs and they all need food";
         let ruled = format::rules::apply(sample);
-        let text = cloud.clean_up(&ruled, &saved.dictionary, context::AppKind::Other).map_err(|e| format!("{e:#}"))?;
-        Ok(CloudTest { text, ms: started.elapsed().as_millis() as u64 })
+        let text = cloud
+            .clean_up(&ruled, &saved.dictionary, context::AppKind::Other)
+            .map_err(|e| format!("{e:#}"))?;
+        Ok(CloudTest {
+            text,
+            ms: started.elapsed().as_millis() as u64,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -970,18 +1102,36 @@ fn download_llm(app: AppHandle, id: String) -> Result<(), String> {
     thread::spawn(move || {
         let mut last_percent = u64::MAX;
         let result = info.download(|downloaded, total| {
-            let percent = if total > 0 { downloaded * 100 / total } else { downloaded >> 20 };
+            let percent = if total > 0 {
+                downloaded * 100 / total
+            } else {
+                downloaded >> 20
+            };
             if percent != last_percent {
                 last_percent = percent;
-                let _ = app.emit("llm-progress", DownloadProgress { id: info.id, downloaded, total });
+                let _ = app.emit(
+                    "llm-progress",
+                    DownloadProgress {
+                        id: info.id,
+                        downloaded,
+                        total,
+                    },
+                );
             }
         });
-        app.state::<AppState>().inner.lock().unwrap().llm_downloading = None;
+        app.state::<AppState>()
+            .inner
+            .lock()
+            .unwrap()
+            .llm_downloading = None;
         match result {
             Ok(()) => sync_llm(app.clone()),
             Err(e) => {
                 emit_status(&app);
-                let _ = app.emit("download-error", format!("{} download failed: {e}", info.name));
+                let _ = app.emit(
+                    "download-error",
+                    format!("{} download failed: {e}", info.name),
+                );
             }
         }
     });
@@ -1031,10 +1181,16 @@ fn set_hotwords(app: &AppHandle, words: &[String]) {
 fn add_word(app: AppHandle, word: String) -> Result<(), String> {
     let word = word.split_whitespace().collect::<Vec<_>>().join(" ");
     if word.is_empty() || word.len() > MAX_WORD_LEN {
-        return Err(format!("Enter a word or short phrase (up to {MAX_WORD_LEN} characters)"));
+        return Err(format!(
+            "Enter a word or short phrase (up to {MAX_WORD_LEN} characters)"
+        ));
     }
     let mut saved = settings::load();
-    if !saved.dictionary.iter().any(|w| w.eq_ignore_ascii_case(&word)) {
+    if !saved
+        .dictionary
+        .iter()
+        .any(|w| w.eq_ignore_ascii_case(&word))
+    {
         saved.dictionary.push(word);
         saved.dictionary.sort_by_key(|w| w.to_lowercase());
         settings::save(&saved).map_err(|e| e.to_string())?;
@@ -1055,7 +1211,9 @@ fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
 }
 
 fn current_hotkey() -> String {
-    settings::load().hotkey.unwrap_or_else(|| DEFAULT_HOTKEY.to_string())
+    settings::load()
+        .hotkey
+        .unwrap_or_else(|| DEFAULT_HOTKEY.to_string())
 }
 
 /// Parses "Ctrl+Alt+D" style labels ("Win" means the Windows key).
@@ -1068,7 +1226,9 @@ fn parse_hotkey(label: &str) -> Result<Shortcut, String> {
         })
         .collect::<Vec<_>>()
         .join("+");
-    normalized.parse::<Shortcut>().map_err(|_| format!("\"{label}\" isn't a valid shortcut"))
+    normalized
+        .parse::<Shortcut>()
+        .map_err(|_| format!("\"{label}\" isn't a valid shortcut"))
 }
 
 fn list_microphone_names() -> Vec<String> {
@@ -1190,7 +1350,9 @@ fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
         if let Ok(old) = parse_hotkey(&old_label) {
             let _ = shortcuts.register(old);
         }
-        return Err(format!("{hotkey} is already used by another app. Try another one."));
+        return Err(format!(
+            "{hotkey} is already used by another app. Try another one."
+        ));
     }
     let mut saved = settings::load();
     saved.hotkey = Some(hotkey);
@@ -1201,7 +1363,8 @@ fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
 
 /// Keys that work as a push-to-talk key without modifiers.
 fn hotkey_ok_alone(label: &str) -> bool {
-    matches!(label, "Pause" | "ScrollLock" | "Insert") || (label.starts_with('F') && label[1..].parse::<u8>().is_ok())
+    matches!(label, "Pause" | "ScrollLock" | "Insert")
+        || (label.starts_with('F') && label[1..].parse::<u8>().is_ok())
 }
 
 /// Shortcuts worth suggesting, with what else commonly uses them.
@@ -1209,10 +1372,16 @@ const HOTKEY_CANDIDATES: &[(&str, &str)] = &[
     ("Ctrl+Alt+Space", ""),
     ("Alt+Shift+Space", ""),
     ("Ctrl+Alt+D", ""),
-    ("Ctrl+Shift+Space", "Parameter hints in VS Code and other editors"),
+    (
+        "Ctrl+Shift+Space",
+        "Parameter hints in VS Code and other editors",
+    ),
     ("Ctrl+Alt+V", "Paste special in some apps"),
     ("Ctrl+Shift+D", "Bookmark all tabs in Chrome and Edge"),
-    ("Ctrl+Space", "Autocomplete in editors; input switching on some PCs"),
+    (
+        "Ctrl+Space",
+        "Autocomplete in editors; input switching on some PCs",
+    ),
     ("Alt+Space", "Window menu in Windows; PowerToys Run"),
     ("F9", "Debuggers, refresh in Outlook"),
     ("Pause", "Rarely used, but missing on many laptops"),
@@ -1249,11 +1418,20 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
                     _ => "taken",
                 }
             };
-            HotkeyOption { hotkey, status, note, recommended: false }
+            HotkeyOption {
+                hotkey,
+                status,
+                note,
+                recommended: false,
+            }
         })
         .collect();
     // Recommend the first three that are free and not commonly used.
-    for option in options.iter_mut().filter(|o| o.status == "free" && o.note.is_empty()).take(3) {
+    for option in options
+        .iter_mut()
+        .filter(|o| o.status == "free" && o.note.is_empty())
+        .take(3)
+    {
         option.recommended = true;
     }
     options
@@ -1261,7 +1439,9 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
 
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
-    arboard::Clipboard::new().and_then(|mut c| c.set_text(text)).map_err(|e| e.to_string())
+    arboard::Clipboard::new()
+        .and_then(|mut c| c.set_text(text))
+        .map_err(|e| e.to_string())
 }
 
 /// Width of the result box, in logical pixels.
@@ -1273,7 +1453,9 @@ const RESULT_MARGIN: f64 = 12.0;
 /// pins it centered just above the taskbar, and shows it.
 #[tauri::command]
 fn place_result(app: AppHandle, height: f64) {
-    let Some(w) = app.get_webview_window("result") else { return };
+    let Some(w) = app.get_webview_window("result") else {
+        return;
+    };
     let height = height.clamp(96.0, 320.0);
     let _ = w.set_size(tauri::LogicalSize::new(RESULT_WIDTH, height));
     let monitor = app
@@ -1299,13 +1481,20 @@ fn hide_result(app: AppHandle) {
 
 #[tauri::command]
 fn get_recording(id: String) -> Result<tauri::ipc::Response, String> {
-    recordings::read_wav(&id).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+    recordings::read_wav(&id)
+        .map(tauri::ipc::Response::new)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
     recordings::remove(&id).map_err(|e| e.to_string())?;
-    app.state::<AppState>().inner.lock().unwrap().history.retain(|e| e.id != id);
+    app.state::<AppState>()
+        .inner
+        .lock()
+        .unwrap()
+        .history
+        .retain(|e| e.id != id);
     emit_status(&app);
     Ok(())
 }
@@ -1314,8 +1503,17 @@ fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
 fn open_recordings_folder() -> Result<(), String> {
     let folder = recordings::folder();
     std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
-    let opener = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    std::process::Command::new(opener).arg(&folder).spawn().map_err(|e| e.to_string())?;
+    let opener = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener)
+        .arg(&folder)
+        .spawn()
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1335,14 +1533,21 @@ pub fn run() {
             let handle = app.handle().clone();
 
             let hotkey = current_hotkey();
-            let registered = parse_hotkey(&hotkey)
-                .map_err(|e| e.to_string())
-                .and_then(|shortcut| app.global_shortcut().register(shortcut).map_err(|e| e.to_string()));
+            let registered =
+                parse_hotkey(&hotkey)
+                    .map_err(|e| e.to_string())
+                    .and_then(|shortcut| {
+                        app.global_shortcut()
+                            .register(shortcut)
+                            .map_err(|e| e.to_string())
+                    });
             if let Err(e) = registered {
                 set_model_state(
                     &handle,
                     ModelState::Error,
-                    Some(format!("Couldn't use {hotkey} as the dictation key ({e}). Pick another one below.")),
+                    Some(format!(
+                        "Couldn't use {hotkey} as the dictation key ({e}). Pick another one below."
+                    )),
                 );
             }
 
@@ -1447,11 +1652,19 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{hotkey_ok_alone, parse_hotkey, HOTKEY_CANDIDATES};
+    use super::{HOTKEY_CANDIDATES, hotkey_ok_alone, parse_hotkey};
 
     #[test]
     fn parses_hotkey_labels_from_the_ui() {
-        for label in ["Ctrl+Shift+Space", "Ctrl+Alt+D", "Alt+Shift+Space", "Win+Alt+K", "Ctrl+Alt+1", "F9", "Pause"] {
+        for label in [
+            "Ctrl+Shift+Space",
+            "Ctrl+Alt+D",
+            "Alt+Shift+Space",
+            "Win+Alt+K",
+            "Ctrl+Alt+1",
+            "F9",
+            "Pause",
+        ] {
             assert!(parse_hotkey(label).is_ok(), "{label}");
         }
         for (label, _) in HOTKEY_CANDIDATES {
