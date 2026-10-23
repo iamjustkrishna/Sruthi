@@ -37,3 +37,6 @@ Thumbs.db
 # Benchmark audio (downloaded from open datasets, e.g. HiACC / MUCS SLR104).
 # The runner script, catalog and committed result summaries stay versioned.
 bench/hinglish/
+
+# Media drafts stay local (article covers etc.)
+media/
