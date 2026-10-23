@@ -1736,6 +1736,8 @@ mod tests {
         assert!(!hotkey_ok_alone("D") && !hotkey_ok_alone("Space"));
     }
 
+    // The bare-Alt hold key exists only on Windows (the listener below).
+    #[cfg(target_os = "windows")]
     #[test]
     fn alt_is_suggested_as_a_hold_key() {
         assert!(HOTKEY_CANDIDATES.iter().any(|(label, _)| *label == "Alt"));
