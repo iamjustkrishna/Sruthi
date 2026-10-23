@@ -33,7 +33,7 @@ body[data-align="center"] {
   align-items: center;
   gap: 8px;
   height: 40px;
-  padding: 0 14px 0 4px;
+  padding: 0 12px 0 4px;
   border-radius: 999px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 60%),
@@ -43,7 +43,7 @@ body[data-align="center"] {
     0 6px 18px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(12px);
   color: var(--bright);
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
   opacity: 0;

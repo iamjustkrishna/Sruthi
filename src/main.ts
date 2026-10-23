@@ -214,12 +214,19 @@ function modelRow(o: RowOptions) {
 
   if (o.downloading === o.id) {
     const pct = p && p.total > 0 ? (p.downloaded / p.total) * 100 : 0;
-    const bar = document.createElement("div");
-    bar.className = "progress";
-    bar.innerHTML = `<div class="progress-bar" style="width:${pct}%"></div>`;
     const label = document.createElement("span");
     label.className = "muted small";
     label.textContent = p ? `${formatMb(p.downloaded)}${p.total ? ` of ${formatMb(p.total)}` : ""}` : "Starting…";
+    const bar = document.createElement("div");
+    bar.className = "progress";
+    // Progress must reach the screen reader too, not just the pixels.
+    bar.setAttribute("role", "progressbar");
+    bar.setAttribute("aria-label", `Downloading ${o.name}`);
+    bar.setAttribute("aria-valuemin", "0");
+    bar.setAttribute("aria-valuemax", "100");
+    bar.setAttribute("aria-valuenow", String(Math.round(pct)));
+    bar.setAttribute("aria-valuetext", label.textContent ?? "");
+    bar.innerHTML = `<div class="progress-bar" style="width:${pct}%"></div>`;
     actions.append(bar, label);
   } else if (!o.installed) {
     const b = button("Download", () => run(o.commands.download, { id: o.id }));
@@ -315,8 +322,7 @@ function engineButton(id: string | null, label: string, s: Status) {
   const b = document.createElement("button");
   b.type = "button";
   b.textContent = label;
-  b.setAttribute("role", "radio");
-  b.setAttribute("aria-checked", String(s.cloud.active === id));
+  b.setAttribute("aria-pressed", String(s.cloud.active === id));
   b.classList.toggle("viewing", (viewing ?? s.cloud.active) === id);
   b.addEventListener("click", async () => {
     if (viewing !== id) cloudMessage("");
@@ -474,10 +480,30 @@ holdBtn.addEventListener("pointercancel", () => {
   buttonHeld = false;
   invoke("release_dictation").catch(() => {});
 });
+// Keyboard twin: Space or Enter presses and holds, release ends, exactly
+// like the pointer. Auto-repeat is filtered out.
+let keyHeld = false;
+holdBtn.addEventListener("keydown", (e) => {
+  if (holdBtn.disabled || keyHeld || (e.code !== "Space" && e.code !== "Enter")) return;
+  e.preventDefault();
+  keyHeld = true;
+  invoke("press_dictation").catch((err) => {
+    keyHeld = false;
+    showHoldPhase("idle");
+    showError(String(err));
+  });
+});
+holdBtn.addEventListener("keyup", (e) => {
+  if (!keyHeld || (e.code !== "Space" && e.code !== "Enter")) return;
+  e.preventDefault();
+  keyHeld = false;
+  invoke("release_dictation").catch(() => {});
+});
 // Safety net: never leave the mic capturing after the window loses focus.
 window.addEventListener("blur", () => {
-  if (buttonHeld) {
+  if (buttonHeld || keyHeld) {
     buttonHeld = false;
+    keyHeld = false;
     invoke("release_dictation").catch(() => {});
   }
 });
@@ -505,7 +531,10 @@ function showPage(page: Page) {
     el.hidden = el.dataset.page !== page;
   });
   railButtons.forEach((b) => {
-    b.dataset.current = String(b.dataset.page === page);
+    const current = b.dataset.page === page;
+    b.dataset.current = String(current);
+    if (current) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
   });
 }
 
@@ -556,9 +585,11 @@ function renderUsage(s: Status) {
   const most = u.week.reduce((m, d) => Math.max(m, d.words), 1);
   $<HTMLElement>("usage-week").replaceChildren(
     ...u.week.map((d) => {
-      const cell = document.createElement("div");
+      const cell = document.createElement("button");
+      cell.type = "button";
       cell.className = "day";
       cell.title = `${d.date}: ${d.words.toLocaleString()} words`;
+      cell.setAttribute("aria-label", `${d.date}: ${d.words.toLocaleString()} words`);
       const bar = document.createElement("div");
       bar.className = "bar";
       bar.style.height = `${Math.max(6, Math.round((d.words / most) * 100))}%`;
@@ -645,16 +676,27 @@ function renderHistory(entries: HistoryEntry[]) {
       const body = document.createElement("div");
       body.className = "entry-body";
       const meta = document.createElement("span");
-      meta.className = "muted small";
+      meta.className = "muted small entry-meta";
       meta.textContent = `${when(e.time_ms)} · ${e.seconds.toFixed(1)}s`;
-      const text = document.createElement("span");
-      text.className = e.text ? "entry-text" : "entry-text muted";
-      text.textContent = e.text || "(nothing was heard)";
+      // The dictation text lines up under the time; a native button so
+      // keyboard users can copy it too.
+      const holder = document.createElement("div");
       if (e.text) {
-        text.title = "Click to copy";
-        text.addEventListener("click", () => navigator.clipboard.writeText(e.text));
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "entry-copy";
+        copy.textContent = e.text;
+        copy.title = "Click to copy";
+        copy.setAttribute("aria-label", `Copy dictation: ${e.text}`);
+        copy.addEventListener("click", () => navigator.clipboard.writeText(copy.textContent ?? ""));
+        holder.append(copy);
+      } else {
+        const text = document.createElement("span");
+        text.className = "entry-text muted";
+        text.textContent = "(nothing was heard)";
+        holder.append(text);
       }
-      body.append(meta, text);
+      body.append(meta, holder);
       // Show the raw transcript when formatting changed it.
       if (e.heard && e.heard !== e.text) {
         const heard = document.createElement("span");
@@ -664,6 +706,7 @@ function renderHistory(entries: HistoryEntry[]) {
       }
 
       const remove = button("×", () => {
+        if (!confirm(`Delete this recording (${e.seconds.toFixed(1)} s, ${when(e.time_ms)})?`)) return;
         if (playingId === e.id) stopPlayback();
         run("delete_recording", { id: e.id });
       }, "ghost remove");

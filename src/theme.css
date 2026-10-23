@@ -1,9 +1,15 @@
 /*
- * The app's palette, in one place: graphite mono, with light/dark variants.
+ * The app's palette and design tokens, in one place: graphite mono.
  *
- * Every window that wants the theme tokens imports this file and sets
- * `data-theme` on its <html> to "system" | "light" | "dark" (the main and
- * result windows do; the overlay pill stays a dark glass island on purpose).
+ * Tiers at work here:
+ *   - Role tokens name the JOB (bg/card/raise/text/muted/border/…) and are
+ *     what components reference. Only these swap between themes.
+ *   - Structure tokens (radii, spacing, type scale) are theme-independent
+ *     and live once in the first block.
+ *
+ * Every window that wants the theme imports this file and sets `data-theme`
+ * on its <html> to "system" | "light" | "dark" (main and result windows do;
+ * the overlay pill is a fixed dark glass island on purpose).
  *
  * The dark values are declared twice on purpose — no-JS, no-flash theming
  * needs both an attribute match and a media-query match. If you tune a
@@ -21,24 +27,51 @@
 
   /* Ink */
   --text: #161616;
-  --muted: #757572;
+  --muted: #6b6b68;
 
-  /* Lines */
+  /* Edges: borders enclose controls; separators divide content */
   --border: #e5e5e4;
   --border-strong: #cfcfcd;
+  --separator: #c9c9c7;
   --track: #e4e4e2;
+  --track-strong: #8a8a88;
 
-  /* Accent: the ink itself. Highlight = flip to the opposite pole. */
+  /* Accent: ink itself; hover is one visible step off it */
   --accent: #151515;
+  --accent-hover: #3a3a37;
   --accent-ink: #fbfbfa;
   --accent-soft: #e9e9e8;
 
   /* Meaning (kept muted — the UI is otherwise colorless) */
-  --ok: #3c7d52;
-  --warn: #9a741b;
+  --ok: #386e46;
+  --warn: #8a6414;
   --err: #ac3c3c;
 
+  /* Focus and elevation */
+  --focus-ring: var(--text);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.28);
+
+  /* Radius ladder */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-float: 16px;
+
+  /* Spacing: one 4px grid, six steps */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Type scale, sized for the fixed 15px desktop root */
+  --text-caption: 12px;
+  --text-small: 13px;
+  --text-body: 15px;
+  --text-hero: 17px;
+  --text-stat: 22px;
 }
 
 :root[data-theme="dark"] {
@@ -54,9 +87,12 @@
 
   --border: #2e2e2d;
   --border-strong: #474745;
+  --separator: #525250;
   --track: #3a3a39;
+  --track-strong: #6a6a68;
 
   --accent: #f8f8f6;
+  --accent-hover: #ffffff;
   --accent-ink: #161616;
   --accent-soft: #2d2d2c;
 
@@ -64,7 +100,9 @@
   --warn: #d0a95e;
   --err: #dd8484;
 
+  --focus-ring: var(--text);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.55);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -81,9 +119,12 @@
 
     --border: #2e2e2d;
     --border-strong: #474745;
+    --separator: #525250;
     --track: #3a3a39;
+    --track-strong: #6a6a68;
 
     --accent: #f8f8f6;
+    --accent-hover: #ffffff;
     --accent-ink: #161616;
     --accent-soft: #2d2d2c;
 
@@ -91,6 +132,8 @@
     --warn: #d0a95e;
     --err: #dd8484;
 
+    --focus-ring: var(--text);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.55);
   }
 }

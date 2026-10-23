@@ -1,6 +1,10 @@
 @import "./theme.css";
 
-/* The floating result box: same tokens as the app, one shared palette. */
+/*
+ * The floating result box: same tokens as the app, one shared palette.
+ * Hairline card, radius-float and shadow-float come from the token system;
+ * type follows the same roles (small = 13px, caption = 12px).
+ */
 
 html,
 body {
@@ -22,14 +26,14 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   min-height: 0;
-  padding: 12px 14px 14px;
+  padding: var(--space-3) var(--space-4) var(--space-4);
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--radius-float);
   background: var(--card);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-float);
   color: var(--text);
   opacity: 0;
   transform: translateY(8px) scale(0.97);
@@ -43,7 +47,7 @@ body {
 header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .logo {
   width: 20px;
@@ -51,7 +55,7 @@ header {
 }
 .title {
   flex: 1;
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: var(--muted);
 }
@@ -61,7 +65,7 @@ header {
   min-height: 0;
   margin: 0;
   overflow-y: auto;
-  font-size: 14px;
+  font-size: var(--text-body);
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -71,7 +75,7 @@ header {
 /* The "+27 words · 6.4 s · 210 wpm" line under the text. */
 .meta {
   margin: 0;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -79,11 +83,11 @@ header {
 footer {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .hint {
   flex: 1;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--muted);
 }
 
@@ -93,16 +97,16 @@ button {
   border: 0;
 }
 .copy {
-  padding: 7px 16px;
+  padding: 7px var(--space-4);
   border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 600;
-  transition: filter 0.15s ease, background 0.15s ease;
+  transition: background 0.15s ease;
 }
 .copy:hover {
-  filter: brightness(1.25);
+  background: var(--accent-hover);
 }
 .copy.done {
   background: var(--ok);
@@ -137,8 +141,7 @@ button {
 /* Countdown: the box closes when the bar runs out; hovering pauses it. */
 .timer {
   position: absolute;
-  left: 14px;
-  right: 14px;
+  inset-inline: var(--space-3);
   bottom: 5px;
   height: 3px;
   border-radius: 2px;

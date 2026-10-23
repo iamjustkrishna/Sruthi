@@ -54,7 +54,7 @@
       </nav>
 
       <div class="pages">
-        <section class="card warning" id="mic-warning" hidden>
+        <section class="card warning" id="mic-warning" role="alert" hidden>
           <p id="mic-warning-text"></p>
           <button id="mic-warning-check">Check microphones</button>
         </section>
@@ -114,7 +114,7 @@
               <button id="mic-check" class="ghost small-btn">Check microphones</button>
             </div>
             <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
-            <p class="muted small" id="mic-check-status" hidden></p>
+            <p class="muted small" id="mic-check-status" aria-live="polite" hidden></p>
             <ul id="mic-probes" class="mic-probes"></ul>
           </section>
 
@@ -125,7 +125,7 @@
             </div>
             <p class="muted" id="model-text">Checking…</p>
             <ul class="models" id="models"></ul>
-            <p class="error" id="model-error" hidden></p>
+            <p class="error" id="model-error" aria-live="polite" hidden></p>
           </section>
         </section>
 
@@ -134,7 +134,7 @@
             <div class="card-head">
               <h2>Smart formatting</h2>
               <label class="switch" title="Smart formatting">
-                <input type="checkbox" id="smart-toggle" />
+                <input type="checkbox" id="smart-toggle" aria-label="Smart formatting" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -145,7 +145,7 @@
                 On this PC keeps everything offline. A cloud model is smarter with corrections and grammar, but your text
                 (never the audio) is sent to it. If it can't be reached, the model on this PC takes over.
               </p>
-              <div class="engines" id="engines" role="radiogroup" aria-label="AI engine"></div>
+              <div class="engines" id="engines" role="group" aria-label="AI engine"></div>
               <ul class="models" id="llms"></ul>
               <div class="cloud-panel" id="cloud-panel" hidden>
                 <p class="small" id="cloud-key-state"></p>
@@ -160,7 +160,7 @@
                     <button type="button" class="ghost" id="cloud-test">Test</button>
                   </span>
                 </label>
-                <p class="small muted" id="cloud-test-result"></p>
+                <p class="small muted" id="cloud-test-result" aria-live="polite"></p>
               </div>
             </div>
           </section>
@@ -201,7 +201,7 @@
                 </span>
               </span>
               <label class="switch" title="Instant start">
-                <input type="checkbox" id="instant-toggle" />
+                <input type="checkbox" id="instant-toggle" aria-label="Instant start" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -214,7 +214,7 @@
               <p class="muted small">Suggestions, checked against shortcuts other apps have taken on this PC:</p>
               <ul id="hotkey-options" class="hotkey-options"></ul>
             </div>
-            <p class="error" id="hotkey-error" hidden></p>
+            <p class="error" id="hotkey-error" aria-live="polite" hidden></p>
           </section>
 
           <section class="card">
