@@ -1,4 +1,4 @@
-# Contributing to Srutam Dictate
+# Contributing to Sruthi
 
 Thanks for helping make offline dictation better. This is a small project, so the
 process is deliberately light.
@@ -40,7 +40,7 @@ cargo test --release --lib # the test suite
 ```
 
 The first `tauri dev` run downloads a speech model (~478 MB) into
-`%LOCALAPPDATA%\SrutamDictate\models` — that is expected and one-time.
+`%LOCALAPPDATA%\Sruthi\models` — that is expected and one-time.
 
 ## How the code is organized (and what goes where)
 

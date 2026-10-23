@@ -421,7 +421,7 @@ mod tests {
     #[ignore]
     fn llm_end_to_end() {
         let info = llm::find(
-            std::env::var("SRUTAM_TEST_LLM")
+            std::env::var("SRUTHI_TEST_LLM")
                 .as_deref()
                 .unwrap_or(llm::DEFAULT_LLM),
         )
@@ -537,7 +537,7 @@ mod tests {
         ];
         for (app, raw) in samples {
             let t = std::time::Instant::now();
-            let out = formatter.format(raw, true, &["Srutam".to_string()], app);
+            let out = formatter.format(raw, true, &["Sruthi".to_string()], app);
             println!(
                 "
 [{app:?}] ({} ms)

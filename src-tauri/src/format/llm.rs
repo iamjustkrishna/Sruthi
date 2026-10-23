@@ -890,16 +890,16 @@ pub(super) mod tests {
 
     #[test]
     fn faithful_accepts_dictionary_respellings() {
-        let dict = ["Srutam".to_string()];
+        let dict = ["Sruthi".to_string()];
         assert!(super::faithful(
-            "I am building Shrew tam this week",
-            "I am building Srutam this week.",
+            "I am building Shruthi this week",
+            "I am building Sruthi this week.",
             &dict
         ));
         // A dictionary name that doesn't sound like what was said.
         assert!(!super::faithful(
             "I am building the app this week",
-            "I am building Srutam this week.",
+            "I am building Sruthi this week.",
             &dict
         ));
     }

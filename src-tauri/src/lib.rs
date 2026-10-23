@@ -363,7 +363,7 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
             Ok(mut m) => {
                 m.set_hotwords(&settings::load().dictionary);
                 // Dictation is English: never switch to Cyrillic or Greek
-                // (Parakeet V3 wrote "Srutam" as "Шутом").
+                // (Parakeet V3 wrote "Sruthi" as "Шутом").
                 m.set_latin_only(true);
                 *state.engine.lock().unwrap() = Some(m);
                 set_model_state(&app, ModelState::Ready, None);
@@ -743,7 +743,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     let state = app.state::<AppState>();
     if outcome.dead_mic {
         let warning = format!(
-            "No sound is coming from \"{}\". Choose another microphone in Srutam Dictate.",
+            "No sound is coming from \"{}\". Choose another microphone in Sruthi.",
             outcome.device
         );
         state.inner.lock().unwrap().mic_warning = Some(warning.clone());
@@ -1605,12 +1605,12 @@ pub fn run() {
                 );
             }
 
-            let open = MenuItem::with_id(app, "open", "Open Srutam Dictate", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open Sruthi", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("Srutam Dictate")
+                .tooltip("Sruthi")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {

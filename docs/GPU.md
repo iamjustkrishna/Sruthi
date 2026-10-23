@@ -1,10 +1,10 @@
 # Whisper on the graphics card (Windows, Vulkan)
 
 whisper.cpp publishes no Vulkan build for Windows, so it's built locally and
-copied to `%LOCALAPPDATA%\SrutamDictate\whisper\runtime-vulkan`. When that
+copied to `%LOCALAPPDATA%\Sruthi\whisper\runtime-vulkan`. When that
 folder has `whisper-server.exe`, the app runs Whisper there (kept loaded,
 full 30 s window); otherwise it falls back to the CPU `whisper-cli`.
-`SRUTAM_WHISPER_CPU=1` forces the CPU path.
+`SRUTHI_WHISPER_CPU=1` forces the CPU path.
 
 Measured on a Ryzen 5 5600H + RX 6500M (4 GB), Whisper large-v3-turbo q5_0:
 

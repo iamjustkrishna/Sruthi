@@ -1,7 +1,8 @@
-# Srutam Dictate
+# Sruthi
 
 Open-source, fully offline voice dictation for Windows and macOS, in the spirit of Wispr Flow.
-Hold a hotkey, speak, release: the text is typed into whatever app has your cursor.
+Named for *śruti* — Sanskrit for "that which is heard."
+Hold a hotkey (or just Alt), speak, release: the text is typed into whatever app has your cursor.
 Your audio never leaves the device.
 
 ```
@@ -36,7 +37,7 @@ Download the latest **draft release** artifacts from the
 
 ## The speech models
 
-Models are **downloaded once at first run** into `%LOCALAPPDATA%\SrutamDictate\models` on Windows
+Models are **downloaded once at first run** into `%LOCALAPPDATA%\Sruthi\models` on Windows
 (the equivalent application-data folder on macOS). They are never bundled with the app, so each
 model keeps its own license — check the license on its original download page:
 

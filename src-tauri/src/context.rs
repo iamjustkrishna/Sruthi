@@ -210,10 +210,7 @@ mod tests {
         assert_eq!(classify("OUTLOOK.EXE", "Inbox"), AppKind::Email);
         assert_eq!(classify("chrome.exe", "(2) WhatsApp"), AppKind::Chat);
         assert_eq!(classify("slack.exe", "general - Team"), AppKind::Chat);
-        assert_eq!(
-            classify("code.exe", "main.rs - Srutam_Dictate"),
-            AppKind::Code
-        );
+        assert_eq!(classify("code.exe", "main.rs - Sruthi"), AppKind::Code);
         assert_eq!(classify("WindowsTerminal.exe", "PowerShell"), AppKind::Code);
         assert_eq!(
             classify("chrome.exe", "Project plan - Google Docs"),

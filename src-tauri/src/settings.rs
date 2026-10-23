@@ -74,10 +74,26 @@ impl Default for Settings {
     }
 }
 
+/// The app used to keep everything under "SrutamDictate"; the first run
+/// under the new name adopts that folder whole (models, recordings,
+/// settings, stats) instead of starting empty.
+fn adopt_legacy_dir(root: &std::path::Path) {
+    if root.exists() {
+        return;
+    }
+    let Some(parent) = root.parent() else { return };
+    let legacy = parent.join("SrutamDictate");
+    if legacy.is_dir() {
+        let _ = fs::rename(&legacy, root);
+    }
+}
+
 pub fn app_root() -> PathBuf {
-    dirs::data_local_dir()
+    let root = dirs::data_local_dir()
         .unwrap_or_else(std::env::temp_dir)
-        .join("SrutamDictate")
+        .join("Sruthi");
+    adopt_legacy_dir(&root);
+    root
 }
 
 fn path() -> PathBuf {
@@ -110,6 +126,31 @@ mod tests {
             serde_json::to_string(&settings.theme).unwrap(),
             "\"system\""
         );
+    }
+
+    #[test]
+    fn adopts_the_legacy_data_folder_once() {
+        let base = std::env::temp_dir().join(format!("sruthi-migrate-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("SrutamDictate").join("recordings")).unwrap();
+        fs::write(base.join("SrutamDictate").join("stats.json"), "{}").unwrap();
+
+        let root = base.join("Sruthi");
+        adopt_legacy_dir(&root);
+        assert!(root.join("recordings").is_dir());
+        assert!(!base.join("SrutamDictate").exists());
+    }
+
+    #[test]
+    fn leaves_an_existing_new_data_folder_alone() {
+        let base = std::env::temp_dir().join(format!("sruthi-nomigrate-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("SrutamDictate")).unwrap();
+        fs::create_dir_all(base.join("Sruthi")).unwrap();
+
+        let root = base.join("Sruthi");
+        adopt_legacy_dir(&root);
+        assert!(base.join("SrutamDictate").exists());
     }
 
     #[test]

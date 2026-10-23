@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn stats_survive_a_save_load_roundtrip() {
-        let file = std::env::temp_dir().join("srutam-stats-roundtrip-test.json");
+        let file = std::env::temp_dir().join("sruthi-stats-roundtrip-test.json");
         let _ = std::fs::remove_file(&file);
         let mut stats = Stats::default();
         record(
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn a_broken_stats_file_starts_empty() {
-        let file = std::env::temp_dir().join("srutam-stats-broken-test.json");
+        let file = std::env::temp_dir().join("sruthi-stats-broken-test.json");
         std::fs::write(&file, "not json at all").unwrap();
         assert_eq!(load_from(&file).usage("2026-10-22").dictations, 0);
         std::fs::remove_file(&file).ok();
@@ -779,7 +779,7 @@ mod tests {
         assert_eq!(stats.usage("2026-10-22").words, 5);
 
         // The one-shot flag survives restarts so later launches stay no-ops.
-        let file = std::env::temp_dir().join("srutam-stats-backfill-test.json");
+        let file = std::env::temp_dir().join("sruthi-stats-backfill-test.json");
         let _ = std::fs::remove_file(&file);
         store(&file, &stats);
         assert!(load_from(&file).migrated);

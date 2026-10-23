@@ -169,11 +169,11 @@ pub trait SpeechModel: Send {
     /// Report this model's capabilities.
     fn capabilities(&self) -> ModelCapabilities;
 
-    /// SRUTAM PATCH: words to favour while decoding (names, rare words).
+    /// SRUTHI PATCH: words to favour while decoding (names, rare words).
     /// Engines without hotword support ignore this.
     fn set_hotwords(&mut self, _words: &[String]) {}
 
-    /// SRUTAM PATCH: only write Latin-alphabet text (multilingual models
+    /// SRUTHI PATCH: only write Latin-alphabet text (multilingual models
     /// sometimes switch script mid-dictation, e.g. English heard as
     /// Cyrillic). Engines without support ignore this.
     fn set_latin_only(&mut self, _on: bool) {}

@@ -1215,7 +1215,7 @@ mod tests {
             apply("mail me at priya dot k at gmail dot com"),
             "Mail me at priya.k@gmail.com"
         );
-        assert_eq!(apply("visit srutam dot app"), "Visit srutam.app");
+        assert_eq!(apply("visit sruthi dot app"), "Visit sruthi.app");
         assert_eq!(
             apply("meet at google.com office"),
             "Meet at google.com office"

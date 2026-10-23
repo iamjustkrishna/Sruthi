@@ -12,13 +12,13 @@ cargo build --release --tests
 if ($LASTEXITCODE -ne 0) { "BUILD FAILED ($LASTEXITCODE)"; exit 1 }
 
 foreach ($m in $MODELS) {
-    $env:SRUTAM_TEST_WAV = "bench/hinglish"
-    $env:SRUTAM_TEST_MODEL = $m
+    $env:SRUTHI_TEST_WAV = "bench/hinglish"
+    $env:SRUTHI_TEST_MODEL = $m
     $out = "bench\results-$m.txt"
     "=== $m -> $out"
     cargo test --release --lib transcribes_wav_with_installed_model -- --ignored --nocapture *>&1 | Out-File $out -Encoding utf8
     "    exit $LASTEXITCODE, $((Get-Item $out).Length) bytes"
 }
 
-Remove-Item Env:SRUTAM_TEST_MODEL, Env:SRUTAM_TEST_WAV -ErrorAction SilentlyContinue
+Remove-Item Env:SRUTHI_TEST_MODEL, Env:SRUTHI_TEST_WAV -ErrorAction SilentlyContinue
 "All results in bench\results-*.txt"

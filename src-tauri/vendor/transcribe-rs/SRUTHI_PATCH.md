@@ -1,7 +1,7 @@
-# Srutam patch to transcribe-rs 0.3.12
+# Sruthi patch to transcribe-rs 0.3.12
 
 Vendored from crates.io (MIT, https://github.com/cjpais/transcribe-rs).
-Changes are marked `SRUTAM PATCH` in `src/onnx/parakeet/mod.rs`:
+Changes are marked `SRUTHI PATCH` in `src/onnx/parakeet/mod.rs`:
 
 1. **Duration-aware TDT decoding.** Parakeet TDT models output token logits
    followed by duration logits (how many encoder frames to skip, 0..=4).
@@ -20,16 +20,16 @@ Changes are marked `SRUTAM PATCH` in `src/onnx/parakeet/mod.rs`:
    are split into vocabulary pieces in a prefix tree; while decoding,
    pieces that start (+1.0) or continue (+2.5) a word get a logit bonus. A
    new word may not override a confident blank. Doubling the bonuses fixed
-   one more word but distorted others ("Srutam" -> "Sruutam"), so the
+   one more word but distorted others ("Sruthi" -> "Sruutam"), so the
    gentle values stay; the app's sound-alike correction does most of the
    work.
 
 4. **Latin-only decoding** (`SpeechModel::set_latin_only`). Parakeet V3 is
    multilingual and sometimes wrote English speech in Cyrillic (the name
-   "Srutam" came out as "Шутом"). With it on, tokens containing letters
+   "Sruthi" came out as "Шутом"). With it on, tokens containing letters
    outside the Latin alphabet (ASCII, Latin-1, Latin Extended) never win.
 
-Set `SRUTAM_TDT_DEBUG=1` to print every emitted token with its logits.
+Set `SRUTHI_TDT_DEBUG=1` to print every emitted token with its logits.
 
 Also: `ort` is pinned to `=2.0.0-rc.12`, since rc.14 changed the session
 API and breaks this version.

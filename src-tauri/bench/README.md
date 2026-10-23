@@ -40,8 +40,8 @@ with per-clip decode time and the raw/rules/dict text.
 Single model by hand:
 
 ```sh
-$env:SRUTAM_TEST_WAV = "bench/hinglish"
-$env:SRUTAM_TEST_MODEL = "hinglish-apex"
+$env:SRUTHI_TEST_WAV = "bench/hinglish"
+$env:SRUTHI_TEST_MODEL = "hinglish-apex"
 cargo test --release --lib transcribes_wav_with_installed_model -- --ignored --nocapture
 ```
 

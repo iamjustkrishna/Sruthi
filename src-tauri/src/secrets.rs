@@ -1,10 +1,10 @@
 //! API keys for cloud providers. On Windows they live in Credential Manager
-//! (as "SrutamDictate/<provider>"), never in settings.json.
+//! (as "Sruthi/<provider>"), never in settings.json.
 
 use anyhow::Result;
 
 fn target(name: &str) -> String {
-    format!("SrutamDictate/{name}")
+    format!("Sruthi/{name}")
 }
 
 #[cfg(windows)]

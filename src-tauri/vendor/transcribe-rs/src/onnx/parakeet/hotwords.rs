@@ -1,4 +1,4 @@
-//! SRUTAM PATCH: hotword boosting (contextual biasing) for greedy TDT
+//! SRUTHI PATCH: hotword boosting (contextual biasing) for greedy TDT
 //! decoding. The user's dictionary words are split into vocabulary pieces
 //! and stored in a prefix tree. While decoding, pieces that start or
 //! continue one of those words get a small logit bonus, so rare words and

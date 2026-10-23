@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    srutam_dictate_lib::run()
+    sruthi_lib::run()
 }

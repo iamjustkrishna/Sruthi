@@ -42,7 +42,7 @@ where
         *DONE.lock().unwrap() = Some(done_rx);
 
         thread::Builder::new()
-            .name("srutam-alt-events".into())
+            .name("sruthi-alt-events".into())
             .spawn({
                 let handler = handler.clone();
                 move || {
@@ -54,7 +54,7 @@ where
             .map_err(|e| e.to_string())?;
 
         thread::Builder::new()
-            .name("srutam-alt-hook".into())
+            .name("sruthi-alt-hook".into())
             .spawn(move || {
                 run_hook(&handler);
                 let _ = done_tx.send(());

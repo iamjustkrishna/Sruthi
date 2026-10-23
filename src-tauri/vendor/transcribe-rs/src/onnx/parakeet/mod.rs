@@ -50,16 +50,16 @@ const SUBSAMPLING_FACTOR: usize = 8;
 const WINDOW_SIZE: f32 = 0.01;
 const MAX_TOKENS_PER_STEP: usize = 10;
 
-/// SRUTAM PATCH: a letter from a script other than Latin (ASCII, Latin-1
+/// SRUTHI PATCH: a letter from a script other than Latin (ASCII, Latin-1
 /// and Latin Extended are allowed).
 fn is_non_latin_letter(c: char) -> bool {
     c.is_alphabetic() && !c.is_ascii() && !('\u{00C0}'..='\u{024F}').contains(&c)
 }
 
-/// SRUTAM PATCH: duration logits closer than this to the best count as a tie.
+/// SRUTHI PATCH: duration logits closer than this to the best count as a tie.
 const DURATION_TIE_MARGIN: f32 = 1.0;
 
-/// SRUTAM PATCH: the smallest forward TDT duration whose logit is within
+/// SRUTHI PATCH: the smallest forward TDT duration whose logit is within
 /// `DURATION_TIE_MARGIN` of the best one (0 when there are no durations).
 /// Duration 0 ("stay on this frame") is only used when it clearly wins:
 /// picking it on a near-tie lets the decoder loop on quiet audio.
@@ -120,9 +120,9 @@ pub struct ParakeetModel {
     vocab: Vec<String>,
     blank_idx: i32,
     vocab_size: usize,
-    /// SRUTAM PATCH: the user's dictionary, boosted while decoding.
+    /// SRUTHI PATCH: the user's dictionary, boosted while decoding.
     hotwords: Option<hotwords::Hotwords>,
-    /// SRUTAM PATCH: per token, whether it contains letters outside the
+    /// SRUTHI PATCH: per token, whether it contains letters outside the
     /// Latin alphabet (empty = no restriction).
     non_latin: Vec<bool>,
 }
@@ -374,7 +374,7 @@ impl ParakeetModel {
 
         let mut t = 0;
         let mut emitted_tokens = 0;
-        // SRUTAM PATCH: hotwords currently in progress (prefix-tree nodes).
+        // SRUTHI PATCH: hotwords currently in progress (prefix-tree nodes).
         let mut active_hotwords: Vec<usize> = Vec::new();
 
         while t < encodings_len {
@@ -401,7 +401,7 @@ impl ParakeetModel {
                     .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, _)| idx)
             };
-            // SRUTAM PATCH: with Latin-only on, tokens in other scripts
+            // SRUTHI PATCH: with Latin-only on, tokens in other scripts
             // can never win.
             let mut token = if self.non_latin.is_empty() {
                 argmax(vocab_logits)
@@ -415,7 +415,7 @@ impl ParakeetModel {
             }
             .map(|i| i as i32)
             .unwrap_or(self.blank_idx);
-            // SRUTAM PATCH: hotword boosting. Pieces that start or continue
+            // SRUTHI PATCH: hotword boosting. Pieces that start or continue
             // a dictionary word get a bonus; a new word may not override a
             // confident blank, so boosting can't invent words in silence.
             if let Some(hot) = self.hotwords.as_ref().filter(|h| !h.is_empty()) {
@@ -429,7 +429,7 @@ impl ParakeetModel {
                     }
                 }
             }
-            // SRUTAM PATCH: TDT models also predict how many encoder frames
+            // SRUTHI PATCH: TDT models also predict how many encoder frames
             // to skip (durations 0..=4). The upstream loop ignored this and
             // stayed on the same frame until a blank, so repeated letters
             // or digits ("A A", "7 7") were emitted up to 10 times each.
@@ -440,7 +440,7 @@ impl ParakeetModel {
             // out as "1th"), while a smaller one costs nothing because the
             // decoder state already holds the token just emitted.
             let step = smallest_close_duration(duration_logits);
-            if std::env::var_os("SRUTAM_TDT_DEBUG").is_some() {
+            if std::env::var_os("SRUTHI_TDT_DEBUG").is_some() {
                 let blank_logit = vocab_logits.get(self.blank_idx as usize).copied().unwrap_or(0.0);
                 let tok_logit = vocab_logits.get(token as usize).copied().unwrap_or(0.0);
                 eprintln!(
@@ -786,7 +786,7 @@ fn group_words_into_segments(words: &[Word]) -> Vec<Segment> {
 }
 
 #[cfg(test)]
-mod srutam_patch_tests {
+mod sruthi_patch_tests {
     use super::smallest_close_duration;
 
     #[test]

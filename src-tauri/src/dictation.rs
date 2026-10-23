@@ -304,7 +304,7 @@ mod tests {
     /// key-held pieces on a simulated clock. Prints both, the words that
     /// differ, and how long the text took after release.
     /// `cargo test --lib pieces_match_whole -- --ignored --nocapture`
-    /// (SRUTAM_TEST_MODEL=hybrid picks the engine; parakeet-v3 by default.)
+    /// (SRUTHI_TEST_MODEL=hybrid picks the engine; parakeet-v3 by default.)
     #[test]
     #[ignore]
     fn pieces_match_whole() {
@@ -312,7 +312,7 @@ mod tests {
             .is_test(true)
             .filter_level(log::LevelFilter::Warn)
             .try_init();
-        let id = std::env::var("SRUTAM_TEST_MODEL").unwrap_or_else(|_| "parakeet-v3".into());
+        let id = std::env::var("SRUTHI_TEST_MODEL").unwrap_or_else(|_| "parakeet-v3".into());
         let words = crate::settings::load().dictionary;
         let mut model = crate::model::find(&id).unwrap().load().unwrap();
         model.set_hotwords(&words);

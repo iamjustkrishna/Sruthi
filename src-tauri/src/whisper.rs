@@ -483,7 +483,7 @@ pub fn load(kind: WhisperKind) -> Result<Box<dyn SpeechModel + Send>> {
     }
     if matches!(kind, WhisperKind::Turbo)
         && gpu_server_path().is_file()
-        && std::env::var_os("SRUTAM_WHISPER_CPU").is_none()
+        && std::env::var_os("SRUTHI_WHISPER_CPU").is_none()
     {
         match WhisperServer::start() {
             Ok(server) => return Ok(Box::new(server)),
@@ -772,7 +772,7 @@ impl SpeechModel for Hybrid {
         let speech = speech_seconds(samples);
         // Whisper also gets a say when Parakeet's words sound close to, but
         // not quite like, a dictionary word: with the dictionary as its
-        // prompt, Whisper heard "Srutam" where Parakeet wrote "Shop".
+        // prompt, Whisper heard "Sruthi" where Parakeet wrote "Shop".
         let missed_words = needs_second_opinion(&fast.text, speech);
         let near_miss =
             !missed_words && crate::format::dictionary::has_near_miss(&fast.text, &self.words);
@@ -838,7 +838,7 @@ mod tests {
 
     #[test]
     fn runtime_outlives_models_until_the_last_one_goes() {
-        let dir = std::env::temp_dir().join(format!("srutam-whisper-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sruthi-whisper-test-{}", std::process::id()));
         let models = dir.join("models");
         std::fs::create_dir_all(&models).unwrap();
         for kind in [
@@ -920,16 +920,16 @@ mod tests {
 
     #[test]
     fn prompt_echoes_are_dropped() {
-        let prompt = Some("Srutam, Kubernetes.");
-        assert!(echoes_prompt("Srutam, Kubernetes.", prompt));
-        assert!(!echoes_prompt("Srutam is the best.", prompt));
-        assert!(!echoes_prompt("Srutam.", Some("Srutam.")));
+        let prompt = Some("Sruthi, Kubernetes.");
+        assert!(echoes_prompt("Sruthi, Kubernetes.", prompt));
+        assert!(!echoes_prompt("Sruthi is the best.", prompt));
+        assert!(!echoes_prompt("Sruthi.", Some("Sruthi.")));
     }
 
     /// Times each stage on the newest saved recordings: Parakeet, Whisper
     /// on the graphics card, Whisper on the CPU, and the AI clean-up.
     /// `cargo test --release --lib stage_speed -- --ignored --nocapture`
-    /// (SRUTAM_BENCH_COUNT=8 picks how many recordings.)
+    /// (SRUTHI_BENCH_COUNT=8 picks how many recordings.)
     #[test]
     #[ignore]
     fn stage_speed() {
@@ -937,7 +937,7 @@ mod tests {
             .is_test(true)
             .filter_level(log::LevelFilter::Info)
             .try_init();
-        let count: usize = std::env::var("SRUTAM_BENCH_COUNT")
+        let count: usize = std::env::var("SRUTHI_BENCH_COUNT")
             .ok()
             .and_then(|n| n.parse().ok())
             .unwrap_or(8);
@@ -987,8 +987,8 @@ mod tests {
                     .map(|r| r.text)
                     .unwrap_or_else(|e| format!("<{e}>"))
             });
-            // SRUTAM_BENCH_SKIP_CPU=1 skips the (slow) CPU Whisper run.
-            let skip_cpu = std::env::var_os("SRUTAM_BENCH_SKIP_CPU").is_some();
+            // SRUTHI_BENCH_SKIP_CPU=1 skips the (slow) CPU Whisper run.
+            let skip_cpu = std::env::var_os("SRUTHI_BENCH_SKIP_CPU").is_some();
             let (c_text, c_ms) = if skip_cpu {
                 (String::from("(skipped)"), 0)
             } else {

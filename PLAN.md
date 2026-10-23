@@ -1,7 +1,7 @@
-# Srutam Dictate: roadmap
+# Sruthi: roadmap
 
 Goal: an offline Wispr Flow. English first, then more languages. It ships as a standalone desktop app
-and is later folded into the Srutam app as "Srutam Dictate".
+and is later folded into the Srutam app.
 
 ## Pipeline
 

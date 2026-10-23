@@ -4405,7 +4405,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "srutam-dictate"
+name = "sruthi"
 version = "0.1.0"
 dependencies = [
  "anyhow",

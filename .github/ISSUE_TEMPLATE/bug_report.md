@@ -20,7 +20,7 @@ What you expected instead.
 **Environment**
 
 - OS and version:
-- Srutam Dictate version:
+- Sruthi version:
 - Active speech model (see the Voice page):
 
 **Console output**

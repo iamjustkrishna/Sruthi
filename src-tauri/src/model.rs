@@ -498,12 +498,12 @@ mod tests {
     }
 
     /// Runs a real model on a WAV file. Needs the model installed, so it's
-    /// opt-in: `SRUTAM_TEST_WAV=path cargo test --release -- --ignored`.
+    /// opt-in: `SRUTHI_TEST_WAV=path cargo test --release -- --ignored`.
     #[test]
     #[ignore]
     fn transcribes_wav_with_installed_model() {
-        let wav = std::env::var("SRUTAM_TEST_WAV").expect("set SRUTAM_TEST_WAV");
-        let id = std::env::var("SRUTAM_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+        let wav = std::env::var("SRUTHI_TEST_WAV").expect("set SRUTHI_TEST_WAV");
+        let id = std::env::var("SRUTHI_TEST_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
         let info = find(&id).expect("model in catalog");
         assert!(info.is_installed(), "{id} isn't installed");
 
@@ -521,15 +521,15 @@ mod tests {
         };
         files.sort();
 
-        // SRUTAM_TEST_GAIN=0.02 simulates quiet speech: scales the audio and
+        // SRUTHI_TEST_GAIN=0.02 simulates quiet speech: scales the audio and
         // adds hiss, then runs it through the same boost dictation uses.
-        let gain: Option<f32> = std::env::var("SRUTAM_TEST_GAIN")
+        let gain: Option<f32> = std::env::var("SRUTHI_TEST_GAIN")
             .ok()
             .and_then(|g| g.parse().ok());
 
-        // SRUTAM_TEST_HOTWORDS="Tauri,Kubernetes" boosts those words while
+        // SRUTHI_TEST_HOTWORDS="Tauri,Kubernetes" boosts those words while
         // decoding and shows the dictionary correction on top.
-        let hotwords: Vec<String> = std::env::var("SRUTAM_TEST_HOTWORDS")
+        let hotwords: Vec<String> = std::env::var("SRUTHI_TEST_HOTWORDS")
             .map(|w| {
                 w.split(',')
                     .map(|x| x.trim().to_string())
@@ -543,9 +543,9 @@ mod tests {
         model.set_latin_only(true);
         for file in files {
             let mut samples = transcribe_rs::audio::read_wav_samples(&file).unwrap();
-            // SRUTAM_TEST_ENHANCE=1 runs the same speech check and boost as
+            // SRUTHI_TEST_ENHANCE=1 runs the same speech check and boost as
             // dictation (useful on saved recordings).
-            if std::env::var_os("SRUTAM_TEST_ENHANCE").is_some() && gain.is_none() {
+            if std::env::var_os("SRUTHI_TEST_ENHANCE").is_some() && gain.is_none() {
                 match crate::enhance::prepare(&samples) {
                     Some(boosted) => samples = boosted,
                     None => {

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Srutam Dictate",
+  "productName": "Sruthi",
   "version": "0.1.0",
-  "identifier": "com.srutam.dictate",
+  "identifier": "com.sruthi.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Srutam Dictate",
+        "title": "Sruthi",
         "url": "index.html",
         "width": 520,
         "height": 640,
@@ -21,7 +21,7 @@
       },
       {
         "label": "overlay",
-        "title": "Srutam Dictate overlay",
+        "title": "Sruthi overlay",
         "url": "overlay.html",
         "width": 560,
         "height": 48,
@@ -37,7 +37,7 @@
       },
       {
         "label": "result",
-        "title": "Srutam Dictate result",
+        "title": "Sruthi result",
         "url": "result.html",
         "width": 460,
         "height": 210,

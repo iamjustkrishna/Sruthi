@@ -42,7 +42,7 @@ pub fn apply(text: &str, dictionary: &[String]) -> String {
             let key = sound_key(&joined);
             for (entry, entry_key) in &entries {
                 let entry_letters = letters(entry);
-                // Spelled the same but cased/split differently ("srutam
+                // Spelled the same but cased/split differently ("sruthi
                 // dictate", "anti-gravity") beats any sound-alike.
                 let score = if joined.eq_ignore_ascii_case(&entry_letters) {
                     2.0
@@ -126,7 +126,7 @@ const NEAR_MISS_MAX_WORDS: usize = 4;
 const NEAR_MISS_MIN_KEY: usize = 5;
 
 /// True when a very short dictation sounds *close to* a dictionary entry
-/// without matching it ("Shruton" for "Srutam"): a sign the speech model
+/// without matching it ("Raghab" for "Raghav"): a sign the speech model
 /// misheard a dictionary word, worth a second opinion. Text the
 /// dictionary can already fix doesn't count.
 pub fn has_near_miss(text: &str, dictionary: &[String]) -> bool {
@@ -164,7 +164,7 @@ pub fn mentions_entry(text: &str, dictionary: &[String]) -> bool {
         .any(|e| !e.trim().is_empty() && fixed.contains(&e.trim().to_lowercase()))
 }
 
-/// Letters spelled out one by one ("S-R U T A M", "S R U T A M") that
+/// Letters spelled out one by one ("S-R U T H I", "S R U T H I") that
 /// spell a dictionary entry become that entry.
 fn join_spelled(text: &str, dictionary: &[String]) -> String {
     // A token like "S", "u." or "S-R" made only of single letters.
@@ -247,9 +247,9 @@ fn trailing_punct(word: &str) -> &str {
 ///
 /// Tuned for Indian-English pronunciation too: "sh" and "s" are one sound,
 /// and an "r" right after a starting "s"/"sh" is dropped, because "shr"
-/// clusters get heard without the r. With "th" as "t", the real outputs
-/// "Shoot them", "Shootham", "Shrutem", "Shutam" and "Sruitam" all share
-/// the key of "Srutam".
+/// clusters get heard without the r. With "th" as "t", plausible outputs
+/// like "Shruthi", "Sruthy" and "Suthe" share the exact key of "Sruthi"
+/// (short entries also need a close spelling to be corrected).
 fn sound_key(text: &str) -> String {
     let s: String = text
         .to_lowercase()
@@ -341,7 +341,7 @@ mod tests {
             "Kubernetes",
             "Bhubaneswar",
             "Antigravity",
-            "Srutam Dictate",
+            "Sruthi Ltd",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -367,8 +367,8 @@ mod tests {
             "The word of the day is supercalifragilisticexpialidocious."
         );
         assert_eq!(
-            apply("I am building Srutam dictate with Tori and Parakeet.", &d),
-            "I am building Srutam Dictate with Tauri and Parakeet."
+            apply("I am building Sruthi ltd with Tori and Parakeet.", &d),
+            "I am building Sruthi Ltd with Tauri and Parakeet."
         );
         assert_eq!(
             apply("with Taurai and Parakeet.", &d),
@@ -406,23 +406,25 @@ mod tests {
     }
 
     #[test]
-    fn fixes_real_mishearings_of_srutam() {
-        let d = vec!["Srutam".to_string()];
-        // Every input is what Parakeet actually produced from the user's voice.
+    fn fixes_real_mishearings_of_sruthi() {
+        let d = vec!["Sruthi".to_string()];
+        // Short entries must clear both gates: the exact sound key
+        // ("Shruthi" -> "sata") *and* a one-letter spelling (see
+        // SHORT_KEY), so the hearing garbles stay close in both.
         for (heard, want) in [
-            ("Shoot them.", "Srutam."),
-            ("Shoot um", "Srutam"),
-            ("Shrutem", "Srutam"),
+            ("Shruthi.", "Sruthi."),
+            ("Shruti", "Sruthi"),
+            ("Sruthy", "Sruthi"),
             (
-                "Shoot them is gonna be the best app people has ever seen.",
-                "Srutam is gonna be the best app people has ever seen.",
+                "Shruthi is gonna be the best app people has ever seen.",
+                "Sruthi is gonna be the best app people has ever seen.",
             ),
-            ("Return by Shutam dictate.", "Return by Srutam dictate."),
-            ("Written by Sruitam Dictate.", "Written by Srutam Dictate."),
-            ("Return by Sruotam Dictate.", "Return by Srutam Dictate."),
-            ("Shootham dictate itself", "Srutam dictate itself"),
-            ("Shudam.", "Srutam."),
-            ("Shrutam.", "Srutam."),
+            ("Return by Suthi.", "Return by Sruthi."),
+            ("Written by Sruthe.", "Written by Sruthi."),
+            ("Return by Suthe.", "Return by Sruthi."),
+            ("Shothi itself", "Sruthi itself"),
+            ("Shuthi.", "Sruthi."),
+            ("Shruthy.", "Sruthi."),
         ] {
             assert_eq!(apply(heard, &d), want, "heard: {heard}");
         }
@@ -430,27 +432,27 @@ mod tests {
 
     #[test]
     fn spelled_letters_become_the_word() {
-        let d = vec!["Srutam".to_string()];
+        let d = vec!["Sruthi".to_string()];
         assert_eq!(
-            apply("type S-R U T A M to speak", &d),
-            "type Srutam to speak"
+            apply("type S-R U T H I to speak", &d),
+            "type Sruthi to speak"
         );
-        assert_eq!(apply("it is S R U T A M.", &d), "it is Srutam.");
+        assert_eq!(apply("it is S R U T H I.", &d), "it is Sruthi.");
         // Letters that spell nothing in the dictionary stay as they are.
         assert_eq!(apply("press A B C now", &d), "press A B C now");
     }
 
     #[test]
     fn near_misses_are_spotted() {
-        let d = vec!["Srutam".to_string()];
-        // Real Parakeet outputs for "Srutam" that sound-matching can't fix.
+        let d = vec!["Sruthi Ltd".to_string()];
+        // A plausible garbling of the entry that sound-matching can't fix.
         assert!(has_near_miss("Shruton", &d));
         // Too far off to tell from the real word, or a whole sentence (not
         // worth seconds of Whisper; the dictionary and AI clean-up handle it).
         assert!(!has_near_miss("Shop.", &d));
         assert!(!has_near_miss("Shoot up. It's gonna be the best.", &d));
-        // Already matched, or nothing like it.
-        assert!(!has_near_miss("Shoot them.", &d));
+        // Close in sound but too short to be the entry ("sat" vs "satalt").
+        assert!(!has_near_miss("Shoot.", &d));
         assert!(!has_near_miss("The meeting is at five tomorrow.", &d));
         assert!(!has_near_miss(
             "I went to the shop and bought some stamps today.",
@@ -463,7 +465,7 @@ mod tests {
         // The user's real dictionary and dictations that wrongly sent
         // everything to Whisper (8 s each) before this rule.
         let d: Vec<String> = [
-            "Ajay", "Hansi", "Jagjeet", "Jeena", "Mahendra", "Raghav", "Renu", "Srutam",
+            "Ajay", "Hansi", "Jagjeet", "Jeena", "Mahendra", "Raghav", "Renu", "Sruthi",
         ]
         .iter()
         .map(|s| s.to_string())
@@ -476,12 +478,12 @@ mod tests {
         ] {
             assert!(!has_near_miss(text, &d), "{text}");
         }
-        assert!(has_near_miss("Shruton", &d));
+        assert!(has_near_miss("Raghab", &d));
     }
 
     #[test]
     fn similar_ordinary_words_stay() {
-        let d = vec!["Srutam".to_string()];
+        let d = vec!["Sruthi".to_string()];
         for text in [
             "Show them the way.",
             "What is shooting?",
@@ -506,7 +508,7 @@ mod near_miss_debug {
     #[test]
     #[ignore]
     fn show_triggers() {
-        let dict: Vec<String> = std::env::var("SRUTAM_TEST_DICT")
+        let dict: Vec<String> = std::env::var("SRUTHI_TEST_DICT")
             .unwrap_or_default()
             .split(',')
             .map(|s| s.trim().to_string())
