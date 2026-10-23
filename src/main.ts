@@ -891,7 +891,15 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   const combo = comboFrom(e);
-  if (combo) saveHotkey(combo);
+  if (combo) {
+    saveHotkey(combo);
+    return;
+  }
+  // A bare Alt press (left or right) is the hold-to-talk key; other lone
+  // modifiers have no meaning here.
+  if ((e.code === "AltLeft" || e.code === "AltRight") && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+    saveHotkey("Alt");
+  }
 });
 
 function renderWords(words: string[]) {

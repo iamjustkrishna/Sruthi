@@ -6,6 +6,7 @@ mod dictation;
 mod enhance;
 mod format;
 mod gpu;
+mod holdkey;
 mod mic_check;
 mod model;
 mod paste;
@@ -1331,8 +1332,39 @@ fn get_theme() -> settings::Theme {
     settings::load().theme
 }
 
+/// Routes a bare held key (so far: Alt) through the same press/release flow
+/// as the global hotkey.
+fn hold_key_handler(app: &AppHandle) -> impl Fn(bool) + Clone + Send + 'static {
+    let app = app.clone();
+    move |pressed| {
+        on_hotkey(
+            &app,
+            if pressed {
+                ShortcutState::Pressed
+            } else {
+                ShortcutState::Released
+            },
+        )
+    }
+}
+
 #[tauri::command]
 fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+    if holdkey::is_hold_key(&hotkey) {
+        // A bare hold never goes through shortcut registration.
+        let label = hotkey.trim();
+        let shortcuts = app.global_shortcut();
+        if let Ok(old) = parse_hotkey(&current_hotkey()) {
+            let _ = shortcuts.unregister(old);
+        }
+        holdkey::spawn(hold_key_handler(&app))
+            .map_err(|e| format!("Can't watch the {label} key: {e}"))?;
+        let mut saved = settings::load();
+        saved.hotkey = Some(label.to_string());
+        settings::save(&saved).map_err(|e| e.to_string())?;
+        emit_status(&app);
+        return Ok(());
+    }
     let new = parse_hotkey(&hotkey)?;
     if new.mods.is_empty() && !hotkey_ok_alone(&hotkey) {
         return Err("Add Ctrl, Alt, Shift or Win, or pick a key like F9 or Pause".into());
@@ -1345,9 +1377,12 @@ fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
     if let Ok(old) = parse_hotkey(&old_label) {
         let _ = shortcuts.unregister(old);
     }
+    holdkey::stop();
     if shortcuts.register(new).is_err() {
         // Taken by another app: put the old one back.
-        if let Ok(old) = parse_hotkey(&old_label) {
+        if holdkey::is_hold_key(&old_label) {
+            let _ = holdkey::spawn(hold_key_handler(&app));
+        } else if let Ok(old) = parse_hotkey(&old_label) {
             let _ = shortcuts.register(old);
         }
         return Err(format!(
@@ -1369,6 +1404,10 @@ fn hotkey_ok_alone(label: &str) -> bool {
 
 /// Shortcuts worth suggesting, with what else commonly uses them.
 const HOTKEY_CANDIDATES: &[(&str, &str)] = &[
+    (
+        "Alt",
+        "Left or right Alt, held while speaking; Alt+Tab shares the key",
+    ),
     ("Ctrl+Alt+Space", ""),
     ("Alt+Shift+Space", ""),
     ("Ctrl+Alt+D", ""),
@@ -1409,6 +1448,10 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
         .map(|&(hotkey, note)| {
             let status = if hotkey == current {
                 "current"
+            } else if holdkey::is_hold_key(hotkey) {
+                // Candidates get registered as an availability probe; holds
+                // are never registered, so there is nothing to check.
+                "free"
             } else {
                 match parse_hotkey(hotkey) {
                     Ok(shortcut) if shortcuts.register(shortcut).is_ok() => {
@@ -1434,6 +1477,14 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
     {
         option.recommended = true;
     }
+    #[cfg(windows)]
+    if let Some(alt) = options.iter_mut().find(|o| o.hotkey == "Alt") {
+        // The comfortable one: no chord to remember, hold to speak.
+        alt.recommended = true;
+    }
+    // Bare holds are a Windows feature today.
+    #[cfg(not(windows))]
+    options.retain(|o| o.hotkey != "Alt");
     options
 }
 
@@ -1533,14 +1584,17 @@ pub fn run() {
             let handle = app.handle().clone();
 
             let hotkey = current_hotkey();
-            let registered =
+            let registered = if holdkey::is_hold_key(&hotkey) {
+                holdkey::spawn(hold_key_handler(&handle)).map_err(|e| e.to_string())
+            } else {
                 parse_hotkey(&hotkey)
                     .map_err(|e| e.to_string())
                     .and_then(|shortcut| {
                         app.global_shortcut()
                             .register(shortcut)
                             .map_err(|e| e.to_string())
-                    });
+                    })
+            };
             if let Err(e) = registered {
                 set_model_state(
                     &handle,
@@ -1668,6 +1722,9 @@ mod tests {
             assert!(parse_hotkey(label).is_ok(), "{label}");
         }
         for (label, _) in HOTKEY_CANDIDATES {
+            if label.eq_ignore_ascii_case("Alt") {
+                continue; // a bare hold, never registered through shortcuts
+            }
             assert!(parse_hotkey(label).is_ok(), "{label}");
         }
         assert!(parse_hotkey("Ctrl+Nope").is_err());
@@ -1677,5 +1734,11 @@ mod tests {
     fn only_some_keys_work_alone() {
         assert!(hotkey_ok_alone("F9") && hotkey_ok_alone("Pause"));
         assert!(!hotkey_ok_alone("D") && !hotkey_ok_alone("Space"));
+    }
+
+    #[test]
+    fn alt_is_suggested_as_a_hold_key() {
+        assert!(HOTKEY_CANDIDATES.iter().any(|(label, _)| *label == "Alt"));
+        assert!(super::holdkey::is_hold_key("alt"));
     }
 }
