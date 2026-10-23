@@ -5,6 +5,11 @@ Named for *śruti* — Sanskrit for "that which is heard."
 Hold a hotkey (or just Alt), speak, release: the text is typed into whatever app has your cursor.
 Your audio never leaves the device.
 
+[![Downloads](https://img.shields.io/github/downloads/iamjustkrishna/Sruthi/total)](https://github.com/iamjustkrishna/Sruthi/releases)
+[![Latest release](https://img.shields.io/github/v/release/iamjustkrishna/Sruthi)](https://github.com/iamjustkrishna/Sruthi/releases/latest)
+[![CI](https://github.com/iamjustkrishna/Sruthi/actions/workflows/ci.yml/badge.svg)](https://github.com/iamjustkrishna/Sruthi/actions/workflows/ci.yml)
+[![Views](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https://github.com/iamjustkrishna/Sruthi&count_bg=%2379C83D&title_bg=%23555555&title=views&edge_flat=false)](https://github.com/iamjustkrishna/Sruthi)
+
 ```
 Hold Ctrl+Shift+Space (or press the in-window button)
   → mic capture (cpal), 16 kHz mono
@@ -17,18 +22,18 @@ Hold Ctrl+Shift+Space (or press the in-window button)
 
 - **Hold-to-talk everywhere** — a global hotkey, or the hold button in the app itself.
 - **Floating pill** — a small overlay near your text field shows the words as you speak, with a green check when they're ready to type.
-- **Wispr-style stats** — words, speed vs. typing, time saved, day streaks, weekly bars and the apps you dictate into most.
+- **Wispr-style stats, tracked privately** — words, speed vs. typing, time saved, streaks and the apps you dictate into are recorded on-device; the simplified window keeps them out of the way for now (a stats view is on the roadmap).
 - **Smart formatting** — numbers, dates, spoken punctuation and self-corrections cleaned up offline; or route it through a cloud AI with your own API key (text only, stored in Windows Credential Manager / the macOS keychain).
 - **Personal dictionary** — names and product terms spelled exactly the way you say them.
 - **Hinglish** — models that type romanized Hindi + English mixed speech directly ("Main aaj subah office ja raha hoon").
 - **Microphone doctor** — probe each microphone to find out whether it actually receives sound.
-- **Light, dark or system theme** — a graphite-mono interface that follows Windows' color mode.
+- **Light and dark theme** — the graphite-mono interface follows your system's color mode automatically.
 
 ## Installing
 
-Download the latest **draft release** artifacts from the
-[Releases page](https://github.com/OWNER/REPO/releases) once you have pushed and published one
-(see [CONTRIBUTING.md](CONTRIBUTING.md) for producing them with the included workflow):
+Download the installer for your platform from the
+[latest release](https://github.com/iamjustkrishna/Sruthi/releases/latest)
+(see [CONTRIBUTING.md](CONTRIBUTING.md) for how the release workflow produces them):
 
 | Platform | File | Notes |
 | --- | --- | --- |
