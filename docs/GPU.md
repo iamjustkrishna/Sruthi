@@ -44,17 +44,28 @@ lib /nologo /def:vulkan-1.def /out:vulkan-1.lib /machine:x64
 cmake -S SPIRV-Headers -B SPIRV-Headers/build -G Ninja -DSPIRV_HEADERS_ENABLE_TESTS=OFF -DSPIRV_HEADERS_ENABLE_INSTALL=ON
 cmake --install SPIRV-Headers/build --prefix F:/VulkanKit/spirv
 
-cmake -S whisper.cpp -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ^
-  -DGGML_VULKAN=ON -DGGML_NATIVE=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF ^
+cmake -S whisper.cpp -B build-portable -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON ^
+  -DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF ^
   -DCMAKE_PREFIX_PATH=F:/VulkanKit/spirv "-DCMAKE_CXX_FLAGS=/IF:/VulkanKit/spirv/include /EHsc" ^
   -DVulkan_INCLUDE_DIR=F:/VulkanKit/Vulkan-Headers/include -DVulkan_LIBRARY=F:/VulkanKit/vulkan-1.lib ^
   -DVulkan_GLSLC_EXECUTABLE=<path to glslc.exe>
-cmake --build build --config Release -j 10 --target whisper-cli whisper-server
+cmake --build build-portable --config Release -j 10 --target whisper-cli whisper-server
 ```
 
-Copy `build\bin\{whisper-server.exe, whisper-cli.exe, whisper.dll, ggml*.dll}`
-to `runtime-vulkan`.
+`F:\VulkanKit\build-portable.bat` runs the whole thing (it is the recipe this
+app ships from).
 
-`GGML_NATIVE=ON` targets this CPU only, and the DLLs need the Visual C++
-runtime. A build for other people needs `GGML_NATIVE=OFF` and a hosted
-download, the way the CPU runtime is fetched.
+Copy `build-portable\bin\{whisper-server.exe, whisper-cli.exe, whisper.dll,
+ggml*.dll}` to `runtime-vulkan`, or zip the same set as
+`whisper-vulkan-win.zip` for the hosted download (the `runtimes` release on
+`iamjustkrishna/Sruthi`, URL pinned in `src-tauri/src/whisper.rs`).
+
+## Portability
+
+`GGML_NATIVE=ON` targets the building CPU only. The shipped build uses
+`GGML_NATIVE=OFF` (portable instruction set: x86-64 baseline + the Vulkan
+compute path), and works on any Windows 10+ PC with a Vulkan graphics
+driver. The DLLs still need the Visual C++ runtime
+(`vc_redist.x64.exe`) — most PCs have it; whisper.cpp ships nothing extra
+to rely on. Vulkan's loader (`vulkan-1.dll`) is system-provided on
+Windows 10 and later; the zip carries none of it.

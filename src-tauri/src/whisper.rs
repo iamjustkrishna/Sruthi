@@ -37,9 +37,9 @@ const RUNTIME_URL: &str =
 /// Intel).
 pub const GPU_RUNTIME_URL: &str =
     "https://github.com/iamjustkrishna/Sruthi/releases/download/runtimes/whisper-vulkan-win.zip";
-/// The portable zip's size, shown before downloading; measured during the
-/// engine build step in the plan.
-pub const GPU_RUNTIME_MB: u32 = 45;
+/// The portable zip's size, for the progress bar's total; measured on the
+/// engine build (10 MB, ~9.8 MiB on disk).
+pub const GPU_RUNTIME_MB: u32 = 10;
 pub const RUNTIME_MB: u32 = 21;
 pub const MODEL_MB: u32 = 547;
 pub const TINY_MODEL_MB: u32 = 75;
