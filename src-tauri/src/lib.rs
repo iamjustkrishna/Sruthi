@@ -7,6 +7,7 @@ mod enhance;
 mod format;
 mod gpu;
 mod holdkey;
+mod memory;
 mod mic_check;
 mod model;
 mod paste;
