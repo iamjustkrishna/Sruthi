@@ -30,6 +30,21 @@ pub enum Theme {
     Dark,
 }
 
+/// Where the speech model runs: on the graphics card (default, with an
+/// automatic CPU fallback) or pinned to the CPU.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Device {
+    /// The card when it exists and works, otherwise the CPU.
+    #[default]
+    Auto,
+    /// The card whenever it can start; a card that won't still falls back to
+    /// the CPU, and the window explains why.
+    Gpu,
+    /// Always the CPU.
+    Cpu,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -54,6 +69,8 @@ pub struct Settings {
     pub cloud: Option<String>,
     /// Model chosen per cloud provider (missing: the provider's default).
     pub cloud_models: HashMap<String, String>,
+    /// Where the speech model runs: the graphics card, the CPU, or auto.
+    pub device: Device,
 }
 
 impl Default for Settings {
@@ -70,6 +87,7 @@ impl Default for Settings {
             cloud: None,
             cloud_models: HashMap::new(),
             theme: Theme::default(),
+            device: Device::default(),
         }
     }
 }
@@ -162,6 +180,22 @@ mod tests {
         store_roundtrip(&mut settings, Theme::Light);
         settings.theme = Theme::System;
         store_roundtrip(&mut settings, Theme::System);
+    }
+
+    #[test]
+    fn device_defaults_to_auto_and_survives_a_roundtrip() {
+        let settings: Settings = Default::default();
+        assert_eq!(settings.device, Device::Auto);
+        // Stored lowercase, like theme.
+        assert_eq!(serde_json::to_string(&settings.device).unwrap(), "\"auto\"");
+        assert_eq!(
+            serde_json::from_str::<Settings>(r#"{"device":"gpu"}"#)
+                .unwrap()
+                .device,
+            Device::Gpu
+        );
+        let stale: Settings = serde_json::from_str(r#"{}"#).unwrap();
+        assert_eq!(stale.device, Device::Auto);
     }
 
     fn store_roundtrip(settings: &mut Settings, expected: Theme) {
