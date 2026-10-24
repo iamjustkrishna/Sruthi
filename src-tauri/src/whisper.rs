@@ -17,6 +17,8 @@ use std::fs::{self, File};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
@@ -25,9 +27,19 @@ use transcribe_rs::{
 };
 
 use crate::audio::TARGET_RATE;
+use crate::settings::Device;
 
 const RUNTIME_URL: &str =
     "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-blas-bin-x64.zip";
+/// The card engine, built once per `docs/GPU.md` and hosted on our own
+/// releases so the app can offer it as a one-click download. One build
+/// serves every vendor: Vulkan is the cross-card standard (NVIDIA, AMD,
+/// Intel).
+pub const GPU_RUNTIME_URL: &str =
+    "https://github.com/iamjustkrishna/Sruthi/releases/download/runtimes/whisper-vulkan-win.zip";
+/// The portable zip's size, shown before downloading; measured during the
+/// engine build step in the plan.
+pub const GPU_RUNTIME_MB: u32 = 45;
 pub const RUNTIME_MB: u32 = 21;
 pub const MODEL_MB: u32 = 547;
 pub const TINY_MODEL_MB: u32 = 75;
@@ -281,6 +293,49 @@ fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
         .find_map(|e| find_dir_with(&e.path(), file))
 }
 
+/// Is the card engine installed? The folder only exists when we put the
+/// whisper-server build there.
+pub fn runtime_vulkan_installed() -> bool {
+    gpu_server_path().is_file()
+}
+
+/// Downloads and installs the card engine. Skips everything when it's
+/// already there (the caller can check first).
+pub fn download_gpu_runtime(progress: &mut dyn FnMut(u64, u64)) -> Result<()> {
+    if runtime_vulkan_installed() {
+        return Ok(());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(20))
+        .build()?;
+    let total = u64::from(GPU_RUNTIME_MB) * 1_048_576;
+    fs::create_dir_all(root())?;
+    let zip_path = root().join("gpu-runtime.zip.part");
+    crate::model::fetch_resumable(&client, GPU_RUNTIME_URL, &zip_path, &mut |done, _| {
+        progress(done, total)
+    })?;
+    install_gpu_runtime(&zip_path)?;
+    let _ = fs::remove_file(&zip_path);
+    progress(total, total);
+    Ok(())
+}
+
+fn install_gpu_runtime(zip_path: &Path) -> Result<()> {
+    let staging = root().join("gpu-runtime._extract");
+    let _ = fs::remove_dir_all(&staging);
+    zip::ZipArchive::new(File::open(zip_path)?)?
+        .extract(&staging)
+        .context("Failed to unpack the card runtime")?;
+    let exe = gpu_server_path().file_name().unwrap_or_default().to_owned();
+    let dir = find_dir_with(&staging, &exe)
+        .ok_or_else(|| anyhow!("whisper-server not found in the card runtime download"))?;
+    let _ = fs::remove_dir_all(gpu_runtime_dir());
+    fs::rename(&dir, gpu_runtime_dir())?;
+    let _ = fs::remove_dir_all(&staging);
+    Ok(())
+}
+
 /// Removes the model's file; the shared runtime goes away too once no
 /// model is left that would still run on it.
 pub fn remove(kind: WhisperKind) -> Result<()> {
@@ -474,28 +529,67 @@ fn drop_repeated_sentences(text: &str) -> String {
     out.join(" ")
 }
 
-/// Whisper on the graphics card when that works, otherwise on the CPU.
-/// Tiny stays on the CPU: it's small enough to be quick there, and the
-/// server only loads turbo's model, so the GPU path is turbo-only.
+/// Where each whisper model runs, per the user's device choice:
+/// the card when it can (persistent server, model resident), the CPU's
+/// per-call tool otherwise — or on the card's failure, with the reason
+/// surfaced to the window.
 pub fn load(kind: WhisperKind) -> Result<Box<dyn SpeechModel + Send>> {
     if !is_installed(kind) {
         return Err(anyhow!("Whisper {} isn't downloaded", kind.label()));
     }
-    if matches!(kind, WhisperKind::Turbo)
-        && gpu_server_path().is_file()
-        && std::env::var_os("SRUTHI_WHISPER_CPU").is_none()
+    GPU_IN_USE.store(false, Ordering::SeqCst);
+    LOAD_NOTE.lock().expect("load note").take();
+    let mut note = None;
+    let wants_card = match crate::settings::load().device {
+        Device::Cpu => false,
+        Device::Gpu => {
+            if !runtime_vulkan_installed() {
+                note = Some("Using the CPU: download the graphics-card runtime below".into());
+            }
+            true
+        }
+        Device::Auto => true,
+    };
+    if wants_card && runtime_vulkan_installed() && std::env::var_os("SRUTHI_WHISPER_CPU").is_none()
     {
-        match WhisperServer::start() {
-            Ok(server) => return Ok(Box::new(server)),
-            Err(e) => log::warn!("Whisper on the graphics card didn't start, using the CPU: {e:#}"),
+        match WhisperServer::start(kind) {
+            Ok(server) => {
+                GPU_IN_USE.store(true, Ordering::SeqCst);
+                return Ok(Box::new(server));
+            }
+            Err(e) => {
+                log::warn!("Whisper on the graphics card didn't start, using the CPU: {e:#}");
+                let card = crate::gpu::device_name().unwrap_or_else(|| "graphics".to_owned());
+                note = Some(format!(
+                    "Running on the CPU: {card} didn't take the model ({e:#})"
+                ));
+            }
         }
     }
+    *LOAD_NOTE.lock().expect("load note") = note;
     Ok(Box::new(WhisperCli::new(kind)?))
 }
+
+/// True while the active model's whisper engine is the persistent card
+/// server (an AtomicBool because load happens off-thread and the status
+/// reads it off another).
+pub fn gpu_in_use() -> bool {
+    GPU_IN_USE.load(Ordering::SeqCst)
+}
+
+/// The reason this load ran on the CPU instead of the card, if any
+/// (`None` reads the note back as "taken" exactly once per load).
+pub fn take_load_note() -> Option<String> {
+    LOAD_NOTE.lock().expect("load note").take()
+}
+
+static GPU_IN_USE: AtomicBool = AtomicBool::new(false);
+static LOAD_NOTE: Mutex<Option<String>> = Mutex::new(None);
 
 /// whisper-server on the graphics card: the model stays loaded, so a
 /// dictation only pays for the work itself.
 pub struct WhisperServer {
+    kind: WhisperKind,
     child: Child,
     base: String,
     client: reqwest::blocking::Client,
@@ -503,15 +597,15 @@ pub struct WhisperServer {
 }
 
 impl WhisperServer {
-    pub fn start() -> Result<Self> {
+    pub fn start(kind: WhisperKind) -> Result<Self> {
         let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
-        // The server loads turbo's model, so the GPU path is turbo-only.
         let mut cmd = Command::new(gpu_server_path());
         cmd.arg("-m")
-            .arg(model_path(WhisperKind::Turbo))
+            .arg(model_path(kind))
             .args(["--host", "127.0.0.1", "--port", &port.to_string()])
             // The GPU does the heavy lifting; a few CPU threads are enough.
-            .args(["-t", "4", "-l", "en", "-nt", "-bs", "1", "-bo", "1", "-nf"])
+            .args(["-t", "4", "-nt", "-bs", "1", "-bo", "1", "-nf"])
+            .args(kind.language_args())
             .current_dir(gpu_runtime_dir())
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -521,6 +615,7 @@ impl WhisperServer {
         let child = cmd.spawn().context("Couldn't start whisper-server")?;
         crate::process::kill_with_app(&child);
         let mut server = Self {
+            kind,
             child,
             base: format!("http://127.0.0.1:{port}"),
             client: reqwest::blocking::Client::builder().build()?,
@@ -532,7 +627,8 @@ impl WhisperServer {
         let warm = Instant::now();
         server.request(&vec![0.0; TARGET_RATE as usize], Duration::from_secs(60))?;
         log::info!(
-            "Whisper turbo ready on the graphics card (warm-up {} ms)",
+            "Whisper {} ready on the graphics card (warm-up {} ms)",
+            kind.label(),
             warm.elapsed().as_millis()
         );
         Ok(server)
@@ -593,7 +689,7 @@ impl WhisperServer {
             Err(e) => {
                 let _ = self.child.kill();
                 let prompt = self.prompt.take();
-                *self = Self::start()?;
+                *self = Self::start(self.kind)?;
                 self.prompt = prompt;
                 return Err(e.context(format!(
                     "Whisper on the graphics card failed ({seconds:.1}s of audio)"
@@ -629,11 +725,17 @@ fn gpu_time_budget(seconds: f32) -> Duration {
 
 impl SpeechModel for WhisperServer {
     fn capabilities(&self) -> ModelCapabilities {
-        capabilities(WhisperKind::Turbo)
+        capabilities(self.kind)
     }
 
     fn set_hotwords(&mut self, words: &[String]) {
-        self.prompt = prompt_for(words);
+        // The Oriserve fine-tunes shouldn't see the dictionary (the prompt
+        // drags their spellings back to English).
+        self.prompt = if self.kind.accepts_prompt() {
+            prompt_for(words)
+        } else {
+            None
+        };
     }
 
     fn transcribe_raw(
@@ -647,7 +749,8 @@ impl SpeechModel for WhisperServer {
             .map_err(|e| TranscribeError::Inference(format!("{e:#}")))?;
         crate::timing::add("whisper-gpu", started.elapsed());
         log::info!(
-            "Whisper turbo (GPU): {:.1}s of audio in {} ms",
+            "Whisper {} (GPU): {:.1}s of audio in {} ms",
+            self.kind.label(),
             samples.len() as f32 / TARGET_RATE as f32,
             started.elapsed().as_millis()
         );
@@ -956,7 +1059,7 @@ mod tests {
         parakeet.set_hotwords(&words);
         parakeet.set_latin_only(true);
         let started = Instant::now();
-        let mut gpu = WhisperServer::start().expect("GPU Whisper");
+        let mut gpu = WhisperServer::start(WhisperKind::Turbo).expect("GPU Whisper");
         println!(
             "GPU Whisper loaded and warmed up in {} ms",
             started.elapsed().as_millis()
@@ -1014,5 +1117,41 @@ mod tests {
         audio.extend(vec![0.1f32; TARGET_RATE as usize * 2]); // 2 s "speech"
         let secs = speech_seconds(&audio);
         assert!((1.9..=2.1).contains(&secs), "{secs}");
+    }
+
+    #[test]
+    fn language_args_match_kinds() {
+        // The Oriserve fine-tunes decode under English; tiny detects itself.
+        // These args are the server's too once every kind runs there, so
+        // they are pinned before generalizing.
+        assert_eq!(WhisperKind::HinglishApex.language_args(), &["-l", "en"]);
+        assert_eq!(WhisperKind::HinglishSwift.language_args(), &["-l", "en"]);
+        assert_eq!(WhisperKind::Turbo.language_args(), &["-l", "en"]);
+        assert!(WhisperKind::Tiny.language_args().is_empty());
+    }
+
+    #[test]
+    fn finds_the_dir_containing_a_file() {
+        let base = std::env::temp_dir().join(format!("sruthi-find-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let elsewhere = base.join("t").join("a");
+        let wanted = base.join("t").join("b");
+        fs::create_dir_all(&elsewhere).unwrap();
+        fs::create_dir_all(&wanted).unwrap();
+        fs::write(wanted.join("whisper-server.exe"), b"").unwrap();
+        assert_eq!(
+            find_dir_with(&base, std::ffi::OsStr::new("whisper-server.exe")),
+            Some(wanted)
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn card_runtime_served_from_the_hosted_release() {
+        assert!(
+            GPU_RUNTIME_URL.ends_with("/releases/download/runtimes/whisper-vulkan-win.zip"),
+            "{GPU_RUNTIME_URL}"
+        );
+        assert!(GPU_RUNTIME_MB > 0);
     }
 }
