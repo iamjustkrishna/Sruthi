@@ -39,6 +39,19 @@
         <ul id="mic-probes" class="mic-probes"></ul>
       </section>
 
+      <section class="card warning" id="memory-warning" role="alert" hidden>
+        <p id="memory-warning-text"></p>
+        <div class="gate-actions">
+          <button id="gate-anyway" class="pill">Load anyway</button>
+          <button id="gate-cpu" class="pill" hidden>Stay on CPU</button>
+          <button id="gate-later" class="pill ghost">Not now</button>
+        </div>
+      </section>
+
+      <section class="card warning" id="mic-fallback-warning" role="alert" hidden>
+        <p id="mic-fallback-text"></p>
+      </section>
+
       <section class="card" id="model-card">
         <div class="card-head">
           <h2>Speech model</h2>
@@ -47,6 +60,16 @@
         <p class="muted" id="model-text">Checking…</p>
         <ul class="models" id="models"></ul>
         <p class="error" id="model-error" aria-live="polite" hidden></p>
+        <div class="device-row">
+          <div class="device-switch" role="group" aria-label="Where the speech model runs">
+            <button id="device-auto" class="device-tab" title="Try the graphics card, fall back to the CPU">Auto</button>
+            <button id="device-gpu" class="device-tab" title="Run the model on the graphics card">Graphics card</button>
+            <button id="device-cpu" class="device-tab" title="Keep the card out of it entirely">CPU</button>
+          </div>
+          <button id="gpu-runtime-download" class="ghost small-btn" hidden>Download card runtime</button>
+        </div>
+        <p class="muted small" id="device-note"></p>
+        <p class="muted small" id="gpu-runtime-progress" aria-live="polite" hidden></p>
       </section>
 
       <section class="card" id="format-card">

@@ -58,6 +58,13 @@ interface Status {
   microphones: string[];
   default_microphone: string | null;
   mic_warning: string | null;
+  gpu: { name: string | null; runtime_installed: boolean };
+  device: "auto" | "gpu" | "cpu";
+  engine_on_gpu: boolean;
+  gpu_note: string | null;
+  memory_gate: { message: string; gpu_path: boolean } | null;
+  mic_fallback: string | null;
+  gpu_downloading: boolean;
   history: HistoryEntry[];
   usage: Usage;
 }
@@ -412,17 +419,67 @@ $("cloud-test").addEventListener("click", async () => {
   }
 });
 
+/** Model badge text: state, plus where it runs once ready. */
+function badgeLabel(s: Status, label: string) {
+  return s.engine_on_gpu ? `${label} · on the card` : label;
+}
+
+/* Where the speech model runs: Auto | Graphics card | CPU, plus the
+   card's runtime state and anything the engine wants to explain. */
+function renderDevice(s: Status) {
+  for (const d of ["auto", "gpu", "cpu"] as const) {
+    const b = $<HTMLButtonElement>(`device-${d}`);
+    b.classList.toggle("active", s.device === d);
+    b.setAttribute("aria-pressed", String(s.device === d));
+    if (d === "gpu") b.disabled = !s.gpu.name;
+  }
+  const p = progress["gpu-runtime"];
+  const downloading = $("gpu-runtime-download");
+  const offer = s.device !== "cpu" && s.gpu.name !== null && !s.gpu.runtime_installed;
+  downloading.hidden = !offer || s.gpu_downloading;
+  const prog = $("gpu-runtime-progress");
+  prog.hidden = !s.gpu_downloading;
+  if (s.gpu_downloading) {
+    const pct = p && p.total > 0 ? ` ${Math.round((p.downloaded / p.total) * 100)}%` : "";
+    prog.textContent = `Downloading the card runtime…${pct}`;
+  }
+  const parts = [s.gpu.name ?? "No dedicated graphics card"];
+  if (s.gpu.name !== null) {
+    parts.push(s.gpu.runtime_installed ? "runtime ready" : "runtime not installed");
+  }
+  if (s.gpu_note) parts.push(s.gpu_note);
+  $("device-note").textContent = parts.join(" · ");
+}
+
+/* The two alert strips above the model card: the memory gate's question
+   and the instant-mic fallback notice. */
+function renderWarnings(s: Status) {
+  const gate = $("memory-warning");
+  gate.hidden = !s.memory_gate;
+  if (s.memory_gate) {
+    $("memory-warning-text").textContent = s.memory_gate.message;
+    // Staying on CPU answers the question differently when the card was
+    // never in the plan.
+    $<HTMLButtonElement>("gate-cpu").hidden = !s.memory_gate.gpu_path;
+  }
+  const fallback = $("mic-fallback-warning");
+  fallback.hidden = !s.mic_fallback;
+  $("mic-fallback-text").textContent = s.mic_fallback ?? "";
+}
+
 function render(s: Status) {
   status = s;
   document.documentElement.dataset.theme = s.theme;
   const active = s.models.find((m) => m.id === s.active);
   const [label, text] = STATE_COPY[s.model];
-  badge.textContent = label;
+  badge.textContent = badgeLabel(s, label);
   badge.dataset.state = s.model;
   modelText.textContent =
     s.detail ?? (s.model === "ready" && active ? `${active.name} · ${text}` : text);
   $("hotkey").textContent = s.hotkey;
   renderModels(s);
+  renderDevice(s);
+  renderWarnings(s);
   renderLlms(s);
   renderCloud(s);
   document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
@@ -820,6 +877,17 @@ smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartTo
 const instantToggle = $<HTMLInputElement>("instant-toggle");
 instantToggle.addEventListener("change", () => run("set_instant_mic", { enabled: instantToggle.checked }));
 
+// Where the speech model runs.
+for (const d of ["auto", "gpu", "cpu"] as const) {
+  $<HTMLButtonElement>(`device-${d}`).addEventListener("click", () =>
+    run("set_device", { device: d }),
+  );
+}
+$("gate-anyway").addEventListener("click", () => run("memory_decision", { decision: "anyway" }));
+$("gate-later").addEventListener("click", () => run("memory_decision", { decision: "later" }));
+$("gate-cpu").addEventListener("click", () => run("memory_decision", { decision: "cpu" }));
+$("gpu-runtime-download").addEventListener("click", () => run("download_gpu_runtime", {}));
+
 document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
   input.addEventListener("change", () => {
     if (input.checked) run("set_overlay_position", { position: input.value });
@@ -829,7 +897,9 @@ document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((in
 listen<Status>("status-changed", (e) => render(e.payload));
 listen<DownloadProgress>("download-progress", (e) => {
   progress[e.payload.id] = e.payload;
-  if (status) renderModels(status);
+  if (!status) return;
+  renderModels(status);
+  if (e.payload.id === "gpu-runtime") renderDevice(status);
 });
 listen<DownloadProgress>("llm-progress", (e) => {
   progress[e.payload.id] = e.payload;
