@@ -199,6 +199,12 @@ impl ModelInfo {
         }
     }
 
+    /// Everything whisper-backed gains the card engine when it's set up;
+    /// used for the device row and the timing log.
+    pub fn uses_whisper(&self) -> bool {
+        matches!(self.engine, Engine::Whisper(_) | Engine::Hybrid)
+    }
+
     pub fn load(&self) -> Result<Box<dyn SpeechModel + Send>> {
         let dir = self.dir();
         let model: Box<dyn SpeechModel + Send> = match self.engine {
@@ -476,6 +482,17 @@ mod tests {
         assert_eq!(info.name, "Whisper Tiny");
         assert!(matches!(info.engine, Engine::Whisper(WhisperKind::Tiny)));
         assert_eq!(info.size_mb, whisper::RUNTIME_MB + whisper::TINY_MODEL_MB);
+    }
+
+    #[test]
+    fn uses_whisper_flags_the_right_rows() {
+        // Everything whisper-backed gains the card engine when it's set up,
+        // so the catalog rows and hybrid need one marker.
+        assert!(find("hinglish-apex").unwrap().uses_whisper());
+        assert!(find("whisper-turbo").unwrap().uses_whisper());
+        assert!(find("hybrid").unwrap().uses_whisper());
+        assert!(!find("parakeet-v3").unwrap().uses_whisper());
+        assert!(!find("moonshine-base").unwrap().uses_whisper());
     }
 
     #[test]

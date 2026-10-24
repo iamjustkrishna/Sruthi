@@ -37,6 +37,28 @@ pub struct Session {
     app: AppKind,
     /// Transcribes pieces while the key is held.
     early: Early,
+    /// Press → recording-live, the "start" stage of the timings log.
+    mic_ready: Duration,
+    /// Whether the press found the mic live or opened it cold.
+    start_mode: StartMode,
+}
+
+/// How the press turned into live recording, for the timings log.
+pub enum StartMode {
+    /// The always-ready mic took the press; nothing waited.
+    Instant,
+    /// Recording opened cold at the press, for this reason.
+    Cold(String),
+}
+
+impl StartMode {
+    /// The short label the timings log carries: `instant` or `cold:<why>`.
+    pub fn label(&self) -> String {
+        match self {
+            StartMode::Instant => "instant".into(),
+            StartMode::Cold(reason) => format!("cold:{reason}"),
+        }
+    }
 }
 
 impl Session {
@@ -47,6 +69,8 @@ impl Session {
         smart: bool,
         words: Vec<String>,
         app: AppKind,
+        press: Instant,
+        start_mode: StartMode,
     ) -> Self {
         let recording = Arc::new(recording);
         let early = Early::start(recording.clone(), engine.clone());
@@ -57,8 +81,21 @@ impl Session {
             smart,
             words,
             app,
+            mic_ready: press.elapsed(),
+            start_mode,
             early,
         }
+    }
+
+    /// Press → recording-live: what the user waits before any speech can
+    /// be captured.
+    pub fn start_delay(&self) -> Duration {
+        self.mic_ready
+    }
+
+    /// How the press got live, for the timings log.
+    pub fn start_detail(&self) -> &StartMode {
+        &self.start_mode
     }
 
     /// The app the text is going to.

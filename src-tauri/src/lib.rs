@@ -636,6 +636,9 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
     match key_state {
         ShortcutState::Pressed => {
             hide_result_box(app);
+            // The clock starts before anything the press does, so key →
+            // live recording is honest in the timings log.
+            let press = Instant::now();
             let mut inner = state.inner.lock().unwrap();
             // Holding the key auto-repeats Pressed; ignore everything but the first.
             if inner.session.is_some() || inner.busy {
@@ -646,16 +649,22 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 show_main(app);
                 return;
             }
+            let saved = settings::load();
             // Instant from the always-ready mic; otherwise open it now.
             let mic = state.mic.lock().unwrap().clone();
+            let mut mode = dictation::StartMode::Instant;
             let started = match mic {
+                // The prewarmed recorder takes the press; open failures only
+                // happen at sync-time and surface in the window there.
                 Some(mic) => Ok(mic.record()),
-                None => audio::Recording::start(settings::load().microphone),
+                None => {
+                    mode = dictation::StartMode::Cold("instant mic not ready".into());
+                    audio::Recording::start(saved.microphone)
+                }
             };
             match started {
                 Ok(rec) => {
                     let level = rec.level();
-                    let saved = settings::load();
                     let target = context::active_app();
                     log::info!(
                         "Dictating into {} ({:?}): {:?}",
@@ -671,6 +680,8 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                         saved.smart,
                         saved.dictionary,
                         target.kind,
+                        press,
+                        mode,
                     ));
                     drop(inner);
                     // Finding the text field can take a moment (UI Automation),
