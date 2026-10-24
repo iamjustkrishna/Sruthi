@@ -18,7 +18,13 @@
         </p>
       </section>
 
-      <section class="card warning" id="mic-warning" role="alert" hidden>
+      <nav class="view-switch" role="tablist" aria-label="Window views">
+        <button id="view-tab-setup" class="view-tab active" role="tab" aria-selected="true">Setup</button>
+        <button id="view-tab-stats" class="view-tab" role="tab" aria-selected="false">Stats</button>
+      </nav>
+
+      <div id="view-setup" role="tabpanel" aria-label="Setup">
+        <section class="card warning" id="mic-warning" role="alert" hidden>
         <p id="mic-warning-text"></p>
         <button id="mic-warning-check" class="pill">Check microphones</button>
       </section>
@@ -144,6 +150,39 @@
           </label>
         </div>
       </section>
+      </div>
+
+      <div id="view-stats" role="tabpanel" aria-label="Your dictation" hidden>
+        <section class="card" id="usage-card">
+          <div class="card-head">
+            <h2>Your dictation</h2>
+            <button id="usage-reset" class="ghost small-btn">Reset stats</button>
+          </div>
+          <div class="usage-grid" id="usage-grid" hidden>
+            <div class="usage-cell">
+              <strong id="usage-words">0</strong>
+              <span>words · <span id="usage-today"></span></span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-wpm">–</strong>
+              <span>words/min<span id="usage-vs"></span></span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-saved">0</strong>
+              <span>typing time saved</span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-streak">0</strong>
+              <span>day streak</span>
+            </div>
+          </div>
+          <div class="usage-week" id="usage-week" hidden></div>
+          <p class="muted small" id="usage-extra"></p>
+          <p class="muted small" id="usage-empty">
+            Dictate with the button above or the hotkey, and your words, speed and streak show up here.
+          </p>
+        </section>
+      </div>
 
       <footer class="app-foot">
         <button id="open-folder" class="ghost small-btn">Open recordings folder</button>

@@ -24,6 +24,12 @@
   color: var(--accent-ink);
 }
 
+/* Toggling the hidden attribute must win over every component's display
+   rule (the stats grid and model lists set display: grid/flex). */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   height: 100vh;
@@ -89,6 +95,110 @@ kbd {
   justify-content: flex-end;
   padding-top: var(--space-2);
 }
+
+/* The Setup | Stats tabs: one segmented control under the hero. */
+.view-switch {
+  display: flex;
+  gap: 2px;
+  width: max-content;
+  margin: 0 auto;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+}
+.view-tab {
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  padding: 4px var(--space-4);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.view-tab:hover {
+  color: var(--text);
+}
+.view-tab.active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.view-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Your dictation: the usage numbers on the Stats view.                    */
+
+.usage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+.usage-cell {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+}
+.usage-cell strong {
+  display: block;
+  font-size: var(--text-stat);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.usage-cell span {
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+.usage-week {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 48px;
+  margin-top: var(--space-3);
+}
+.usage-week .day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  padding: 2px 0 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.usage-week .bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--border-strong);
+}
+.usage-week .day:hover .bar {
+  background: var(--text);
+}
+.usage-week .day-name {
+  font-size: 11px;
+  color: var(--muted);
+}
+#usage-extra {
+  margin: var(--space-2) 0 0;
+  font-variant-numeric: tabular-nums;
+}
+#usage-empty {
+  margin: var(--space-4) 0 0;
+}
+
 /* Cards and type                                                      */
 
 .card {

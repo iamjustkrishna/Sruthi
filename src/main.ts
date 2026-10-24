@@ -431,9 +431,31 @@ function render(s: Status) {
   renderWords(s.dictionary);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   renderMicrophones(s);
+  renderUsage(s);
 
   showHoldPhase(holdPhase);
 }
+
+// ---------------------------------------------------------------------------
+// Views: Setup | Stats, the tabs right under the hero
+
+const VIEWS = ["setup", "stats"] as const;
+type View = (typeof VIEWS)[number];
+
+const appScroller = document.querySelector<HTMLElement>(".app");
+
+function setView(next: View) {
+  for (const v of VIEWS) {
+    $<HTMLDivElement>(`view-${v}`).hidden = v !== next;
+    const tab = $<HTMLButtonElement>(`view-tab-${v}`);
+    tab.classList.toggle("active", v === next);
+    tab.setAttribute("aria-selected", String(v === next));
+  }
+  appScroller?.scrollTo({ top: 0 });
+}
+
+$<HTMLButtonElement>("view-tab-setup").addEventListener("click", () => setView("setup"));
+$<HTMLButtonElement>("view-tab-stats").addEventListener("click", () => setView("stats"));
 
 // ---------------------------------------------------------------------------
 // Hold-to-dictate button: same flow as the hotkey, press and release
@@ -586,9 +608,75 @@ async function checkMicrophones() {
 
 $("mic-check").addEventListener("click", checkMicrophones);
 $("mic-warning-check").addEventListener("click", () => {
-  // The microphone controls sit right below; jump to them and start checking.
+  // The microphone controls sit right below on the Setup view; jump to them
+  // and start checking. From Stats, first switch back so the card is visible.
+  setView("setup");
   $("mic-card").scrollIntoView({ behavior: "smooth", block: "center" });
   checkMicrophones();
+});
+
+// ---------------------------------------------------------------------------
+// Your dictation: the usage numbers on the Stats view
+
+function savedLabel(min: number) {
+  if (min >= 60) return `${(min / 60).toFixed(1).replace(/.0$/, "")} h`;
+  if (min >= 1) return `${Math.round(min)} min`;
+  return `${Math.max(1, Math.round(min * 60))} s`;
+}
+
+function renderUsage(s: Status) {
+  const u = s.usage;
+  const has = u.dictations > 0;
+  $("usage-empty").hidden = has;
+  $<HTMLElement>("usage-grid").hidden = !has;
+  $<HTMLElement>("usage-week").hidden = !has;
+  $("usage-extra").textContent = "";
+  if (!has) return;
+
+  $("usage-words").textContent = u.words.toLocaleString();
+  $("usage-today").textContent = u.words_today > 0 ? `${u.words_today.toLocaleString()} today` : "";
+  $("usage-wpm").textContent = u.wpm > 0 ? String(Math.round(u.wpm)) : "–";
+  $("usage-vs").textContent = u.wpm > 0 ? ` · ${(u.wpm / 40).toFixed(1).replace(/.0$/, "")}× typing` : "";
+  $("usage-saved").textContent = savedLabel(u.saved_min);
+  $("usage-streak").textContent = String(u.streak);
+
+  const most = u.week.reduce((m, d) => Math.max(m, d.words), 1);
+  $<HTMLElement>("usage-week").replaceChildren(
+    ...u.week.map((d) => {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "day";
+      cell.title = `${d.date}: ${d.words.toLocaleString()} words`;
+      cell.setAttribute("aria-label", `${d.date}: ${d.words.toLocaleString()} words`);
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.style.height = `${Math.max(6, Math.round((d.words / most) * 100))}%`;
+      const when = new Date(`${d.date}T00:00:00`);
+      const name = document.createElement("span");
+      name.className = "day-name";
+      name.textContent =
+        when.toDateString() === new Date().toDateString()
+          ? "Today"
+          : when.toLocaleDateString([], { weekday: "short" });
+      cell.append(bar, name);
+      return cell;
+    }),
+  );
+
+  const parts: string[] = [`${u.dictations.toLocaleString()} dictations`];
+  if (u.avg_latency_ms > 0) parts.push(`text lands ${(u.avg_latency_ms / 1000).toFixed(1)} s after release on average`);
+  if (u.cleaned > 0) parts.push(`${u.cleaned.toLocaleString()} words trimmed by formatting`);
+  if (u.longest_streak > u.streak) parts.push(`best streak: ${u.longest_streak} days`);
+  const [topApp] = u.top_apps;
+  if (topApp) {
+    const share = Math.round((topApp.words / Math.max(1, u.words)) * 100);
+    parts.push(`most dictated into ${topApp.name} (${share}%)`);
+  }
+  $("usage-extra").textContent = parts.join(" · ");
+}
+
+$("usage-reset").addEventListener("click", () => {
+  if (confirm("Clear all your dictation stats on this PC?")) run("reset_usage", {});
 });
 
 // ---------------------------------------------------------------------------
