@@ -12,8 +12,18 @@ use ash::vk;
 
 /// Vulkan's index of the dedicated graphics card, if there is one.
 pub fn dedicated() -> Option<usize> {
-    static FOUND: OnceLock<Option<usize>> = OnceLock::new();
-    *FOUND.get_or_init(|| {
+    info().map(|(index, _)| index)
+}
+
+/// The dedicated card's name ("AMD Radeon RX 6500M"), for the main window.
+pub fn device_name() -> Option<String> {
+    info().map(|(_, name)| name)
+}
+
+/// The dedicated card, found once and cached: Vulkan device index + name.
+fn info() -> Option<(usize, String)> {
+    static INFO: OnceLock<Option<(usize, String)>> = OnceLock::new();
+    let found = INFO.get_or_init(|| {
         let found = find_dedicated();
         match &found {
             Some((index, name)) => {
@@ -23,8 +33,9 @@ pub fn dedicated() -> Option<usize> {
                 "No dedicated graphics card found; whisper.cpp and llama.cpp pick their own"
             ),
         }
-        found.map(|(index, _)| index)
-    })
+        found
+    });
+    found.clone()
 }
 
 /// Lets a whisper.cpp or llama.cpp process see only the dedicated card
