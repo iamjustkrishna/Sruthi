@@ -21,7 +21,7 @@ mod timing;
 mod wasapi;
 mod whisper;
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -122,9 +122,41 @@ struct Status {
     default_microphone: Option<String>,
     /// Shown in the main window when the microphone delivers no sound.
     mic_warning: Option<String>,
+    /// The install state of the graphics card, compared with the device
+    /// choice, for the window's hint lines.
+    gpu: GpuStatus,
+    device: settings::Device,
+    /// True while the dictation engine itself runs on the card.
+    engine_on_gpu: bool,
+    /// Why this load went to the CPU after all (from `whisper::take_load_note`).
+    gpu_note: Option<String>,
+    /// The unanswered memory-gate question, if any.
+    memory_gate: Option<MemoryGateStatus>,
+    /// Why the instant mic isn't in charge (shown in the window).
+    mic_fallback: Option<String>,
+    /// True while the card runtime is downloading.
+    gpu_downloading: bool,
     history: Vec<recordings::Entry>,
     /// The "Your dictation" card numbers.
     usage: stats::Usage,
+}
+
+/// Where the active whisper model runs.
+#[derive(Clone, Serialize)]
+struct GpuStatus {
+    /// The dedicated card ("AMD Radeon RX 6500M"), or None.
+    name: Option<String>,
+    /// Whether the card's whisper.cpp build is installed.
+    runtime_installed: bool,
+}
+
+/// The unanswered "RAM is tight" question, as the window renders it.
+#[derive(Clone, Serialize)]
+struct MemoryGateStatus {
+    message: String,
+    /// True when the blocked path was the card (the third option makes
+    /// sense only then).
+    gpu_path: bool,
 }
 
 /// Payload of the `dictation` event, which drives the overlay pill.
@@ -224,6 +256,11 @@ struct Inner {
     detail: Option<String>,
     history: Vec<recordings::Entry>,
     mic_warning: Option<String>,
+    /// Why the instant mic isn't in charge (shown in the window).
+    mic_fallback: Option<String>,
+    /// The unanswered memory-gate question (message + whether it blocks
+    /// the card path), or None.
+    memory_gate: Option<MemoryGateStatus>,
     session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
@@ -247,6 +284,20 @@ struct AppState {
     overlay_generation: AtomicU64,
     /// Usage numbers (stats.json), shown in the main window.
     stats: Mutex<stats::Stats>,
+    /// The memory gate's answer channel, Some while a load waits.
+    gate: Mutex<Option<std::sync::mpsc::Sender<GateChoice>>>,
+    /// True while the card runtime downloads.
+    gpu_downloading: AtomicBool,
+}
+
+/// What the user answered to the memory-gate question.
+enum GateChoice {
+    /// Load the model anyway, on the planned device.
+    Anyway,
+    /// Not now; the model stays unloaded.
+    Later,
+    /// Keep the card out of it from now on: the device becomes CPU.
+    PreferCpu,
 }
 
 impl AppState {
@@ -268,6 +319,8 @@ impl AppState {
                 detail: None,
                 history: recordings::load().into_iter().take(HISTORY_LIMIT).collect(),
                 mic_warning: None,
+                mic_fallback: None,
+                memory_gate: None,
                 session: None,
                 busy: false,
                 app_target: None,
@@ -280,6 +333,8 @@ impl AppState {
             formatter: Arc::new(format::Formatter::default()),
             overlay_generation: AtomicU64::new(0),
             stats: Mutex::new(stats),
+            gate: Mutex::new(None),
+            gpu_downloading: AtomicBool::new(false),
         }
     }
 
@@ -329,6 +384,16 @@ impl AppState {
             microphones: list_microphone_names(),
             default_microphone: audio::default_device_name(),
             mic_warning: inner.mic_warning.clone(),
+            gpu: GpuStatus {
+                name: gpu::device_name(),
+                runtime_installed: whisper::runtime_vulkan_installed(),
+            },
+            device: settings::load().device,
+            engine_on_gpu: inner.active.uses_whisper() && whisper::gpu_in_use(),
+            gpu_note: whisper::take_load_note(),
+            memory_gate: inner.memory_gate.clone(),
+            mic_fallback: inner.mic_fallback.clone(),
+            gpu_downloading: self.gpu_downloading.load(Ordering::SeqCst),
             history: inner.history.clone(),
             usage: self.stats.lock().unwrap().usage(&stats::today_key()),
         }
@@ -350,11 +415,47 @@ fn set_model_state(app: &AppHandle, model_state: ModelState, detail: Option<Stri
 }
 
 /// Loads `info` in the background and makes it the engine, unless the user
-/// picked a different model while it was loading.
-fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
+/// picked a different model while it was loading. `interactive` marks a
+/// load the user asked for (selection, download finish, device switch) —
+/// those may pop the window open when the memory gate has to ask first.
+fn load_model(app: AppHandle, info: &'static model::ModelInfo, interactive: bool) {
     *app.state::<AppState>().engine.lock().unwrap() = None;
     set_model_state(&app, ModelState::Loading, None);
     thread::spawn(move || {
+        // The gate: ask before loading when RAM is too tight to be kind
+        // about it. The card path is a proxy (the engine reports where it
+        // really went once it runs).
+        let will_use_gpu =
+            settings::load().device != settings::Device::Cpu && whisper::runtime_vulkan_installed();
+        if memory::is_tight(memory::free_ram_mb(), info.size_mb, will_use_gpu) {
+            match ask_memory_gate(&app, info.size_mb, will_use_gpu, interactive) {
+                GateChoice::Later => {
+                    let state = app.state::<AppState>();
+                    let mut inner = state.inner.lock().unwrap();
+                    inner.model_state = ModelState::Missing;
+                    inner.detail = Some("Not loaded: memory is tight".into());
+                    drop(inner);
+                    emit_status(&app);
+                    return;
+                }
+                GateChoice::PreferCpu => {
+                    let mut saved = settings::load();
+                    saved.device = settings::Device::Cpu;
+                    if let Err(e) = settings::save(&saved) {
+                        log::warn!("Couldn't save the CPU choice: {e}");
+                    }
+                }
+                GateChoice::Anyway => {}
+            }
+            // The question is answered; back to a plain loading state.
+            let state = app.state::<AppState>();
+            {
+                let mut inner = state.inner.lock().unwrap();
+                inner.memory_gate = None;
+                inner.detail = None;
+            }
+            emit_status(&app);
+        }
         let loaded = info.load();
         let state = app.state::<AppState>();
         if state.inner.lock().unwrap().active.id != info.id {
@@ -376,6 +477,130 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo) {
             ),
         }
     });
+}
+
+/// Asks the user whether to load `model_mb` when RAM is tight: raises the
+/// question on the window, pops the window open when the load was
+/// user-initiated, and blocks this loading thread until the answer.
+fn ask_memory_gate(
+    app: &AppHandle,
+    model_mb: u32,
+    gpu_path: bool,
+    interactive: bool,
+) -> GateChoice {
+    let free = memory::free_ram_mb().unwrap_or(0);
+    let needed = memory::needed_mb(model_mb, gpu_path);
+    let message = format!("Not much RAM free ({free} MB) — the model needs about {needed} MB.");
+    let (tx, rx) = std::sync::mpsc::channel::<GateChoice>();
+    {
+        let state = app.state::<AppState>();
+        let mut slot = state.gate.lock().unwrap();
+        // A second ask while a question is already open proceeds without
+        // the gate (the window is busy deciding) and drops the older
+        // proposer — its load sees the channel close and steps aside.
+        if let Some(old) = slot.replace(tx) {
+            drop(old);
+        }
+        let mut inner = state.inner.lock().unwrap();
+        inner.model_state = ModelState::Loading;
+        inner.detail = Some("Waiting because memory is tight".into());
+        inner.memory_gate = Some(MemoryGateStatus { message, gpu_path });
+    }
+    emit_status(app);
+    if interactive {
+        show_main(app);
+    }
+    match rx.recv() {
+        Ok(choice) => choice,
+        // The proposer went away (a newer load replaced it, or the app
+        // closed): treat it like "not now".
+        Err(_) => GateChoice::Later,
+    }
+}
+
+/// The window answered the memory-gate question: "anyway", "later" or
+/// "cpu" (the last one only appears when the blocked path was the card).
+#[tauri::command]
+fn memory_decision(app: AppHandle, decision: String) -> Result<(), String> {
+    let choice = match decision.as_str() {
+        "anyway" => GateChoice::Anyway,
+        "later" => GateChoice::Later,
+        "cpu" => GateChoice::PreferCpu,
+        other => return Err(format!("Unknown memory decision: {other}")),
+    };
+    if let Some(tx) = app.state::<AppState>().gate.lock().unwrap().take() {
+        tx.send(choice)
+            .map_err(|_| "Nobody is waiting for that".to_string())?;
+    }
+    Ok(())
+}
+
+/// Moves speech between the card and the CPU and reloads the active model
+/// on the new home.
+#[tauri::command]
+fn set_device(app: AppHandle, device: settings::Device) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.device = device;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    let active = app.state::<AppState>().inner.lock().unwrap().active;
+    load_model(app, active, true);
+    Ok(())
+}
+
+/// Downloads the card engine once; on success reloads the active whisper
+/// model so it can jump onto the card.
+#[tauri::command]
+fn download_gpu_runtime(app: AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if whisper::runtime_vulkan_installed() {
+        return Err("The graphics-card runtime is already installed".into());
+    }
+    if state.gpu_downloading.swap(true, Ordering::SeqCst) {
+        return Err("The graphics-card runtime is already downloading".into());
+    }
+    emit_status(&app);
+    thread::spawn(move || {
+        let mut last_percent = u64::MAX;
+        let result = whisper::download_gpu_runtime(&mut |downloaded, total| {
+            // Emit at most once per percent to keep the UI responsive.
+            let percent = if total > 0 {
+                downloaded * 100 / total
+            } else {
+                downloaded >> 20
+            };
+            if percent != last_percent {
+                last_percent = percent;
+                let _ = app.emit(
+                    "download-progress",
+                    DownloadProgress {
+                        id: "gpu-runtime",
+                        downloaded,
+                        total,
+                    },
+                );
+            }
+        });
+        let state = app.state::<AppState>();
+        state.gpu_downloading.store(false, Ordering::SeqCst);
+        match result {
+            Ok(()) => {
+                emit_status(&app);
+                let active = state.inner.lock().unwrap().active;
+                if active.uses_whisper() {
+                    load_model(app, active, true);
+                }
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "download-error",
+                    format!("Graphics-card runtime download failed: {e}"),
+                );
+                emit_status(&app);
+            }
+        }
+    });
+    Ok(())
 }
 
 fn selected_llm() -> &'static LlmInfo {
@@ -453,13 +678,28 @@ fn sync_mic(app: AppHandle) {
                 let state = app.state::<AppState>();
                 if settings::load().instant_mic {
                     *state.mic.lock().unwrap() = Some(mic);
+                    // The ready mic is back in charge; the window's
+                    // fallback note goes away.
+                    if state.inner.lock().unwrap().mic_fallback.take().is_some() {
+                        emit_status(&app);
+                    }
                 } else {
                     mic.stop();
                 }
             }
-            // Dictation still works, opening the mic on each key press.
+            // Dictation still works, opening the mic on each key press —
+            // and the window explains why.
             Err(e) => {
-                log::warn!("Couldn't keep the microphone ready ({e}); will open it per dictation")
+                log::warn!("Couldn't keep the microphone ready ({e}); will open it per dictation");
+                let state = app.state::<AppState>();
+                let mut inner = state.inner.lock().unwrap();
+                let message =
+                    format!("Instant start failed ({e}); the microphone opens at each press");
+                if inner.mic_fallback.as_deref() != Some(&message) {
+                    inner.mic_fallback = Some(message);
+                    drop(inner);
+                    emit_status(&app);
+                }
             }
         },
     );
@@ -662,6 +902,14 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     audio::Recording::start(saved.microphone)
                 }
             };
+            if matches!(mode, dictation::StartMode::Cold(_)) && saved.instant_mic {
+                // The press went live the slow way; the window says why
+                // until the instant mic manages again.
+                if inner.mic_fallback.is_none() {
+                    inner.mic_fallback =
+                        Some("The instant microphone wasn't ready; opened at the press".into());
+                }
+            }
             match started {
                 Ok(rec) => {
                     let level = rec.level();
@@ -746,6 +994,13 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     let released = Instant::now();
     timing::reset();
     let app_kind = session.app();
+    // Key press → the mic actually streaming. Tiny waits aren't logged;
+    // real cold starts are, with the reason.
+    let start_delay = session.start_delay();
+    if start_delay > Duration::from_millis(50) {
+        timing::add("start", start_delay);
+        timing::set_start_mode(&session.start_detail().label());
+    }
     let outcome = session.finish()?;
     log::info!(
         "Final text ready {} ms after release",
@@ -925,7 +1180,7 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
             inner.active.id == info.id
         };
         match result {
-            Ok(()) if is_active => load_model(app.clone(), info),
+            Ok(()) if is_active => load_model(app.clone(), info, true),
             Ok(()) => emit_status(&app),
             Err(e) if is_active => set_model_state(
                 &app,
@@ -954,7 +1209,7 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;
     app.state::<AppState>().inner.lock().unwrap().active = info;
-    load_model(app, info);
+    load_model(app, info, true);
     Ok(())
 }
 
@@ -1661,7 +1916,7 @@ pub fn run() {
 
             let active = app.state::<AppState>().inner.lock().unwrap().active;
             if active.is_installed() {
-                load_model(handle.clone(), active);
+                load_model(handle.clone(), active, false);
             }
             sync_cloud(&handle);
             sync_llm(handle.clone());
@@ -1673,6 +1928,9 @@ pub fn run() {
             download_model,
             select_model,
             delete_model,
+            download_gpu_runtime,
+            set_device,
+            memory_decision,
             set_overlay_position,
             set_smart,
             download_llm,

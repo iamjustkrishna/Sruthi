@@ -69,12 +69,10 @@ mod tests {
         assert!(is_tight(Some(1_000), 834, true)); // GPU needs 1_858
         // No reading means never blocked; the load fails on its own if so.
         assert!(!is_tight(None, 834, false));
-    }
 
-    #[test]
-    fn override_forces_tight() {
-        // SAFETY: tests are the single users of this variable; removed
-        // right away so parallel tests never see it set.
+        // The override forces the threshold, and removing it restores the
+        // formula. One test on purpose: env vars are process-wide and
+        // these assertions share it (tests run in parallel otherwise).
         unsafe { std::env::set_var("SRUTHI_GATE_MIN_FREE_MB", "999999") };
         assert!(is_tight(Some(64_000), 834, true));
         unsafe { std::env::remove_var("SRUTHI_GATE_MIN_FREE_MB") };

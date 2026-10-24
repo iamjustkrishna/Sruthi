@@ -16,11 +16,26 @@ const MAX_LOG_BYTES: u64 = 512 * 1024;
 
 thread_local! {
     static STAGES: RefCell<Vec<(&'static str, u128)>> = const { RefCell::new(Vec::new()) };
+    /// How the press went live (`instant` or `cold:<why>`), shown at the
+    /// `start` stage's side because that stage is the one it shaped.
+    static START_MODE: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// Starts a new dictation's timings on this thread.
 pub fn reset() {
     STAGES.with(|s| s.borrow_mut().clear());
+    START_MODE.with(|m| *m.borrow_mut() = None);
+}
+
+/// Labels how the press went live, for the `start` stage's log row.
+pub fn set_start_mode(label: &str) {
+    START_MODE.with(|m| {
+        *m.borrow_mut() = if label.is_empty() {
+            None
+        } else {
+            Some(label.to_owned())
+        }
+    });
 }
 
 /// Records a stage's time.
@@ -39,9 +54,13 @@ pub fn measure<T>(stage: &'static str, f: impl FnOnce() -> T) -> T {
 /// The stages recorded so far, e.g. "parakeet 240  whisper 610".
 pub fn summary() -> String {
     STAGES.with(|s| {
+        let mode = START_MODE.with(|m| m.borrow().clone());
         s.borrow()
             .iter()
-            .map(|(stage, ms)| format!("{stage} {ms}"))
+            .map(|(stage, ms)| match (&**stage, &mode) {
+                ("start", Some(label)) => format!("{stage} {ms} {label}"),
+                _ => format!("{stage} {ms}"),
+            })
             .collect::<Vec<_>>()
             .join("  ")
     })
@@ -94,4 +113,28 @@ fn now() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("unix {secs}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_start_stage_carries_its_mode() {
+        reset();
+        add("start", Duration::from_millis(12));
+        set_start_mode("instant");
+        assert!(summary().contains("start 12 instant"));
+
+        reset();
+        add("start", Duration::from_millis(640));
+        set_start_mode("cold:instant mic not ready");
+        assert!(summary().contains("start 640 cold:instant mic not ready"));
+
+        // Other stages never grow a suffix, and a stale mode is cleared.
+        reset();
+        add("stop", Duration::from_millis(5));
+        assert!(summary().contains("stop 5"));
+        assert!(!summary().contains("instant"));
+    }
 }
