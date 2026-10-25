@@ -35,7 +35,8 @@
         "resizable": false,
         "visible": false,
         "focus": false,
-        "focusable": false
+        "focusable": false,
+        "additionalBrowserArgs": "--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding"
       },
       {
         "label": "result",

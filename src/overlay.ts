@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 
 type Dictation =
   | { phase: "recording" }
-  | { phase: "partial"; text: string }
   | { phase: "transcribing" }
   | { phase: "done"; text: string }
   | { phase: "error"; message: string };
@@ -77,8 +76,13 @@ function normalize(rms: number) {
 }
 
 let lastShift = 0;
+/** When the last level arrived; a stalled stream settles the wave. */
+let lastLevelAt = 0;
 function frame(now: number) {
   if (pill.dataset.phase === "recording") {
+    // The mic posts ~30 levels a second. If they stop (device hiccup, window
+    // resumed late), ease to rest instead of freezing mid-bounce.
+    if (now - lastLevelAt > 300) target = 0;
     // Rise fast, fall slowly, so the motion feels responsive but calm.
     smoothed += (target - smoothed) * (target > smoothed ? 0.5 : 0.15);
     if (now - lastShift > 45) {
@@ -121,10 +125,6 @@ listen<Dictation>("dictation", ({ payload }) => {
       setLive("");
       enter();
       break;
-    case "partial":
-      // Words as they are heard, while the key is still held.
-      setLive(payload.text);
-      break;
     case "transcribing":
       mark.style.setProperty("--level", "0");
       bars.forEach((b) => (b.style.transform = ""));
@@ -146,6 +146,7 @@ listen<Dictation>("dictation", ({ payload }) => {
 
 listen<number>("audio-level", ({ payload }) => {
   target = normalize(payload);
+  lastLevelAt = performance.now();
 });
 
 /** The rolling recent average after each dictation, for the pace line. */

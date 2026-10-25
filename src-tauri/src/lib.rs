@@ -1015,6 +1015,9 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     // shows recording immediately.
                     let _ = app.emit("dictation", Dictation::Recording);
                     show_overlay(app);
+                    // Levels start now, not after the caret lookup: the wave
+                    // must move from the first moment.
+                    stream_levels(app, level.clone());
                     let uia = app.clone();
                     thread::spawn(move || {
                         let target = context::active_app();
@@ -1036,7 +1039,6 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     let placed = app.clone();
                     thread::spawn(move || {
                         place_overlay(&placed);
-                        stream_levels(&placed, level);
                     });
                 }
                 Err(e) => {
