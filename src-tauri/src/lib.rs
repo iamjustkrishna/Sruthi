@@ -157,6 +157,10 @@ struct MemoryGateStatus {
     /// True when the blocked path was the card (the third option makes
     /// sense only then).
     gpu_path: bool,
+    /// When the plan was the CPU but the card exists: the lighter path
+    /// takes one click ("use-card" = switch and load, "download" = fetch
+    /// the runtime first). None when the card can't help here.
+    card_option: Option<&'static str>,
 }
 
 /// Payload of the `dictation` event, which drives the overlay pill.
@@ -428,7 +432,18 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo, interactive: bool
         let will_use_gpu =
             settings::load().device != settings::Device::Cpu && whisper::runtime_vulkan_installed();
         if memory::is_tight(memory::free_ram_mb(), info.size_mb, will_use_gpu) {
-            match ask_memory_gate(&app, info.size_mb, will_use_gpu, interactive) {
+            // When the plan is the CPU but the card exists (with or without
+            // its runtime), the gate offers the lighter path instead.
+            let card_option = if will_use_gpu || gpu::device_name().is_none() {
+                None
+            } else if settings::load().device == settings::Device::Cpu
+                && whisper::runtime_vulkan_installed()
+            {
+                Some("use-card")
+            } else {
+                Some("download")
+            };
+            match ask_memory_gate(&app, info.size_mb, will_use_gpu, card_option, interactive) {
                 GateChoice::Later => {
                     let state = app.state::<AppState>();
                     let mut inner = state.inner.lock().unwrap();
@@ -486,11 +501,19 @@ fn ask_memory_gate(
     app: &AppHandle,
     model_mb: u32,
     gpu_path: bool,
+    card_option: Option<&'static str>,
     interactive: bool,
 ) -> GateChoice {
     let free = memory::free_ram_mb().unwrap_or(0);
     let needed = memory::needed_mb(model_mb, gpu_path);
-    let message = format!("Not much RAM free ({free} MB) — the model needs about {needed} MB.");
+    let message = if card_option.is_some() {
+        let on_card = memory::needed_mb(model_mb, true);
+        format!(
+            "Not much RAM free ({free} MB) — on the CPU the model needs about {needed} MB; on the card about {on_card} MB."
+        )
+    } else {
+        format!("Not much RAM free ({free} MB) — the model needs about {needed} MB.")
+    };
     let (tx, rx) = std::sync::mpsc::channel::<GateChoice>();
     {
         let state = app.state::<AppState>();
@@ -504,7 +527,11 @@ fn ask_memory_gate(
         let mut inner = state.inner.lock().unwrap();
         inner.model_state = ModelState::Loading;
         inner.detail = Some("Waiting because memory is tight".into());
-        inner.memory_gate = Some(MemoryGateStatus { message, gpu_path });
+        inner.memory_gate = Some(MemoryGateStatus {
+            message,
+            gpu_path,
+            card_option,
+        });
     }
     emit_status(app);
     if interactive {
@@ -526,11 +553,36 @@ fn memory_decision(app: AppHandle, decision: String) -> Result<(), String> {
         "anyway" => GateChoice::Anyway,
         "later" => GateChoice::Later,
         "cpu" => GateChoice::PreferCpu,
+        // Take the card path instead: move the device off the CPU pin and
+        // let the waiting load re-read it.
+        "card-use" => {
+            let mut saved = settings::load();
+            saved.device = settings::Device::Auto;
+            if let Err(e) = settings::save(&saved) {
+                log::warn!("Couldn't save the card choice: {e}");
+            }
+            GateChoice::Anyway
+        }
+        // The card needs its runtime first: cancel the CPU load and race
+        // the download; the finished download reloads on the card on its own.
+        "card-download" => {
+            let mut saved = settings::load();
+            saved.device = settings::Device::Auto;
+            if let Err(e) = settings::save(&saved) {
+                log::warn!("Couldn't save the card choice: {e}");
+            }
+            GateChoice::Later
+        }
         other => return Err(format!("Unknown memory decision: {other}")),
     };
     if let Some(tx) = app.state::<AppState>().gate.lock().unwrap().take() {
         tx.send(choice)
             .map_err(|_| "Nobody is waiting for that".to_string())?;
+    }
+    if decision == "card-download" {
+        if let Err(e) = download_gpu_runtime(app) {
+            log::warn!("Card runtime download didn't start: {e}");
+        }
     }
     Ok(())
 }

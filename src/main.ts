@@ -62,7 +62,7 @@ interface Status {
   device: "auto" | "gpu" | "cpu";
   engine_on_gpu: boolean;
   gpu_note: string | null;
-  memory_gate: { message: string; gpu_path: boolean } | null;
+  memory_gate: { message: string; gpu_path: boolean; card_option: "use-card" | "download" | null } | null;
   mic_fallback: string | null;
   gpu_downloading: boolean;
   history: HistoryEntry[];
@@ -461,6 +461,12 @@ function renderWarnings(s: Status) {
     // Staying on CPU answers the question differently when the card was
     // never in the plan.
     $<HTMLButtonElement>("gate-cpu").hidden = !s.memory_gate.gpu_path;
+    // The CPU was the plan but the card exists: offer the lighter path
+    // (the click either switches the device or fetches the runtime).
+    const card = $<HTMLButtonElement>("gate-card");
+    card.hidden = !s.memory_gate.card_option;
+    card.textContent =
+      s.memory_gate.card_option === "use-card" ? "Use graphics card" : "Download card runtime";
   }
   const fallback = $("mic-fallback-warning");
   fallback.hidden = !s.mic_fallback;
@@ -886,6 +892,11 @@ for (const d of ["auto", "gpu", "cpu"] as const) {
 $("gate-anyway").addEventListener("click", () => run("memory_decision", { decision: "anyway" }));
 $("gate-later").addEventListener("click", () => run("memory_decision", { decision: "later" }));
 $("gate-cpu").addEventListener("click", () => run("memory_decision", { decision: "cpu" }));
+$("gate-card").addEventListener("click", () =>
+  run("memory_decision", {
+    decision: status?.memory_gate?.card_option === "use-card" ? "card-use" : "card-download",
+  }),
+);
 $("gpu-runtime-download").addEventListener("click", () => run("download_gpu_runtime", {}));
 
 document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
