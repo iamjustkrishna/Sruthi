@@ -40,6 +40,16 @@ jobs:
         working-directory: src-tauri
         run: cargo test --release --lib
 
+      - name: Read release notes
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo 'body<<RELEASE_NOTES_EOF'
+            cat docs/release-notes.md
+            echo 'RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and draft the release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -47,6 +57,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "Sruthi v__VERSION__"
-          releaseBody: "Download the installer for your platform below. The macOS build is unsigned: on first launch, right-click the app and choose Open (see the README)."
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
