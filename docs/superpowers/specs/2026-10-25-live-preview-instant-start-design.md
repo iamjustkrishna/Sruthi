@@ -34,8 +34,9 @@ preview path:
   `[done, len]` (windowed to its last **6 s**) and report `texts.join(" ") + preview`.
 - One request in flight at a time (the thread is the serializer); completed pieces always
   take priority over previews.
-- Previews drive a new `dictation` phase, `partial`, rendered on the pill's existing live
-  line (which already truncates to the newest ~54 chars).
+- Previews drive a new `dictation` phase, `partial`. The pill **does not show** the text
+  (user decision, 2026-10-25: the dock showing live words feels wrong); previews exist to
+  make the release fast and are ignored by the overlay.
 - **Release reuse**: a preview remembers the sample index it covered. At release, if
   `len - preview_end <= 0.3 s`, the preview text *is* the tail: it is used instead of
   re-transcribing, so a release right after a preview pastes in ~250 ms.
