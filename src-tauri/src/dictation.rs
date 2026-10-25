@@ -25,6 +25,12 @@ pub type Engine = Arc<Mutex<Option<Box<dyn SpeechModel + Send>>>>;
 const MIN_DICTATION_SECS: f32 = 0.3;
 /// How often the background thread looks for a finished piece.
 const POLL: Duration = Duration::from_millis(250);
+/// New audio (seconds) that makes another preview worth a request.
+const PREVIEW_MIN_SECS: f32 = 0.6;
+/// A release this soon after a preview reuses it instead of transcribing again.
+const PREVIEW_REUSE_SECS: f32 = 0.3;
+/// Previews longer than this only cover the newest stretch (not reusable).
+const PREVIEW_WINDOW_SECS: f32 = 6.0;
 
 pub struct Session {
     recording: Arc<Recording>,
@@ -33,14 +39,41 @@ pub struct Session {
     smart: bool,
     /// The user's dictionary at the time the key was pressed.
     words: Vec<String>,
-    /// The app that had focus when the key was pressed.
-    app: AppKind,
+    /// The app that had focus when the key was pressed, filled in off the
+    /// press path (UI Automation can take a while).
+    app: Arc<Mutex<AppKind>>,
     /// Transcribes pieces while the key is held.
     early: Early,
     /// Press → recording-live, the "start" stage of the timings log.
     mic_ready: Duration,
     /// Whether the press found the mic live or opened it cold.
     start_mode: StartMode,
+    /// What the press did with its time, for the timings log.
+    press_note: String,
+}
+
+/// A preview of the piece still being spoken.
+#[derive(Clone)]
+struct Preview {
+    /// Recording samples (device rate) covered at the end.
+    end: usize,
+    text: String,
+    /// True when it covered the whole piece, not just the newest window.
+    full: bool,
+}
+
+/// True when the growing piece has enough new audio for another preview.
+pub fn preview_due(done: usize, len: usize, preview_end: usize, rate: u32) -> bool {
+    let from = done.max(preview_end);
+    (len.saturating_sub(from) as f32) / rate as f32 >= PREVIEW_MIN_SECS
+}
+
+/// True when a release can take the preview as the tail instead of paying
+/// for the same audio twice.
+fn preview_reusable(len: usize, preview: &Preview, rate: u32) -> bool {
+    preview.full
+        && !preview.text.is_empty()
+        && (len.saturating_sub(preview.end) as f32) / rate as f32 <= PREVIEW_REUSE_SECS
 }
 
 /// How the press turned into live recording, for the timings log.
@@ -62,18 +95,21 @@ impl StartMode {
 }
 
 impl Session {
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         recording: Recording,
         engine: Engine,
         formatter: Arc<Formatter>,
         smart: bool,
         words: Vec<String>,
-        app: AppKind,
+        app: Arc<Mutex<AppKind>>,
         press: Instant,
         start_mode: StartMode,
+        press_note: String,
+        on_partial: Arc<dyn Fn(String) + Send + Sync>,
     ) -> Self {
         let recording = Arc::new(recording);
-        let early = Early::start(recording.clone(), engine.clone());
+        let early = Early::start(recording.clone(), engine.clone(), on_partial);
         Self {
             recording,
             engine,
@@ -83,6 +119,7 @@ impl Session {
             app,
             mic_ready: press.elapsed(),
             start_mode,
+            press_note,
             early,
         }
     }
@@ -94,19 +131,24 @@ impl Session {
     }
 
     /// How the press got live, for the timings log.
-    pub fn start_detail(&self) -> &StartMode {
-        &self.start_mode
+    pub fn start_detail(&self) -> String {
+        match &self.press_note.is_empty() {
+            true => self.start_mode.label(),
+            false => format!("{} {}", self.start_mode.label(), self.press_note),
+        }
     }
 
-    /// The app the text is going to.
+    /// The app the text is going to, as known once the page lookup lands.
     pub fn app(&self) -> AppKind {
-        self.app
+        *self.app.lock().unwrap()
     }
 
     /// Stops recording, transcribes and formats. Recordings shorter than
     /// an accidental tap come back with no audio.
     pub fn finish(self) -> Result<Outcome> {
         crate::timing::measure("stop", || self.recording.stop())?;
+        // Read before any field moves out of `self`.
+        let app = self.app();
         // Pieces done while the key was held (waiting for one in progress).
         let early = self.early.finish();
         let device = self.recording.device().to_string();
@@ -129,9 +171,18 @@ impl Session {
         }
 
         // The rest, in pieces too if it's long (the background thread
-        // stopped early, or the model was slow).
+        // stopped early, or the model was slow). A preview fresh enough to
+        // be the tail is taken as-is: no point paying for it twice.
         let mut texts = early.texts;
-        let mut rest = self.recording.slice_16k(early.done, self.recording.len());
+        let mut from = early.done;
+        if let Some(preview) = &early.preview {
+            if preview_reusable(self.recording.len(), preview, TARGET_RATE) {
+                texts.push(preview.text.clone());
+                from = preview.end;
+                log::debug!("Reused the last preview for the tail");
+            }
+        }
+        let mut rest = self.recording.slice_16k(from, self.recording.len());
         while let Some(cut) = chunks::next_cut(&rest, true) {
             texts.push(transcribe_piece(&self.engine, &rest[..cut])?);
             rest.drain(..cut);
@@ -150,8 +201,7 @@ impl Session {
             String::new()
         } else {
             crate::timing::measure("format", || {
-                self.formatter
-                    .format(&heard, self.smart, &self.words, self.app)
+                self.formatter.format(&heard, self.smart, &self.words, app)
             })
         };
         // Local debug log only (stdout in dev builds); helps tune the rules.
@@ -198,8 +248,8 @@ fn transcribe_piece(engine: &Engine, audio: &[f32]) -> Result<String> {
     Ok(heard)
 }
 
-/// The background thread that transcribes finished pieces while the key
-/// is held.
+/// The background thread that transcribes finished pieces — and previews
+/// the piece still being spoken — while the key is held.
 struct Early {
     /// Dropped when the key is released.
     stop: mpsc::Sender<()>,
@@ -216,29 +266,80 @@ struct Progress {
     pieces: usize,
     /// Time spent transcribing them.
     busy: Duration,
+    /// The newest preview, if the release may reuse it.
+    preview: Option<Preview>,
+}
+
+/// Reports the text so far: finished pieces plus, while recording, the
+/// piece still being spoken.
+fn announce(on_partial: &Arc<dyn Fn(String) + Send + Sync>, texts: &[String], tail: Option<&str>) {
+    let mut all = texts.to_vec();
+    if let Some(tail) = tail {
+        all.push(tail.to_string());
+    }
+    let text = chunks::join(&all);
+    if !text.is_empty() {
+        on_partial(text);
+    }
 }
 
 impl Early {
-    fn start(recording: Arc<Recording>, engine: Engine) -> Self {
+    fn start(
+        recording: Arc<Recording>,
+        engine: Engine,
+        on_partial: Arc<dyn Fn(String) + Send + Sync>,
+    ) -> Self {
         let (stop, stopped) = mpsc::channel::<()>();
         let thread = thread::spawn(move || {
             let mut progress = Progress::default();
             while matches!(stopped.recv_timeout(POLL), Err(RecvTimeoutError::Timeout)) {
-                let rest = recording.slice_16k(progress.done, recording.len());
-                let Some(cut) = chunks::next_cut(&rest, false) else {
+                let len = recording.len();
+                let rest = recording.slice_16k(progress.done, len);
+                // Finished pieces first: they are what the final text uses.
+                if let Some(cut) = chunks::next_cut(&rest, false) {
+                    let started = Instant::now();
+                    match transcribe_piece(&engine, &rest[..cut]) {
+                        Ok(text) => {
+                            progress.busy += started.elapsed();
+                            progress.done += recording.device_samples(cut);
+                            progress.texts.push(text);
+                            progress.pieces += 1;
+                            progress.preview = None;
+                            announce(&on_partial, &progress.texts, None);
+                        }
+                        Err(e) => {
+                            // The rest is transcribed after release instead.
+                            log::warn!("Couldn't transcribe while recording: {e:#}");
+                            break;
+                        }
+                    }
                     continue;
+                }
+                // Nothing finished: preview the piece still being spoken.
+                let preview_end = progress.preview.as_ref().map_or(progress.done, |p| p.end);
+                if !preview_due(progress.done, len, preview_end, TARGET_RATE) {
+                    continue;
+                }
+                let full = rest.len() as f32 / TARGET_RATE as f32 <= PREVIEW_WINDOW_SECS;
+                let skip = if full {
+                    0
+                } else {
+                    rest.len() - (PREVIEW_WINDOW_SECS * TARGET_RATE as f32) as usize
                 };
                 let started = Instant::now();
-                match transcribe_piece(&engine, &rest[..cut]) {
+                match transcribe_piece(&engine, &rest[skip..]) {
                     Ok(text) => {
-                        progress.busy += started.elapsed();
-                        progress.done += recording.device_samples(cut);
-                        progress.texts.push(text);
-                        progress.pieces += 1;
+                        crate::timing::add("live", started.elapsed());
+                        let preview = Preview {
+                            end: len,
+                            text,
+                            full,
+                        };
+                        announce(&on_partial, &progress.texts, Some(&preview.text));
+                        progress.preview = Some(preview);
                     }
                     Err(e) => {
-                        // The rest is transcribed after release instead.
-                        log::warn!("Couldn't transcribe while recording: {e:#}");
+                        log::warn!("Couldn't preview while recording: {e:#}");
                         break;
                     }
                 }
@@ -286,6 +387,49 @@ pub struct Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn preview_needs_new_audio() {
+        let rate = TARGET_RATE;
+        let quarter = rate as usize / 4;
+        let full = (rate as f32 * 0.6) as usize;
+        // Nothing new yet: no request.
+        assert!(!preview_due(0, quarter, 0, rate));
+        // Enough new audio: preview.
+        assert!(preview_due(0, full, 0, rate));
+        // A preview covers up to its end; only newer audio asks again.
+        let end = rate as usize * 2;
+        assert!(!preview_due(0, end + quarter, end, rate));
+        assert!(preview_due(0, end + full, end, rate));
+        // A finished piece moves the floor past any old preview.
+        assert!(!preview_due(end, end + quarter, 0, rate));
+    }
+
+    #[test]
+    fn release_reuses_only_fresh_full_previews() {
+        let rate = TARGET_RATE;
+        let preview = |end, text: &str, full| Preview {
+            end,
+            text: text.into(),
+            full,
+        };
+        let end = rate as usize * 5;
+        // Fresh, whole, with words: reuse.
+        assert!(preview_reusable(end, &preview(end, "hello", true), rate));
+        assert!(preview_reusable(
+            end + rate as usize / 4,
+            &preview(end, "hello", true),
+            rate
+        ));
+        // Too old, windowed, or silent: transcribe the tail again.
+        assert!(!preview_reusable(
+            end + rate as usize,
+            &preview(end, "hello", true),
+            rate
+        ));
+        assert!(!preview_reusable(end, &preview(end, "hello", false), rate));
+        assert!(!preview_reusable(end, &preview(end, "", true), rate));
+    }
 
     /// Word-level differences between two transcripts: (edits, words).
     fn word_diff(a: &str, b: &str) -> (usize, usize, Vec<String>) {

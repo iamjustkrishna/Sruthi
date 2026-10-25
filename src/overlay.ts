@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 
 type Dictation =
   | { phase: "recording" }
+  | { phase: "partial"; text: string }
   | { phase: "transcribing" }
   | { phase: "done"; text: string }
   | { phase: "error"; message: string };
@@ -119,6 +120,10 @@ listen<Dictation>("dictation", ({ payload }) => {
       startPace();
       setLive("");
       enter();
+      break;
+    case "partial":
+      // Words as they are heard, while the key is still held.
+      setLive(payload.text);
       break;
     case "transcribing":
       mark.style.setProperty("--level", "0");

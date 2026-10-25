@@ -168,9 +168,17 @@ struct MemoryGateStatus {
 #[serde(tag = "phase", rename_all = "lowercase")]
 enum Dictation {
     Recording,
+    /// The words so far, while the key is still held.
+    Partial {
+        text: String,
+    },
     Transcribing,
-    Done { text: String },
-    Error { message: String },
+    Done {
+        text: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// Cloud providers for Smart formatting, for the main window.
@@ -948,7 +956,9 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 show_main(app);
                 return;
             }
+            let locked = press.elapsed();
             let saved = settings::load();
+            let after_settings = press.elapsed();
             // Instant from the always-ready mic; otherwise open it now.
             let mic = state.mic.lock().unwrap().clone();
             let mut mode = dictation::StartMode::Instant;
@@ -961,6 +971,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                     audio::Recording::start(saved.microphone)
                 }
             };
+            let after_mic = press.elapsed();
             if matches!(mode, dictation::StartMode::Cold(_)) && saved.instant_mic {
                 // The press went live the slow way; the window says why
                 // until the instant mic manages again.
@@ -969,46 +980,63 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                         Some("The instant microphone wasn't ready; opened at the press".into());
                 }
             }
+            let note = format!(
+                "lock {} settings {} mic {}",
+                locked.as_millis(),
+                (after_settings - locked).as_millis(),
+                (after_mic - after_settings).as_millis()
+            );
             match started {
                 Ok(rec) => {
                     let level = rec.level();
-                    let target = context::active_app();
-                    log::info!(
-                        "Dictating into {} ({:?}): {:?}",
-                        target.process,
-                        target.kind,
-                        target.title
-                    );
-                    inner.app_target = Some(target.process.clone());
+                    // The page lookup (UI Automation) runs off the press
+                    // path; formatting reads the kind when the text is ready.
+                    let kind = Arc::new(Mutex::new(context::AppKind::Other));
+                    let on_partial = {
+                        let app = app.clone();
+                        Arc::new(move |text: String| {
+                            let _ = app.emit("dictation", Dictation::Partial { text });
+                        })
+                    };
                     inner.session = Some(dictation::Session::start(
                         rec,
                         state.engine.clone(),
                         state.formatter.clone(),
                         saved.smart,
                         saved.dictionary,
-                        target.kind,
+                        kind.clone(),
                         press,
                         mode,
+                        note,
+                        on_partial,
                     ));
                     drop(inner);
-                    // Finding the text field can take a moment (UI Automation),
-                    // so do it off the main thread; the mic is already running.
-                    let app = app.clone();
+                    // The pill is up before the caret lookup: the press
+                    // shows recording immediately.
+                    let _ = app.emit("dictation", Dictation::Recording);
+                    show_overlay(app);
+                    let uia = app.clone();
                     thread::spawn(move || {
-                        place_overlay(&app);
-                        if app
-                            .state::<AppState>()
-                            .inner
-                            .lock()
-                            .unwrap()
-                            .session
-                            .is_none()
+                        let target = context::active_app();
+                        *kind.lock().unwrap() = target.kind;
                         {
-                            return; // Key already released; the pill shows "transcribing" instead.
+                            let state = uia.state::<AppState>();
+                            let mut inner = state.inner.lock().unwrap();
+                            inner.app_target = Some(target.process.clone());
                         }
-                        let _ = app.emit("dictation", Dictation::Recording);
-                        show_overlay(&app);
-                        stream_levels(&app, level);
+                        log::info!(
+                            "Dictating into {} ({:?}): {:?}",
+                            target.process,
+                            target.kind,
+                            target.title
+                        );
+                    });
+                    // Finding the text field can take a moment (UI Automation),
+                    // so place the pill after it is already visible.
+                    let placed = app.clone();
+                    thread::spawn(move || {
+                        place_overlay(&placed);
+                        stream_levels(&placed, level);
                     });
                 }
                 Err(e) => {
@@ -1058,7 +1086,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     let start_delay = session.start_delay();
     if start_delay > Duration::from_millis(50) {
         timing::add("start", start_delay);
-        timing::set_start_mode(&session.start_detail().label());
+        timing::set_start_mode(&session.start_detail());
     }
     let outcome = session.finish()?;
     log::info!(
