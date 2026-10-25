@@ -428,21 +428,23 @@ fn load_model(app: AppHandle, info: &'static model::ModelInfo, interactive: bool
     thread::spawn(move || {
         // The gate: ask before loading when RAM is too tight to be kind
         // about it. The card path is a proxy (the engine reports where it
-        // really went once it runs).
-        let will_use_gpu =
-            settings::load().device != settings::Device::Cpu && whisper::runtime_vulkan_installed();
+        // really went once it runs). Only Whisper models can use the card.
+        let will_use_gpu = info.uses_whisper()
+            && settings::load().device != settings::Device::Cpu
+            && whisper::runtime_vulkan_installed();
         if memory::is_tight(memory::free_ram_mb(), info.size_mb, will_use_gpu) {
             // When the plan is the CPU but the card exists (with or without
             // its runtime), the gate offers the lighter path instead.
-            let card_option = if will_use_gpu || gpu::device_name().is_none() {
-                None
-            } else if settings::load().device == settings::Device::Cpu
-                && whisper::runtime_vulkan_installed()
-            {
-                Some("use-card")
-            } else {
-                Some("download")
-            };
+            let card_option =
+                if !info.uses_whisper() || will_use_gpu || gpu::device_name().is_none() {
+                    None
+                } else if settings::load().device == settings::Device::Cpu
+                    && whisper::runtime_vulkan_installed()
+                {
+                    Some("use-card")
+                } else {
+                    Some("download")
+                };
             match ask_memory_gate(&app, info.size_mb, will_use_gpu, card_option, interactive) {
                 GateChoice::Later => {
                     let state = app.state::<AppState>();
@@ -505,11 +507,16 @@ fn ask_memory_gate(
     interactive: bool,
 ) -> GateChoice {
     let free = memory::free_ram_mb().unwrap_or(0);
-    let needed = memory::needed_mb(model_mb, gpu_path);
-    let message = if card_option.is_some() {
-        let on_card = memory::needed_mb(model_mb, true);
+    let needed = memory::needed_mb(model_mb);
+    // What the question is really about: the model living in RAM (CPU
+    // path) or the PC being nearly out of memory altogether (card path).
+    let message = if gpu_path {
         format!(
-            "Not much RAM free ({free} MB) — on the CPU the model needs about {needed} MB; on the card about {on_card} MB."
+            "Very little RAM free ({free} MB) — the card load only stages through RAM, but the PC is close to the edge."
+        )
+    } else if card_option.is_some() {
+        format!(
+            "Not much RAM free ({free} MB) — the model needs about {needed} MB on the CPU; on the card it stays out of your RAM."
         )
     } else {
         format!("Not much RAM free ({free} MB) — the model needs about {needed} MB.")

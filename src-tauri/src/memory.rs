@@ -1,5 +1,5 @@
 //! The system-memory gate: how much RAM is free, and whether loading a
-//! speech model into it (or card staging) would squeeze an already-busy PC.
+//! speech model into it would squeeze an already-busy PC.
 
 #[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
@@ -18,15 +18,17 @@ pub fn free_ram_mb() -> Option<u64> {
     Some(status.ullAvailPhys >> 20)
 }
 
-/// The smallest free-RAM reading that counts as comfortable for loading a
-/// `model_mb` model: on the card only staging and slack need system RAM;
-/// on the CPU the model itself lives there.
-pub fn needed_mb(model_mb: u32, will_use_gpu: bool) -> u64 {
-    if will_use_gpu {
-        u64::from(model_mb) + 1024
-    } else {
-        u64::from(model_mb) * 3 / 2 + 1024
-    }
+/// Room above the model file for the runtime and its working set — the
+/// free RAM a CPU load wants before it's fair to the rest of the PC.
+const CPU_HEADROOM_MB: u64 = 512;
+
+/// Below this much free RAM Windows itself is close to the edge, so even a
+/// card load (which keeps the model in VRAM) is worth asking about.
+const CARD_GATE_MIN_FREE_MB: u64 = 400;
+
+/// The free RAM a `model_mb` model wants on the CPU path.
+pub fn needed_mb(model_mb: u32) -> u64 {
+    u64::from(model_mb) + CPU_HEADROOM_MB
 }
 
 /// True when loading a `model_mb` model on this PC's current free memory is
@@ -41,7 +43,13 @@ pub fn is_tight(free: Option<u64>, model_mb: u32, will_use_gpu: bool) -> bool {
             return free < min;
         }
     }
-    free < needed_mb(model_mb, will_use_gpu)
+    if will_use_gpu {
+        // The weights live in VRAM; system RAM only stages the read, so a
+        // normally busy PC needs no question. Ask only near the edge.
+        free < CARD_GATE_MIN_FREE_MB
+    } else {
+        free < needed_mb(model_mb)
+    }
 }
 
 #[cfg(test)]
@@ -55,24 +63,28 @@ mod tests {
     }
 
     #[test]
-    fn gpu_needs_less_headroom_than_cpu() {
-        // On the card the model lands in VRAM; the CPU path must hold the
-        // whole model in system RAM plus working space.
-        assert!(needed_mb(834, true) < needed_mb(834, false));
+    fn needed_mb_is_the_model_plus_headroom() {
+        assert_eq!(needed_mb(834), 834 + CPU_HEADROOM_MB);
     }
 
+    // One test on purpose: env vars are process-wide and these assertions
+    // share the override (tests otherwise run in parallel).
     #[test]
-    fn tight_by_threshold_without_override() {
-        assert!(!is_tight(Some(64_000), 834, true));
-        assert!(is_tight(Some(1_000), 834, false)); // CPU needs 2_275
+    fn gate_thresholds() {
+        // Apex is 834 MB; at 1.0 GB free a CPU load is a real squeeze.
+        assert!(is_tight(Some(1_000), 834, false));
         assert!(!is_tight(Some(3_000), 834, false));
-        assert!(is_tight(Some(1_000), 834, true)); // GPU needs 1_858
+        // Parakeet V3 is 478 MB: the usual busy PC still fits it.
+        assert!(!is_tight(Some(1_117), 478, false));
+        // The card keeps the weights in VRAM: ~1 GB free is normal, no ask.
+        assert!(!is_tight(Some(1_117), 834, true));
+        assert!(!is_tight(Some(64_000), 834, true));
+        assert!(is_tight(Some(300), 834, true));
         // No reading means never blocked; the load fails on its own if so.
         assert!(!is_tight(None, 834, false));
 
         // The override forces the threshold, and removing it restores the
-        // formula. One test on purpose: env vars are process-wide and
-        // these assertions share it (tests run in parallel otherwise).
+        // formula.
         unsafe { std::env::set_var("SRUTHI_GATE_MIN_FREE_MB", "999999") };
         assert!(is_tight(Some(64_000), 834, true));
         unsafe { std::env::remove_var("SRUTHI_GATE_MIN_FREE_MB") };
