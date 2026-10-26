@@ -4,8 +4,9 @@
 #[cfg(windows)]
 use windows_sys::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
-/// Free RAM in MiB, or `None` when Windows doesn't answer (non-Windows
-/// counts as "no reading"; the gate then never blocks).
+/// Free RAM in MiB, or `None` when the OS doesn't answer (the gate then
+/// never blocks). Windows reads it from GlobalMemoryStatusEx, macOS from
+/// `vm_stat`; other systems count as "no reading".
 #[cfg(windows)]
 pub fn free_ram_mb() -> Option<u64> {
     let mut status: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
@@ -16,6 +17,46 @@ pub fn free_ram_mb() -> Option<u64> {
         return None;
     }
     Some(status.ullAvailPhys >> 20)
+}
+
+/// macOS has no GlobalMemoryStatusEx; `vm_stat` counts memory in pages
+/// ("Pages free: 12345."), each `hw.pagesize` bytes. Free + speculative +
+/// purgeable is the memory an app could realistically receive right now.
+#[cfg(target_os = "macos")]
+pub fn free_ram_mb() -> Option<u64> {
+    let out = std::process::Command::new("/usr/bin/vm_stat")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let page_size: u64 = {
+        let out = std::process::Command::new("/usr/sbin/sysctl")
+            .args(["hw.pagesize"])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout).trim().parse().ok()?
+    };
+    let pages = |label: &str| -> u64 {
+        text.lines()
+            .find_map(|l| {
+                l.strip_prefix(label)?
+                    .trim()
+                    .trim_end_matches('.')
+                    .parse::<u64>()
+                    .ok()
+            })
+            .unwrap_or(0)
+    };
+    let free_pages =
+        pages("Pages free: ") + pages("Pages speculative: ") + pages("Pages purgeable: ");
+    Some(free_pages.saturating_mul(page_size) >> 20)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn free_ram_mb() -> Option<u64> {
+    None
 }
 
 /// Room above the model file for the runtime and its working set — the
@@ -57,6 +98,12 @@ mod tests {
     use super::*;
 
     #[cfg(windows)]
+    #[test]
+    fn free_ram_is_reported() {
+        assert!(free_ram_mb().is_some_and(|m| m > 0));
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn free_ram_is_reported() {
         assert!(free_ram_mb().is_some_and(|m| m > 0));

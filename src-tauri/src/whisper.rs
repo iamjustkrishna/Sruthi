@@ -540,15 +540,21 @@ pub fn load(kind: WhisperKind) -> Result<Box<dyn SpeechModel + Send>> {
     GPU_IN_USE.store(false, Ordering::SeqCst);
     LOAD_NOTE.lock().expect("load note").take();
     let mut note = None;
-    let wants_card = match crate::settings::load().device {
-        Device::Cpu => false,
-        Device::Gpu => {
-            if !runtime_vulkan_installed() {
-                note = Some("Using the CPU: download the graphics-card runtime below".into());
+    // The Vulkan engine is Windows-only; on other systems every device
+    // setting takes the CPU path (the card runtime is never downloaded).
+    let wants_card = if cfg!(windows) {
+        match crate::settings::load().device {
+            Device::Cpu => false,
+            Device::Gpu => {
+                if !runtime_vulkan_installed() {
+                    note = Some("Using the CPU: download the graphics-card runtime below".into());
+                }
+                true
             }
-            true
+            Device::Auto => true,
         }
-        Device::Auto => true,
+    } else {
+        false
     };
     if wants_card && runtime_vulkan_installed() && std::env::var_os("SRUTHI_WHISPER_CPU").is_none()
     {

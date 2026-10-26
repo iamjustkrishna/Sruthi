@@ -11,8 +11,12 @@
 //!
 //! Windows only today; everywhere else the normal shortcut stays in charge.
 
+// The low-level watcher below is Windows-only; these stay unused elsewhere.
+#[cfg(windows)]
 use std::sync::Mutex;
+#[cfg(windows)]
 use std::sync::mpsc;
+#[cfg(windows)]
 use std::thread;
 
 /// Whether `label` names a bare held key (so far, Alt) instead of a
