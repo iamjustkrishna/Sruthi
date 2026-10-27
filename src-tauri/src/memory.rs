@@ -19,38 +19,51 @@ pub fn free_ram_mb() -> Option<u64> {
     Some(status.ullAvailPhys >> 20)
 }
 
-/// macOS has no GlobalMemoryStatusEx; `vm_stat` counts memory in pages
-/// ("Pages free: 12345."), each `hw.pagesize` bytes. Free + speculative +
-/// purgeable is the memory an app could realistically receive right now.
+// macOS has no GlobalMemoryStatusEx; the kernel exposes the same page
+// counters as sysctls, so the read is a plain libc call with no process to
+// spawn and no path to get wrong.
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    /// libc's `sysctlbyname`: reads a kernel variable by name, returns 0
+    /// on success and stores its size in `oldlenp`.
+    fn sysctlbyname(
+        name: *const std::ffi::c_char,
+        oldp: *mut std::ffi::c_void,
+        oldlenp: *mut usize,
+        newp: *mut std::ffi::c_void,
+        newlen: usize,
+    ) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64(name: &str) -> Option<u64> {
+    let name = std::ffi::CString::new(name).ok()?;
+    let mut value: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    // SAFETY: `name` is a live NUL-terminated string; `value` has room for
+    // one integer and nothing is written back to the kernel.
+    let ok = unsafe {
+        sysctlbyname(
+            name.as_ptr(),
+            &mut value as *mut u64 as *mut std::ffi::c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ok == 0 { Some(value) } else { None }
+}
+
+/// Free + speculative + purgeable pages are the memory an app could
+/// realistically receive right now, counted in `hw.pagesize` bytes. Only
+/// the free count is required; the other two merely reduce what macOS
+/// would have to reclaim first.
 #[cfg(target_os = "macos")]
 pub fn free_ram_mb() -> Option<u64> {
-    let out = std::process::Command::new("/usr/bin/vm_stat")
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let page_size: u64 = {
-        let out = std::process::Command::new("/usr/sbin/sysctl")
-            .args(["hw.pagesize"])
-            .output()
-            .ok()?;
-        String::from_utf8_lossy(&out.stdout).trim().parse().ok()?
-    };
-    let pages = |label: &str| -> u64 {
-        text.lines()
-            .find_map(|l| {
-                l.strip_prefix(label)?
-                    .trim()
-                    .trim_end_matches('.')
-                    .parse::<u64>()
-                    .ok()
-            })
-            .unwrap_or(0)
-    };
-    let free_pages =
-        pages("Pages free: ") + pages("Pages speculative: ") + pages("Pages purgeable: ");
+    let page_size = sysctl_u64("hw.pagesize")?;
+    let free_pages = sysctl_u64("vm.page_free_count")?
+        + sysctl_u64("vm.page_speculative_count").unwrap_or(0)
+        + sysctl_u64("vm.page_purgeable_count").unwrap_or(0);
     Some(free_pages.saturating_mul(page_size) >> 20)
 }
 
