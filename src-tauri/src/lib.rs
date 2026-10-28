@@ -113,6 +113,7 @@ struct Status {
     llm: LlmStatus,
     cloud: CloudStatus,
     dictionary: Vec<String>,
+    snippets: Vec<format::snippets::Snippet>,
     hotkey: String,
     instant_mic: bool,
     /// The window palette choice.
@@ -342,7 +343,11 @@ impl AppState {
                 llm_downloading: None,
             }),
             engine: Arc::new(Mutex::new(None)),
-            formatter: Arc::new(format::Formatter::default()),
+            formatter: {
+                let formatter = format::Formatter::default();
+                formatter.set_snippets(settings::load().snippets);
+                Arc::new(formatter)
+            },
             overlay_generation: AtomicU64::new(0),
             stats: Mutex::new(stats),
             gate: Mutex::new(None),
@@ -371,6 +376,7 @@ impl AppState {
             overlay: settings::load().overlay,
             smart: settings::load().smart,
             dictionary: settings::load().dictionary,
+            snippets: settings::load().snippets,
             llm: LlmStatus {
                 state: inner.llm_state,
                 detail: inner.llm_detail.clone(),
@@ -1569,6 +1575,74 @@ fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Longest spoken phrase and longest expansion a snippet may have.
+const MAX_TRIGGER_LEN: usize = 60;
+const MAX_SNIPPET_LEN: usize = 4000;
+
+/// Adds a snippet, or replaces the one called `replacing` (an edit that may
+/// also rename the trigger).
+#[tauri::command]
+fn save_snippet(
+    app: AppHandle,
+    trigger: String,
+    text: String,
+    exact: bool,
+    replacing: Option<String>,
+) -> Result<(), String> {
+    let trigger = trigger.split_whitespace().collect::<Vec<_>>().join(" ");
+    if trigger.is_empty() || trigger.len() > MAX_TRIGGER_LEN {
+        return Err(format!(
+            "Say a short phrase to trigger it (up to {MAX_TRIGGER_LEN} characters)"
+        ));
+    }
+    if !trigger.chars().any(char::is_alphanumeric) {
+        return Err("The phrase needs at least one letter or number".into());
+    }
+    if text.trim().is_empty() || text.len() > MAX_SNIPPET_LEN {
+        return Err(format!(
+            "Enter the text to type (up to {MAX_SNIPPET_LEN} characters)"
+        ));
+    }
+    let mut saved = settings::load();
+    let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
+    // A different snippet already answers to this phrase.
+    if saved.snippets.iter().any(|s| {
+        same(&s.trigger, &trigger) && !replacing.as_deref().is_some_and(|r| same(r, &s.trigger))
+    }) {
+        return Err("Another snippet already uses that phrase".into());
+    }
+    let snippet = format::snippets::Snippet {
+        trigger,
+        text: text.trim_end().to_string(),
+        exact,
+    };
+    match replacing
+        .as_deref()
+        .and_then(|r| saved.snippets.iter().position(|s| same(&s.trigger, r)))
+    {
+        Some(at) => saved.snippets[at] = snippet,
+        None => saved.snippets.push(snippet),
+    }
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    app.state::<AppState>()
+        .formatter
+        .set_snippets(saved.snippets);
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn remove_snippet(app: AppHandle, trigger: String) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.snippets.retain(|s| s.trigger != trigger);
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    app.state::<AppState>()
+        .formatter
+        .set_snippets(saved.snippets);
+    emit_status(&app);
+    Ok(())
+}
+
 fn current_hotkey() -> String {
     settings::load()
         .hotkey
@@ -2034,6 +2108,8 @@ pub fn run() {
             test_cloud,
             add_word,
             remove_word,
+            save_snippet,
+            remove_snippet,
             set_hotkey,
             hotkey_options,
             set_instant_mic,

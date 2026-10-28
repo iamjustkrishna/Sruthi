@@ -51,6 +51,7 @@ interface Status {
     providers: CloudEntry[];
   };
   dictionary: string[];
+  snippets: Snippet[];
   hotkey: string;
   instant_mic: boolean;
   theme: ThemeName;
@@ -67,6 +68,12 @@ interface Status {
   gpu_downloading: boolean;
   history: HistoryEntry[];
   usage: Usage;
+}
+
+interface Snippet {
+  trigger: string;
+  text: string;
+  exact: boolean;
 }
 
 interface CloudEntry {
@@ -520,6 +527,7 @@ function render(s: Status) {
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
+  renderSnippets(s.snippets);
 
   showHoldPhase(holdPhase);
 }
@@ -527,7 +535,7 @@ function render(s: Status) {
 // ---------------------------------------------------------------------------
 // Pages: the sidebar picks one; the window remembers it between launches
 
-const PAGES = ["home", "dictionary", "models", "settings"] as const;
+const PAGES = ["home", "dictionary", "snippets", "models", "settings"] as const;
 type Page = (typeof PAGES)[number];
 
 const mainScroller = $("main");
@@ -808,6 +816,92 @@ function renderHistory(force = false) {
 }
 
 historySearch.addEventListener("input", () => renderHistory());
+
+// ---------------------------------------------------------------------------
+// Snippets: a spoken phrase that types a saved block of text
+
+const snippetList = $<HTMLUListElement>("snippet-list");
+const snippetEmpty = $("snippet-empty");
+const snippetForm = $<HTMLFormElement>("snippet-form");
+const snippetTrigger = $<HTMLInputElement>("snippet-trigger");
+const snippetText = $<HTMLTextAreaElement>("snippet-text");
+const snippetExact = $<HTMLInputElement>("snippet-exact");
+const snippetError = $("snippet-error");
+const snippetDelete = $<HTMLButtonElement>("snippet-delete");
+/** The saved phrase the form is editing; null while writing a new one. */
+let editingSnippet: string | null = null;
+let snippetsSeen: Snippet[] = [];
+
+function showSnippetError(message: string | null) {
+  snippetError.hidden = !message;
+  snippetError.textContent = message ?? "";
+}
+
+function editSnippet(snippet: Snippet | null) {
+  editingSnippet = snippet?.trigger ?? null;
+  snippetTrigger.value = snippet?.trigger ?? "";
+  snippetText.value = snippet?.text ?? "";
+  snippetExact.checked = snippet?.exact ?? true;
+  snippetDelete.hidden = !snippet;
+  showSnippetError(null);
+  renderSnippets(snippetsSeen);
+}
+
+function renderSnippets(snippets: Snippet[]) {
+  snippetsSeen = snippets;
+  snippetEmpty.hidden = snippets.length > 0;
+  snippetEmpty.textContent = snippets.length
+    ? ""
+    : "No snippets yet. Save one on the right, then say its phrase in any sentence.";
+  snippetList.replaceChildren(
+    ...snippets.map((s) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "snippet-item";
+      b.setAttribute("aria-pressed", String(s.trigger === editingSnippet));
+      const name = document.createElement("strong");
+      name.textContent = s.trigger;
+      const preview = document.createElement("span");
+      preview.textContent = s.text.replace(/\s+/g, " ");
+      b.append(name, preview);
+      b.addEventListener("click", () => editSnippet(s));
+      li.append(b);
+      return li;
+    }),
+  );
+}
+
+$("snippet-new").addEventListener("click", () => {
+  editSnippet(null);
+  snippetTrigger.focus();
+});
+
+snippetForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showSnippetError(null);
+  const trigger = snippetTrigger.value.trim().replace(/\s+/g, " ");
+  try {
+    await invoke("save_snippet", {
+      trigger,
+      text: snippetText.value,
+      exact: snippetExact.checked,
+      replacing: editingSnippet,
+    });
+    editingSnippet = trigger;
+    snippetDelete.hidden = false;
+    renderSnippets(status?.snippets ?? snippetsSeen);
+  } catch (err) {
+    showSnippetError(String(err));
+  }
+});
+
+snippetDelete.addEventListener("click", async () => {
+  if (editingSnippet === null) return;
+  if (!confirm(`Delete the snippet "${editingSnippet}"?`)) return;
+  await run("remove_snippet", { trigger: editingSnippet });
+  editSnippet(null);
+});
 
 // ---------------------------------------------------------------------------
 // Hold-to-dictate button: same flow as the hotkey, press and release

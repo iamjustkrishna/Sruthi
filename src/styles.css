@@ -354,6 +354,111 @@ h1 {
   margin-top: var(--space-3);
 }
 
+/* Snippets: the saved phrases beside the editor */
+.primary-btn {
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-small);
+  font-weight: 600;
+}
+.snippets-grid {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  max-width: 800px;
+}
+.snippet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.snippet-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.snippet-item:hover:not(:disabled) {
+  background: var(--raise);
+  color: var(--text);
+}
+.snippet-item[aria-pressed="true"],
+.snippet-item[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--sound-soft);
+  border-color: var(--sound);
+}
+.snippet-item strong {
+  font-size: 14px;
+  line-height: 1.3;
+}
+.snippet-item span {
+  font-size: var(--text-caption);
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.snippet-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.field input,
+.field textarea {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+.field input:focus-visible,
+.field textarea:focus-visible {
+  outline-offset: 1px;
+}
+.snippet-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.snippet-actions .grow {
+  flex: 1;
+}
+#snippet-delete {
+  color: var(--err);
+}
+@media (max-width: 959px) {
+  .snippets-grid {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+}
+
 /* Narrow window: icons-only sidebar, the rail moves above the feed */
 @media (max-width: 959px) {
   .sidebar {

@@ -56,6 +56,8 @@ pub struct Settings {
     pub llm: Option<String>,
     /// Personal dictionary: names, product terms and rare words.
     pub dictionary: Vec<String>,
+    /// Spoken phrases that type a saved block of text.
+    pub snippets: Vec<crate::format::snippets::Snippet>,
     /// Push-to-talk shortcut, e.g. "Ctrl+Alt+Space" (None: the default).
     pub hotkey: Option<String>,
     /// Keep the microphone open so recording starts instantly.
@@ -81,6 +83,7 @@ impl Default for Settings {
             smart: true,
             llm: None,
             dictionary: Vec::new(),
+            snippets: Vec::new(),
             hotkey: None,
             instant_mic: true,
             microphone: None,

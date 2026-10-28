@@ -7,6 +7,7 @@ pub mod corrections;
 pub mod dictionary;
 pub mod llm;
 pub mod rules;
+pub mod snippets;
 
 use std::sync::Mutex;
 
@@ -21,9 +22,15 @@ pub struct Formatter {
     /// A cloud provider chosen instead of the local model (the local one
     /// stays as the fallback).
     cloud: Mutex<Option<cloud::Cloud>>,
+    /// Spoken phrases that expand to saved text, applied last.
+    snippets: Mutex<Vec<snippets::Snippet>>,
 }
 
 impl Formatter {
+    pub fn set_snippets(&self, snippets: Vec<snippets::Snippet>) {
+        *self.snippets.lock().unwrap() = snippets;
+    }
+
     pub fn set_server(&self, server: Option<llm::LlmServer>) {
         *self.server.lock().unwrap() = server;
     }
@@ -50,7 +57,8 @@ impl Formatter {
         } else {
             text
         };
-        rules::tidy_lines(&text)
+        let text = rules::tidy_lines(&text);
+        snippets::apply(&text, &self.snippets.lock().unwrap())
     }
 
     /// The AI clean-up step (falls back to `ruled` whenever it shouldn't run
