@@ -22,6 +22,8 @@ const MIN_SAMPLE_WORDS: u32 = 3;
 const MIN_SAMPLE_SECONDS: f32 = 1.0;
 /// Wispr Flow's reference: what the same words would cost on a keyboard.
 const TYPING_WPM: f32 = 40.0;
+/// Apps listed in "Where you dictate"; far more than anyone dictates into.
+const MAX_TOP_APPS: usize = 50;
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Day {
@@ -282,7 +284,7 @@ impl Stats {
                     })
                     .collect();
                 apps.sort_by(|a, b| b.words.cmp(&a.words));
-                apps.truncate(3);
+                apps.truncate(MAX_TOP_APPS);
                 apps
             },
             avg_latency_ms: {
@@ -696,6 +698,24 @@ mod tests {
         assert_eq!(top[0].name, "chrome.exe");
         assert_eq!(top[0].words, 7);
         assert_eq!(top[1].words, 2);
+    }
+
+    #[test]
+    fn top_apps_lists_every_app_up_to_the_cap() {
+        let mut stats = Stats::default();
+        for i in 0..8 {
+            record(
+                &mut stats,
+                "one two",
+                "",
+                2.0,
+                &format!("app{i}.exe"),
+                "2026-10-22",
+                500,
+            );
+        }
+        let top = stats.usage("2026-10-22").top_apps;
+        assert_eq!(top.len(), 8);
     }
 
     #[test]

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, iconUrl } from "./appIcons";
+import sruthiLogo from "./assets/sruthi-logo.png";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
@@ -546,6 +547,9 @@ function render(s: Status) {
     input.checked = input.value === s.overlay;
   });
   renderWords(s.dictionary);
+  renderWordUse(s.dictionary, s.history);
+  renderFixed(s.dictionary, s.history);
+  renderSetup(s, active?.name);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   renderMicrophones(s);
   renderUsage(s);
@@ -893,6 +897,15 @@ function historyEntry(e: HistoryEntry) {
     const chip = appChip(e.app);
     if (chip) meta.append(chip);
     meta.append(el("b", "", app));
+  } else {
+    // No recorded app (older dictations): Sruthi's own mark stands in.
+    const chip = el("span", "app-chip own");
+    chip.setAttribute("aria-hidden", "true");
+    const img = document.createElement("img");
+    img.src = sruthiLogo;
+    img.alt = "";
+    chip.append(img);
+    meta.append(chip);
   }
   const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
   const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -1033,28 +1046,52 @@ function editSnippet(snippet: Snippet | null) {
   renderSnippets(snippetsSeen);
 }
 
+/** Starting points: picking one fills the form, to be reworded and saved. */
+const SNIPPET_IDEAS: Snippet[] = [
+  { trigger: "email sign-off", text: "Thanks and regards,\n[Your name]", exact: true },
+  { trigger: "standup", text: "Yesterday:\n- \n\nToday:\n- \n\nBlocked:\n- ", exact: true },
+  { trigger: "meeting link", text: "Here is a link to book time with me: [paste your link]", exact: false },
+  { trigger: "bug report", text: "Steps to reproduce:\n1. \n\nExpected:\n\nActual:\n", exact: true },
+  { trigger: "pull request", text: "## What changed\n\n## Why\n\n## How I tested it\n", exact: true },
+  { trigger: "out of office", text: "Thanks for your email. I'm away until [date] and will reply when I'm back.", exact: true },
+  { trigger: "my address", text: "[Street, city, postcode]", exact: false },
+  { trigger: "will look", text: "Thanks for sending this. I'll take a look and get back to you shortly.", exact: true },
+];
+
+function snippetItem(s: Snippet, onPick: () => void, pressed = false) {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "snippet-item";
+  b.setAttribute("aria-pressed", String(pressed));
+  b.append(el("strong", "", s.trigger), el("span", "", s.text.replace(/\s+/g, " ")));
+  b.addEventListener("click", onPick);
+  li.append(b);
+  return li;
+}
+
 function renderSnippets(snippets: Snippet[]) {
   snippetsSeen = snippets;
+  $("snippet-saved").hidden = snippets.length === 0;
+  $("snippet-count").textContent = String(snippets.length);
+  const saved = new Set(snippets.map((s) => s.trigger.toLowerCase()));
+  const ideas = SNIPPET_IDEAS.filter((i) => !saved.has(i.trigger.toLowerCase()));
+  $("snippet-ideas-title").textContent = snippets.length ? "More ideas" : "Start from an idea";
   snippetEmpty.hidden = snippets.length > 0;
-  snippetEmpty.textContent = snippets.length
-    ? ""
-    : "No snippets yet. Save one on the right, then say its phrase in any sentence.";
+  snippetEmpty.textContent = "No snippets yet. Pick an idea, change the words to yours, and save it.";
+  $("snippet-ideas").replaceChildren(
+    ...ideas.map((i) =>
+      snippetItem(i, () => {
+        editSnippet(null);
+        snippetTrigger.value = i.trigger;
+        snippetText.value = i.text;
+        snippetExact.checked = i.exact;
+        snippetText.focus();
+      }),
+    ),
+  );
   snippetList.replaceChildren(
-    ...snippets.map((s) => {
-      const li = document.createElement("li");
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "snippet-item";
-      b.setAttribute("aria-pressed", String(s.trigger === editingSnippet));
-      const name = document.createElement("strong");
-      name.textContent = s.trigger;
-      const preview = document.createElement("span");
-      preview.textContent = s.text.replace(/\s+/g, " ");
-      b.append(name, preview);
-      b.addEventListener("click", () => editSnippet(s));
-      li.append(b);
-      return li;
-    }),
+    ...snippets.map((s) => snippetItem(s, () => editSnippet(s), s.trigger === editingSnippet)),
   );
 }
 
@@ -1214,7 +1251,6 @@ listen<DictationPhaseEvent>("dictation", ({ payload }) => {
 // Home, top: a greeting that tells the truth about your numbers, a waveform
 // that moves with the pointer and your voice, and three glance cards
 
-const MILESTONES = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 /** Typing speed the "saved" numbers compare against (the same 40 wpm as the stats). */
 const TYPING_WPM = 40;
 
@@ -1363,6 +1399,48 @@ function greeting() {
   return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
+/** Apps shown before "Show all". */
+const APPS_COLLAPSED = 4;
+let appsExpanded = false;
+
+/** Every app you dictated into, most words first; the list scrolls instead of growing the card. */
+function renderGlanceApps(apps: UsageApp[]) {
+  const host = $("glance-apps");
+  if (!apps.length) {
+    host.replaceChildren(el("p", "muted small", "Appears once you dictate into an app."));
+    return;
+  }
+  const top = apps[0].words || 1;
+  const shown = appsExpanded ? apps : apps.slice(0, APPS_COLLAPSED);
+  const list = el("div", "bars app-bars");
+  list.classList.toggle("scroll", appsExpanded && apps.length > 7);
+  list.append(
+    ...shown.map((a) => {
+      const row = el("div", "bar-row");
+      const track = el("span", "bar-track");
+      const fillEl = el("span", "bar-fill");
+      fillEl.style.width = `${Math.max(6, Math.round((a.words / top) * 100))}%`;
+      track.append(fillEl);
+      const chip = appChip(a.name);
+      if (chip) row.append(chip);
+      row.append(el("span", "bar-name", appLabel(a.name)), track, el("span", "bar-count", a.words.toLocaleString()));
+      row.title = `${appLabel(a.name)}: ${a.words.toLocaleString()} words`;
+      return row;
+    }),
+  );
+  host.replaceChildren(list);
+  if (apps.length > APPS_COLLAPSED) {
+    const more = el("button", "link-btn", appsExpanded ? "Show fewer" : `Show all ${apps.length}`);
+    more.type = "button";
+    more.setAttribute("aria-expanded", String(appsExpanded));
+    more.addEventListener("click", () => {
+      appsExpanded = !appsExpanded;
+      renderGlanceApps(apps);
+    });
+    host.append(more);
+  }
+}
+
 function renderGlance(u: Usage) {
   $("banner-greet").textContent = u.streak > 1 ? `${greeting()} · ${u.streak}-day streak` : greeting();
 
@@ -1374,14 +1452,18 @@ function renderGlance(u: Usage) {
         ? `Keep your ${u.streak}-day streak going. Say something.`
         : "Hold the shortcut and say your first sentence.";
 
-  // Milestone bar: words said, toward the next round number.
-  const next = MILESTONES.find((m) => m > u.words);
-  const prev = [...MILESTONES].reverse().find((m) => m <= u.words) ?? 0;
-  const fill = next ? (u.words - prev) / (next - prev) : 1;
-  $("milestone-fill").style.width = `${Math.round(fill * 100)}%`;
-  $("milestone-text").textContent = next
-    ? `${u.words.toLocaleString()} of ${next.toLocaleString()} words to your next milestone`
-    : `${u.words.toLocaleString()} words, past every milestone`;
+  // Lifetime totals under the headline: plain facts, nothing to "unlock".
+  const facts: [string, string][] = [];
+  if (u.words > 0) facts.push([u.words.toLocaleString(), "words dictated"]);
+  if (u.saved_min > 0) facts.push([savedLabel(u.saved_min), "of typing saved"]);
+  if (u.dictations > 0) facts.push([u.dictations.toLocaleString(), u.dictations === 1 ? "dictation" : "dictations"]);
+  $("banner-facts").replaceChildren(
+    ...facts.map(([n, label]) => {
+      const li = el("li");
+      li.append(el("strong", "", n), el("span", "", label));
+      return li;
+    }),
+  );
 
   // Today against your best day this week.
   const best = u.week.reduce((m, d) => (d.words > m.words ? d : m), { date: "", words: 0 });
@@ -1394,24 +1476,7 @@ function renderGlance(u: Usage) {
       : "words today";
 
   // Where the words went.
-  const apps = u.top_apps.filter((a) => appLabel(a.name)).slice(0, 4);
-  const top = apps[0]?.words ?? 1;
-  $("glance-apps").replaceChildren(
-    ...(apps.length
-      ? apps.map((a) => {
-          const row = el("div", "bar-row");
-          const track = el("span", "bar-track");
-          const fillEl = el("span", "bar-fill");
-          fillEl.style.width = `${Math.max(6, Math.round((a.words / top) * 100))}%`;
-          track.append(fillEl);
-          const chip = appChip(a.name);
-          if (chip) row.append(chip);
-          row.append(el("span", "bar-name", appLabel(a.name)), track);
-          row.title = `${a.words.toLocaleString()} words`;
-          return row;
-        })
-      : [el("p", "muted small", "Appears once you dictate into an app.")]),
-  );
+  renderGlanceApps(u.top_apps.filter((a) => appLabel(a.name)));
 
   // You against typing.
   const fastest = Math.max(u.wpm, TYPING_WPM);
@@ -1865,6 +1930,91 @@ function renderWords(words: string[]) {
       li.append(text, remove);
       return li;
     }),
+  );
+}
+
+/** How many of your saved dictations contain each dictionary word. */
+function renderWordUse(words: string[], history: HistoryEntry[]) {
+  const list = $<HTMLUListElement>("word-use");
+  const note = $("word-use-note");
+  if (!words.length) {
+    list.replaceChildren();
+    note.textContent = "Add a word on the left and this shows how often it turns up in what you say.";
+    return;
+  }
+  const escape = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const counted = words
+    .map((word) => {
+      const found = new RegExp(`(^|[^\\p{L}\\p{N}])${escape(word)}($|[^\\p{L}\\p{N}])`, "iu");
+      return { word, n: history.filter((h) => found.test(h.text)).length };
+    })
+    .sort((a, b) => b.n - a.n || a.word.localeCompare(b.word));
+  const top = counted[0].n || 1;
+  list.replaceChildren(
+    ...counted.map(({ word, n }) => {
+      const li = el("li", n ? "" : "idle");
+      const track = el("span", "bar-track");
+      const fillEl = el("span", "bar-fill");
+      fillEl.style.width = n ? `${Math.max(8, Math.round((n / top) * 100))}%` : "0%";
+      track.append(fillEl);
+      li.append(el("span", "bar-name", word), track, el("span", "bar-count", n ? String(n) : "Not yet"));
+      return li;
+    }),
+  );
+  const unused = counted.filter((c) => !c.n).length;
+  note.textContent =
+    `Counted across your latest ${history.length.toLocaleString()} dictations.` +
+    (unused ? ` ${unused} ${unused === 1 ? "word hasn't" : "words haven't"} come up yet.` : "");
+}
+
+/** Dictations where a dictionary word is in the pasted text but the model
+ *  heard something else: the dictionary visibly earning its place. */
+function renderFixed(words: string[], history: HistoryEntry[]) {
+  const list = $("fixed-list");
+  const empty = $("fixed-empty");
+  const fixes: { heard: string; text: string; word: string }[] = [];
+  for (const h of history) {
+    const word = words.find((w) => h.text.includes(w) && !h.heard.includes(w));
+    if (word) fixes.push({ heard: h.heard, text: h.text, word });
+    if (fixes.length === 5) break;
+  }
+  list.replaceChildren(
+    ...fixes.map(({ heard, text, word }) => {
+      const li = el("li");
+      const was = el("p", "fixed-was", heard);
+      const now = el("p", "fixed-now");
+      const at = text.indexOf(word);
+      now.append(text.slice(0, at), el("mark", "", word), text.slice(at + word.length));
+      li.append(was, now);
+      return li;
+    }),
+  );
+  empty.hidden = fixes.length > 0;
+  empty.textContent = words.length
+    ? "Nothing yet. When a word from your dictionary replaces a mishearing, the before and after land here."
+    : "Add a word above, then dictate it. The before and after land here.";
+}
+
+/** Settings: the pipeline as it stands, read straight from the app's state. */
+function renderSetup(s: Status, modelName: string | undefined) {
+  const llm = s.llm.models.find((m) => m.id === s.llm.active);
+  const cloud = s.cloud.providers.find((p) => p.id === s.cloud.active);
+  const tidy = cloud
+    ? `${cloud.name} (text only)`
+    : s.smart
+      ? llm && s.llm.state === "ready"
+        ? `${llm.name}, on this PC`
+        : "Rules on this PC"
+      : "Off";
+  const rows: [string, string][] = [
+    ["Hear", [modelName ?? "No model yet", s.model === "ready" ? (s.engine_on_gpu ? "graphics card" : "CPU") : ""].filter(Boolean).join(" · ")],
+    ["Tidy up", tidy],
+    ["Microphone", s.microphone ?? s.default_microphone ?? "Windows default"],
+    ["Shortcut", s.hotkey],
+    ["Audio", cloud ? "Stays on this PC. Only text goes to the cloud." : "Stays on this PC."],
+  ];
+  $("setup-list").replaceChildren(
+    ...rows.flatMap(([k, v]) => [el("dt", "", k), el("dd", "", v)]),
   );
 }
 

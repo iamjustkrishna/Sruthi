@@ -365,10 +365,173 @@ h1 {
 }
 .snippets-grid {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: var(--space-5);
   align-items: start;
-  max-width: 800px;
+}
+.snippets-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+.snippets-side section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.side-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.side-title .count {
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--track);
+  font-variant-numeric: tabular-nums;
+}
+.snippet-list.ideas .snippet-item {
+  border-style: dashed;
+  background: transparent;
+}
+.snippet-list.ideas .snippet-item:hover:not(:disabled) {
+  background: var(--card);
+  border-style: solid;
+}
+.snippet-editor {
+  position: sticky;
+  top: 0;
+}
+/* Dictionary: the list and how it is doing, side by side when there is room */
+.dict-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (min-width: 960px) {
+  .dict-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+  .dict-grid > #suggest-card,
+  .dict-grid > #fixed-card {
+    grid-column: 1 / -1;
+  }
+}
+.fixed-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+.fixed-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--track);
+  min-width: 0;
+}
+.fixed-list p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+}
+.fixed-was {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+.fixed-now mark {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--sound) 16%, transparent);
+  color: var(--sound);
+  font-weight: 600;
+}
+.setup-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 18px;
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-caption);
+}
+.setup-list dt {
+  color: var(--muted);
+}
+.setup-list dd {
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.word-use {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.word-use li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+}
+.word-use li.idle .bar-name {
+  color: var(--muted);
+}
+.word-use .bar-name {
+  width: 96px;
+}
+.bar-count {
+  min-width: 34px;
+  text-align: right;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.word-use .bar-count {
+  min-width: 48px;
+}
+.glance-apps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.app-bars.scroll {
+  max-height: 156px;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+.link-btn {
+  align-self: flex-start;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--sound);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+.link-btn:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
 }
 .snippet-list {
   list-style: none;
@@ -580,30 +743,26 @@ h1 {
   line-height: 1.2;
   color: #ffffff;
 }
-.milestone {
+.banner-facts {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.milestone-bar {
-  flex: 1;
-  max-width: 300px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  overflow: hidden;
-}
-.milestone-bar i {
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #8aa8ff, #bfe9ff);
-  transition: width 0.6s ease;
-}
-.milestone p {
+.banner-facts li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: var(--text-caption);
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.72);
+}
+.banner-facts strong {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
 }
 /* Covered or in the background: hold still and cost nothing. */
 .banner.idle .blob::after {
@@ -1803,8 +1962,7 @@ button.ghost:hover:not(:disabled) {
     margin-bottom: 14px;
   }
   .snippets-grid {
-    max-width: 1040px;
-    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-columns: 340px minmax(0, 1fr);
   }
   .banner {
     min-height: 200px;
@@ -1827,6 +1985,15 @@ button.ghost:hover:not(:disabled) {
   background: var(--brand);
   -webkit-mask: var(--icon) center / contain no-repeat;
   mask: var(--icon) center / contain no-repeat;
+}
+.app-chip.own {
+  background: #ffffff;
+  border-color: var(--border-strong);
+}
+.app-chip.own img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 .bar-row .app-chip {
   width: 18px;
