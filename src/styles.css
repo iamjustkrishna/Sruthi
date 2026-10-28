@@ -513,10 +513,55 @@ h1 {
   flex-direction: column;
   gap: var(--space-2);
 }
-.app-bars.scroll {
-  max-height: 156px;
+/* "Where you dictate": the list is always fully drawn and a clip slides open, so
+   Show all is a smooth grow, not a redraw. Rows are a fixed height so the
+   heights below are exact. */
+.app-clip {
+  --row: 18px;
+  --gap: 6px;
+  overflow: hidden;
+  max-height: calc(var(--shut-rows) * var(--row) + (var(--shut-rows) - 1) * var(--gap));
+  transition: max-height 0.34s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.app-clip.open {
+  max-height: calc(var(--open-rows) * var(--row) + (var(--open-rows) - 1) * var(--gap));
+}
+.app-clip .bar-row {
+  height: var(--row);
+}
+/* Past a few rows it scrolls: no scrollbar to shove the layout, a soft fade
+   at the bottom says there is more. */
+.app-clip.scrolls {
   overflow-y: auto;
-  padding-right: var(--space-1);
+  scrollbar-width: none;
+}
+.app-clip.scrolls:not(.at-end) {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+.link-btn.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.more-chev {
+  width: 6px;
+  height: 6px;
+  margin-top: -2px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.more[aria-expanded="true"] .more-chev {
+  margin-top: 2px;
+  transform: rotate(-135deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-clip,
+  .more-chev {
+    transition: none;
+  }
 }
 .link-btn {
   align-self: flex-start;

@@ -1427,23 +1427,30 @@ function greeting() {
   return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
 
-/** Apps shown before "Show all". */
+/** Apps shown before "Show all", and the most rows the open list shows before it scrolls. */
 const APPS_COLLAPSED = 4;
+const APPS_OPEN = 7;
 let appsExpanded = false;
+let appsSig = "";
 
-/** Every app you dictated into, most words first; the list scrolls instead of growing the card. */
+/** Every app you dictated into, most words first. "Show all" slides the list open
+ *  (and scrolls inside the card past a few rows) instead of redrawing it. */
 function renderGlanceApps(apps: UsageApp[]) {
+  // Status arrives often; only rebuild when the list itself changed, so an
+  // open list is not collapsed or restarted underneath you.
+  const sig = JSON.stringify(apps);
+  if (sig === appsSig) return;
+  appsSig = sig;
+
   const host = $("glance-apps");
   if (!apps.length) {
     host.replaceChildren(el("p", "muted small", "Appears once you dictate into an app."));
     return;
   }
   const top = apps[0].words || 1;
-  const shown = appsExpanded ? apps : apps.slice(0, APPS_COLLAPSED);
   const list = el("div", "bars app-bars");
-  list.classList.toggle("scroll", appsExpanded && apps.length > 7);
   list.append(
-    ...shown.map((a) => {
+    ...apps.map((a) => {
       const row = el("div", "bar-row");
       const track = el("span", "bar-track");
       const fillEl = el("span", "bar-fill");
@@ -1456,17 +1463,35 @@ function renderGlanceApps(apps: UsageApp[]) {
       return row;
     }),
   );
-  host.replaceChildren(list);
-  if (apps.length > APPS_COLLAPSED) {
-    const more = el("button", "link-btn", appsExpanded ? "Show fewer" : `Show all ${apps.length}`);
-    more.type = "button";
+  const clip = el("div", "app-clip");
+  clip.style.setProperty("--open-rows", String(Math.min(apps.length, APPS_OPEN)));
+  clip.style.setProperty("--shut-rows", String(Math.min(apps.length, APPS_COLLAPSED)));
+  clip.append(list);
+  host.replaceChildren(clip);
+  if (apps.length <= APPS_COLLAPSED) return;
+
+  const scrolls = apps.length > APPS_OPEN;
+  const atEnd = () => clip.classList.toggle("at-end", clip.scrollTop + clip.clientHeight >= clip.scrollHeight - 2);
+  clip.addEventListener("scroll", atEnd, { passive: true });
+
+  const more = el("button", "link-btn more");
+  more.type = "button";
+  const label = el("span");
+  more.append(label, el("i", "more-chev"));
+  const sync = () => {
+    clip.classList.toggle("open", appsExpanded);
+    clip.classList.toggle("scrolls", appsExpanded && scrolls);
+    if (!appsExpanded) clip.scrollTop = 0;
+    atEnd();
+    label.textContent = appsExpanded ? "Show fewer" : `Show all ${apps.length}`;
     more.setAttribute("aria-expanded", String(appsExpanded));
-    more.addEventListener("click", () => {
-      appsExpanded = !appsExpanded;
-      renderGlanceApps(apps);
-    });
-    host.append(more);
-  }
+  };
+  more.addEventListener("click", () => {
+    appsExpanded = !appsExpanded;
+    sync();
+  });
+  host.append(more);
+  sync();
 }
 
 function renderGlance(u: Usage) {
