@@ -62,6 +62,8 @@ pub struct Settings {
     pub hotkey: Option<String>,
     /// Keep the microphone open so recording starts instantly.
     pub instant_mic: bool,
+    /// Press Enter after each paste, so a chat message or search sends itself.
+    pub auto_enter: bool,
     /// Microphone to record from (None: Windows' default).
     pub microphone: Option<String>,
     /// Window palette: follow the system, or force light / dark.
@@ -86,6 +88,7 @@ impl Default for Settings {
             snippets: Vec::new(),
             hotkey: None,
             instant_mic: true,
+            auto_enter: false,
             microphone: None,
             cloud: None,
             cloud_models: HashMap::new(),

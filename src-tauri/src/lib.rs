@@ -117,6 +117,7 @@ struct Status {
     snippets: Vec<format::snippets::Snippet>,
     hotkey: String,
     instant_mic: bool,
+    auto_enter: bool,
     /// The window palette choice.
     theme: settings::Theme,
     microphone: Option<String>,
@@ -398,6 +399,7 @@ impl AppState {
             cloud: cloud_status(),
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
+            auto_enter: settings::load().auto_enter,
             theme: settings::load().theme,
             microphone: settings::load().microphone,
             microphones: list_microphone_names(),
@@ -1129,8 +1131,19 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
             });
         } else {
             // The pill can't take focus, so it stays up while the paste lands.
-            // Trailing space keeps back-to-back dictations from running together.
-            timing::measure("paste", || paste::paste_text(&format!("{} ", outcome.text)))?;
+            // Trailing space keeps back-to-back dictations from running together;
+            // when Enter follows, the message is done and the space would only
+            // sit at the end of what gets sent.
+            let enter = settings::load().auto_enter;
+            let pasted = if enter {
+                outcome.text.clone()
+            } else {
+                format!("{} ", outcome.text)
+            };
+            timing::measure("paste", || paste::paste_text(&pasted))?;
+            if enter {
+                timing::measure("enter", paste::press_enter)?;
+            }
             record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
         }
     }
@@ -1961,6 +1974,15 @@ fn set_instant_mic(app: AppHandle, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_auto_enter(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.auto_enter = enabled;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn set_theme(app: AppHandle, theme: settings::Theme) -> Result<(), String> {
     let mut saved = settings::load();
     saved.theme = theme;
@@ -2330,6 +2352,7 @@ pub fn run() {
             set_hotkey,
             hotkey_options,
             set_instant_mic,
+            set_auto_enter,
             set_theme,
             get_theme,
             set_microphone,

@@ -56,6 +56,7 @@ interface Status {
   snippets: Snippet[];
   hotkey: string;
   instant_mic: boolean;
+  auto_enter: boolean;
   theme: ThemeName;
   microphone: string | null;
   microphones: string[];
@@ -551,6 +552,7 @@ function render(s: Status) {
   renderFixed(s.dictionary, s.history);
   renderSetup(s, active?.name);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
+  $<HTMLInputElement>("auto-enter-toggle").checked = s.auto_enter;
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
@@ -2011,6 +2013,7 @@ function renderSetup(s: Status, modelName: string | undefined) {
     ["Tidy up", tidy],
     ["Microphone", s.microphone ?? s.default_microphone ?? "Windows default"],
     ["Shortcut", s.hotkey],
+    ["After pasting", s.auto_enter ? "Presses Enter for you" : "Waits for you"],
     ["Audio", cloud ? "Stays on this PC. Only text goes to the cloud." : "Stays on this PC."],
   ];
   $("setup-list").replaceChildren(
@@ -2029,6 +2032,9 @@ $<HTMLFormElement>("word-form").addEventListener("submit", async (e) => {
 });
 
 smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartToggle.checked }));
+
+const autoEnterToggle = $<HTMLInputElement>("auto-enter-toggle");
+autoEnterToggle.addEventListener("change", () => run("set_auto_enter", { enabled: autoEnterToggle.checked }));
 
 const instantToggle = $<HTMLInputElement>("instant-toggle");
 instantToggle.addEventListener("change", () => run("set_instant_mic", { enabled: instantToggle.checked }));

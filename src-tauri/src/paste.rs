@@ -45,3 +45,13 @@ fn send_paste_shortcut() -> Result<()> {
         .map_err(|e| anyhow!("{e}"))?;
     clicked
 }
+
+/// Presses Enter in the focused app, once the pasted text has landed.
+pub fn press_enter() -> Result<()> {
+    // Let the target app finish handling the paste before the Enter arrives.
+    thread::sleep(Duration::from_millis(60));
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| anyhow!("{e}"))?;
+    enigo
+        .key(Key::Return, Direction::Click)
+        .map_err(|e| anyhow!("{e}"))
+}
