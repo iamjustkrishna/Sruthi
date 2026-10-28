@@ -93,6 +93,8 @@ interface HistoryEntry {
   seconds: number;
   heard: string;
   text: string;
+  /** Process name of the app the text went into; empty for older entries. */
+  app?: string;
 }
 
 interface UsageWeek {
@@ -473,6 +475,26 @@ function renderWarnings(s: Status) {
   $("mic-fallback-text").textContent = s.mic_fallback ?? "";
 }
 
+/** The one-line value each foldable card shows while it is collapsed. */
+function renderSummaries(s: Status, activeModel: string | undefined) {
+  const mic = s.microphone ?? s.default_microphone;
+  $("mic-summary").textContent = mic ? `${mic}${s.microphone ? "" : " · Windows default"}` : "Windows default";
+
+  const runsOn = s.model === "ready" ? (s.engine_on_gpu ? "Graphics card" : "CPU") : "";
+  $("model-summary").textContent = [activeModel ?? "No model yet", runsOn].filter(Boolean).join(" · ");
+
+  const words = s.dictionary;
+  $("dict-summary").textContent = words.length
+    ? words.slice(0, 3).join(", ") + (words.length > 3 ? `, +${words.length - 3}` : "")
+    : "No words yet";
+
+  $("shortcut-summary").textContent = [
+    s.hotkey,
+    s.instant_mic ? "Instant start on" : "Instant start off",
+    s.overlay === "field" ? "Pill under the field" : "Pill at bottom center",
+  ].join(" · ");
+}
+
 function render(s: Status) {
   status = s;
   document.documentElement.dataset.theme = s.theme;
@@ -483,6 +505,8 @@ function render(s: Status) {
   modelText.textContent =
     s.detail ?? (s.model === "ready" && active ? `${active.name} · ${text}` : text);
   $("hotkey").textContent = s.hotkey;
+  $("hotkey-hint").textContent = s.hotkey;
+  renderSummaries(s, active?.name);
   renderModels(s);
   renderDevice(s);
   renderWarnings(s);
@@ -495,48 +519,354 @@ function render(s: Status) {
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   renderMicrophones(s);
   renderUsage(s);
+  renderHistory();
 
   showHoldPhase(holdPhase);
 }
 
 // ---------------------------------------------------------------------------
-// Views: Setup | Stats, the tabs right under the hero
+// Pages: the sidebar picks one; the window remembers it between launches
 
-const VIEWS = ["setup", "stats"] as const;
-type View = (typeof VIEWS)[number];
+const PAGES = ["home", "dictionary", "models", "settings"] as const;
+type Page = (typeof PAGES)[number];
 
-const appScroller = document.querySelector<HTMLElement>(".app");
+const mainScroller = $("main");
 
-function setView(next: View) {
-  for (const v of VIEWS) {
-    $<HTMLDivElement>(`view-${v}`).hidden = v !== next;
-    const tab = $<HTMLButtonElement>(`view-tab-${v}`);
-    tab.classList.toggle("active", v === next);
-    tab.setAttribute("aria-selected", String(v === next));
+function setPage(next: Page) {
+  for (const p of PAGES) {
+    $(`page-${p}`).hidden = p !== next;
+    const item = $<HTMLButtonElement>(`nav-${p}`);
+    item.classList.toggle("active", p === next);
+    item.setAttribute("aria-current", p === next ? "page" : "false");
   }
-  appScroller?.scrollTo({ top: 0 });
+  mainScroller.scrollTo({ top: 0 });
+  try {
+    localStorage.setItem("page", next);
+  } catch {
+    // Storage can be blocked; the sidebar still works without it.
+  }
 }
 
-$<HTMLButtonElement>("view-tab-setup").addEventListener("click", () => setView("setup"));
-$<HTMLButtonElement>("view-tab-stats").addEventListener("click", () => setView("stats"));
+for (const p of PAGES) {
+  $<HTMLButtonElement>(`nav-${p}`).addEventListener("click", () => setPage(p));
+}
+try {
+  const saved = localStorage.getItem("page");
+  if (PAGES.includes(saved as Page)) setPage(saved as Page);
+} catch {
+  // Start on Home.
+}
+
+// ---------------------------------------------------------------------------
+// Home: everything you dictated
+
+const historyList = $("history-list");
+const historyEmpty = $("history-empty");
+const historySearch = $<HTMLInputElement>("history-search");
+/** Entries whose "what the model heard" panel is open. */
+const heardOpen = new Set<string>();
+let historySignature = "";
+let playing: { id: string; audio: HTMLAudioElement; url: string } | null = null;
+
+const ICONS = {
+  copy: "M9 9h10v11H9zM5 15V4h10",
+  play: "M7 5l12 7-12 7z",
+  stop: "M7 7h10v10H7z",
+  trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
+  changes: "M4 7h16M4 12h10M4 17h16",
+};
+
+function icon(path: string) {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}" /></svg>`;
+}
+
+/** "chrome.exe" -> "Chrome"; empty or unknown stays empty. */
+function appLabel(process: string | undefined) {
+  const base = (process ?? "").replace(/\.exe$/i, "").trim();
+  if (!base || base === "unknown") return "";
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+function dayLabel(ms: number) {
+  const d = new Date(ms);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+}
+
+const normalizeWord = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * What the model heard, with the words formatting dropped or rewrote struck
+ * through: a word-level longest common subsequence against the final text.
+ */
+function heardWithChanges(heard: string, text: string): Node[] {
+  const a = heard.split(/\s+/).filter(Boolean);
+  const b = text.split(/\s+/).filter(Boolean).map(normalizeWord);
+  const n = a.length;
+  const m = b.length;
+  const lcs = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] =
+        normalizeWord(a[i]) === b[j] && b[j] !== ""
+          ? lcs[i + 1][j + 1] + 1
+          : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const nodes: Node[] = [];
+  const push = (word: string, kept: boolean) => {
+    const el = document.createElement(kept ? "span" : "del");
+    el.textContent = word + " ";
+    nodes.push(el);
+  };
+  let i = 0;
+  let j = 0;
+  while (i < n) {
+    if (j < m && b[j] !== "" && normalizeWord(a[i]) === b[j] && lcs[i][j] === lcs[i + 1][j + 1] + 1) {
+      push(a[i], true);
+      i++;
+      j++;
+    } else if (j < m && lcs[i][j + 1] >= lcs[i + 1][j]) {
+      j++;
+    } else {
+      push(a[i], false);
+      i++;
+    }
+  }
+  return nodes;
+}
+
+function actionButton(label: string, path: string, onClick: () => void, pressed?: boolean) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "act";
+  b.innerHTML = `${icon(path)}<span>${label}</span>`;
+  if (pressed !== undefined) b.setAttribute("aria-pressed", String(pressed));
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function stopPlayback() {
+  if (!playing) return;
+  playing.audio.pause();
+  URL.revokeObjectURL(playing.url);
+  playing = null;
+}
+
+async function togglePlay(id: string) {
+  const wasPlaying = playing?.id === id;
+  stopPlayback();
+  if (wasPlaying) {
+    renderHistory(true);
+    return;
+  }
+  try {
+    const bytes = await invoke<ArrayBuffer>("get_recording", { id });
+    const url = URL.createObjectURL(new Blob([bytes], { type: "audio/wav" }));
+    const audio = new Audio(url);
+    playing = { id, audio, url };
+    audio.addEventListener("ended", () => {
+      if (playing?.audio === audio) stopPlayback();
+      renderHistory(true);
+    });
+    await audio.play();
+  } catch (e) {
+    stopPlayback();
+    historyEmpty.hidden = false;
+    historyEmpty.textContent = `Couldn't play that recording: ${String(e)}`;
+  }
+  renderHistory(true);
+}
+
+function historyEntry(e: HistoryEntry) {
+  const root = document.createElement("article");
+  root.className = "entry";
+
+  const meta = document.createElement("div");
+  meta.className = "entry-meta";
+  const app = appLabel(e.app);
+  if (app) {
+    const chip = document.createElement("span");
+    chip.className = "app-chip";
+    chip.textContent = app.charAt(0);
+    chip.setAttribute("aria-hidden", "true");
+    const name = document.createElement("b");
+    name.textContent = app;
+    meta.append(chip, name);
+  }
+  const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
+  const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const rest = document.createElement("span");
+  rest.textContent = `${when} · ${Math.max(1, Math.round(e.seconds))} s${words ? ` · ${words} ${words === 1 ? "word" : "words"}` : ""}`;
+  meta.append(rest);
+
+  const text = document.createElement("p");
+  text.className = e.text ? "entry-text" : "entry-text none";
+  text.textContent = e.text || "Nothing was heard.";
+
+  const copy = actionButton("Copy", ICONS.copy, async () => {
+    const label = copy.querySelector("span")!;
+    try {
+      await invoke("copy_text", { text: e.text });
+      label.textContent = "Copied";
+      setTimeout(() => (label.textContent = "Copy"), 1400);
+    } catch {
+      // Clipboard busy; the text is still on screen to select.
+    }
+  });
+  copy.disabled = !e.text;
+
+  const isPlaying = playing?.id === e.id;
+  const play = actionButton(
+    isPlaying ? "Stop" : "Play",
+    isPlaying ? ICONS.stop : ICONS.play,
+    () => togglePlay(e.id),
+    isPlaying,
+  );
+
+  const actions = document.createElement("div");
+  actions.className = "entry-actions";
+  actions.append(copy, play);
+  if (e.heard && e.heard !== e.text) {
+    const open = heardOpen.has(e.id);
+    actions.append(
+      actionButton(
+        open ? "Hide changes" : "See changes",
+        ICONS.changes,
+        () => {
+          if (heardOpen.has(e.id)) heardOpen.delete(e.id);
+          else heardOpen.add(e.id);
+          renderHistory(true);
+        },
+        open,
+      ),
+    );
+  }
+  const grow = document.createElement("span");
+  grow.className = "grow";
+  actions.append(
+    grow,
+    actionButton("Delete", ICONS.trash, () => {
+      if (!confirm("Delete this dictation and its recording from this PC?")) return;
+      if (playing?.id === e.id) stopPlayback();
+      heardOpen.delete(e.id);
+      run("delete_recording", { id: e.id });
+    }),
+  );
+
+  root.append(meta, text);
+  if (heardOpen.has(e.id) && e.heard) {
+    const panel = document.createElement("div");
+    panel.className = "entry-heard";
+    const label = document.createElement("h3");
+    label.textContent = "What the model heard";
+    const body = document.createElement("p");
+    body.append(...heardWithChanges(e.heard, e.text));
+    panel.append(label, body);
+    root.append(panel);
+  }
+  root.append(actions);
+  return root;
+}
+
+function renderHistory(force = false) {
+  const all = status?.history ?? [];
+  const query = historySearch.value.trim().toLowerCase();
+  const signature = `${all.map((e) => e.id).join(",")}|${query}|${[...heardOpen].join(",")}|${playing?.id ?? ""}`;
+  if (!force && signature === historySignature) return;
+  historySignature = signature;
+
+  const shown = query
+    ? all.filter((e) => `${e.text} ${e.heard} ${appLabel(e.app)}`.toLowerCase().includes(query))
+    : all;
+
+  const nodes: HTMLElement[] = [];
+  let lastDay = "";
+  for (const e of shown) {
+    const day = dayLabel(e.time_ms);
+    if (day !== lastDay) {
+      const label = document.createElement("div");
+      label.className = "day-label";
+      label.textContent = day;
+      nodes.push(label);
+      lastDay = day;
+    }
+    nodes.push(historyEntry(e));
+  }
+  historyList.replaceChildren(...nodes);
+
+  historyEmpty.hidden = shown.length > 0;
+  if (!shown.length) {
+    historyEmpty.textContent = all.length
+      ? "No dictation matches that search."
+      : "Nothing yet. Hold the shortcut in any app, say a sentence, and it shows up here.";
+  }
+}
+
+historySearch.addEventListener("input", () => renderHistory());
 
 // ---------------------------------------------------------------------------
 // Hold-to-dictate button: same flow as the hotkey, press and release
 
 const holdBtn = $<HTMLButtonElement>("hold-dictate");
-const HOLD_LABELS = {
-  idle: "Hold to dictate",
-  recording: "Listening… release to finish",
-  transcribing: "Transcribing…",
-} as const;
-type HoldPhase = keyof typeof HOLD_LABELS;
+type HoldPhase = "idle" | "recording" | "transcribing";
 let holdPhase: HoldPhase = "idle";
 /** True only between this button's press and release (used by the blur net). */
 let buttonHeld = false;
 
+const holdTitle = $("hold-title");
+const holdSub = $("hold-sub");
+const statusChip = $("status-chip");
+const statusText = $("status-text");
+
+/** What the hero says and what the status chip shows, for a phase and model state. */
+function heroCopy(phase: HoldPhase, model: ModelState | undefined) {
+  if (phase === "recording") {
+    return {
+      title: "Listening… release to type",
+      sub: "In this window the text opens in a result box. In other apps it types at your cursor.",
+      chip: ["live", "Listening"],
+    } as const;
+  }
+  if (phase === "transcribing") {
+    return { title: "Transcribing…", sub: "One moment.", chip: ["live", "Transcribing"] } as const;
+  }
+  if (model === "ready") {
+    return {
+      title: "Hold to dictate",
+      sub: "Hold the button, speak, release. The text goes to your cursor.",
+      chip: ["ready", "Ready"],
+    } as const;
+  }
+  if (model === "downloading" || model === "loading") {
+    return {
+      title: "Getting the model ready…",
+      sub: "Dictation starts as soon as the speech model is loaded.",
+      chip: ["wait", model === "loading" ? "Loading" : "Downloading"],
+    } as const;
+  }
+  if (model === "error") {
+    return { title: "The model needs attention", sub: "See the Speech model card below.", chip: ["error", "Error"] } as const;
+  }
+  return {
+    title: "Download a model to start",
+    sub: "Sruthi needs one speech model. It downloads once and then works offline.",
+    chip: ["wait", model ? "Model needed" : "Starting"],
+  } as const;
+}
+
 function showHoldPhase(phase: HoldPhase) {
   holdPhase = phase;
-  holdBtn.textContent = HOLD_LABELS[phase];
+  const copy = heroCopy(phase, status?.model);
+  holdTitle.textContent = copy.title;
+  holdSub.textContent = copy.sub;
+  statusChip.dataset.state = copy.chip[0];
+  statusText.textContent = copy.chip[1];
+  holdBtn.setAttribute("aria-label", copy.title);
   holdBtn.classList.toggle("recording", phase === "recording");
   holdBtn.disabled = (status?.model !== "ready") || phase !== "idle";
 }
@@ -628,6 +958,8 @@ micSelect.addEventListener("change", () =>
 );
 
 async function checkMicrophones() {
+  setPage("settings");
+  $<HTMLDetailsElement>("mic-card").open = true;
   const statusLine = $("mic-check-status");
   statusLine.hidden = false;
   statusLine.textContent = "Listening to each microphone for a second… (stay quiet or talk normally)";
@@ -671,9 +1003,8 @@ async function checkMicrophones() {
 
 $("mic-check").addEventListener("click", checkMicrophones);
 $("mic-warning-check").addEventListener("click", () => {
-  // The microphone controls sit right below on the Setup view; jump to them
-  // and start checking. From Stats, first switch back so the card is visible.
-  setView("setup");
+  // The microphone controls live in Settings; jump there and start checking.
+  setPage("settings");
   $("mic-card").scrollIntoView({ behavior: "smooth", block: "center" });
   checkMicrophones();
 });
@@ -709,6 +1040,7 @@ function renderUsage(s: Status) {
       const cell = document.createElement("button");
       cell.type = "button";
       cell.className = "day";
+      if (new Date(`${d.date}T00:00:00`).toDateString() === new Date().toDateString()) cell.classList.add("today");
       cell.title = `${d.date}: ${d.words.toLocaleString()} words`;
       cell.setAttribute("aria-label", `${d.date}: ${d.words.toLocaleString()} words`);
       const bar = document.createElement("div");

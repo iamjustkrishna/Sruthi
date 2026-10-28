@@ -8,35 +8,44 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <main class="app">
-      <section class="hero">
-        <button id="hold-dictate" class="dictate" disabled title="Hold the button, speak, release. The text goes to your cursor.">
-          Hold to dictate
+    <div class="shell">
+      <nav class="sidebar" aria-label="Sections">
+        <div class="brand">
+          <img class="brand-logo" src="/src/assets/sruthi-logo.png" alt="" />
+          <span class="brand-name">Sruthi</span>
+        </div>
+        <button type="button" id="nav-home" class="nav-item active" data-page="home" aria-current="page" title="Home">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v10h12V10" /></svg>
+          <span class="nav-label">Home</span>
         </button>
-        <p class="muted small dictate-hint">
-          or hold <kbd id="hotkey-hint">Ctrl+Shift+Space</kbd> anywhere. In this window the text opens in a result box.
-        </p>
-      </section>
-
-      <nav class="view-switch" role="tablist" aria-label="Window views">
-        <button id="view-tab-setup" class="view-tab active" role="tab" aria-selected="true">Setup</button>
-        <button id="view-tab-stats" class="view-tab" role="tab" aria-selected="false">Stats</button>
+        <button type="button" id="nav-dictionary" class="nav-item" data-page="dictionary" aria-current="false" title="Dictionary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM5 17a3 3 0 0 1 3-3h11" /></svg>
+          <span class="nav-label">Dictionary</span>
+        </button>
+        <button type="button" id="nav-models" class="nav-item" data-page="models" aria-current="false" title="Models">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg>
+          <span class="nav-label">Models</span>
+        </button>
+        <span class="nav-spacer"></span>
+        <div class="side-status">
+          <span class="status-chip" id="status-chip" data-state="wait" role="status">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="status-text">Starting</span>
+          </span>
+          <kbd id="hotkey-hint">Ctrl+Shift+Space</kbd>
+          <p class="muted small side-offline">Offline, on this PC</p>
+        </div>
+        <button type="button" id="nav-settings" class="nav-item" data-page="settings" aria-current="false" title="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" /></svg>
+          <span class="nav-label">Settings</span>
+        </button>
       </nav>
 
-      <div id="view-setup" role="tabpanel" aria-label="Setup">
-        <section class="card warning" id="mic-warning" role="alert" hidden>
+      <main class="main" id="main">
+        <div class="alerts">
+      <section class="card warning" id="mic-warning" role="alert" hidden>
         <p id="mic-warning-text"></p>
         <button id="mic-warning-check" class="pill">Check microphones</button>
-      </section>
-
-      <section class="card" id="mic-card">
-        <div class="card-head">
-          <h2>Microphone</h2>
-          <button id="mic-check" class="pill">Check microphones</button>
-        </div>
-        <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
-        <p class="muted small" id="mic-check-status" aria-live="polite" hidden></p>
-        <ul id="mic-probes" class="mic-probes"></ul>
       </section>
 
       <section class="card warning" id="memory-warning" role="alert" hidden>
@@ -53,35 +62,169 @@
         <p id="mic-fallback-text"></p>
       </section>
 
-      <section class="card" id="model-card">
-        <div class="card-head">
-          <h2>Speech model</h2>
-          <span class="badge" id="model-badge">…</span>
+      </div>
+
+        <!-- Home -->
+        <section class="page" id="page-home" aria-label="Home">
+          <header class="page-head">
+            <div class="page-title">
+              <h1>Home</h1>
+              <p class="muted small">Everything you dictated, kept on this PC.</p>
+            </div>
+            <label class="search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+              <input id="history-search" type="search" placeholder="Search dictations" aria-label="Search dictations" autocomplete="off" spellcheck="false" />
+            </label>
+          </header>
+          <div class="home-grid">
+            <div class="feed" id="history-feed">
+              <div id="history-list" class="history-list"></div>
+              <p class="muted" id="history-empty"></p>
+            </div>
+            <aside class="rail">
+      <section class="hero hero-card">
+        <div class="hold-wrap" id="hold-wrap">
+          <span class="ring" aria-hidden="true"></span>
+          <span class="ring ring-2" aria-hidden="true"></span>
+          <button id="hold-dictate" class="dictate" disabled aria-label="Hold to dictate" title="Hold the button, speak, release. The text goes to your cursor.">
+            <svg class="ico-mic" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="9" y="3" width="6" height="12" rx="3" />
+              <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+            </svg>
+            <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+          </button>
         </div>
-        <p class="muted" id="model-text">Checking…</p>
-        <ul class="models" id="models"></ul>
-        <p class="error" id="model-error" aria-live="polite" hidden></p>
-        <div class="device-row">
-          <div class="device-switch" role="group" aria-label="Where the speech model runs">
-            <button id="device-auto" class="device-tab" title="Try the graphics card, fall back to the CPU">Auto</button>
-            <button id="device-gpu" class="device-tab" title="Run the model on the graphics card">Graphics card</button>
-            <button id="device-cpu" class="device-tab" title="Keep the card out of it entirely">CPU</button>
-          </div>
-          <button id="gpu-runtime-download" class="ghost small-btn" hidden>Download card runtime</button>
+        <div class="hero-text">
+          <p class="hero-title" id="hold-title">Hold to dictate</p>
+          <p class="muted small" id="hold-sub">Hold the button, speak, release. The text goes to your cursor.</p>
+          <p class="hero-keys">
+            <kbd id="hotkey-hint">Ctrl+Shift+Space</kbd>
+            <span class="muted small">works in any app</span>
+          </p>
         </div>
-        <p class="muted small" id="device-note"></p>
-        <p class="muted small" id="gpu-runtime-progress" aria-live="polite" hidden></p>
       </section>
 
-      <section class="card" id="format-card">
-        <div class="card-head">
-          <h2>Smart formatting</h2>
+            <section class="card" id="usage-card">
+          <div class="card-head">
+            <h2>Your dictation</h2>
+            <button id="usage-reset" class="ghost small-btn">Reset stats</button>
+          </div>
+          <div class="usage-grid" id="usage-grid" hidden>
+            <div class="usage-cell">
+              <strong id="usage-words">0</strong>
+              <span>words · <span id="usage-today"></span></span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-wpm">–</strong>
+              <span>words/min<span id="usage-vs"></span></span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-saved">0</strong>
+              <span>typing time saved</span>
+            </div>
+            <div class="usage-cell">
+              <strong id="usage-streak">0</strong>
+              <span>day streak</span>
+            </div>
+          </div>
+          <div class="usage-week" id="usage-week" hidden></div>
+          <p class="muted small" id="usage-extra"></p>
+          <p class="muted small" id="usage-empty">
+            Dictate with the button above or the hotkey, and your words, speed and streak show up here.
+          </p>
+        </section>
+</aside>
+          </div>
+        </section>
+
+        <!-- Dictionary -->
+        <section class="page" id="page-dictionary" aria-label="Dictionary" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <h1>Dictionary</h1>
+              <p class="muted small">Names and terms, spelled your way.</p>
+            </div>
+          </header>
+          <div class="page-col">
+      <details class="card fold" id="dictionary-card" open>
+        <summary class="fold-head">
+          <span class="fold-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" /><path d="M9 8h6" /></svg>
+          </span>
+          <span class="fold-text">
+            <h2>Dictionary</h2>
+            <span class="fold-value" id="dict-summary"></span>
+          </span>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <div class="fold-body">
+          <p class="muted small">
+            Names, product terms and rare words. When something you say sounds like one of these, it's spelled exactly
+            this way.
+          </p>
+          <form class="word-form" id="word-form">
+            <input id="word-input" type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Sruthi" maxlength="60" autocomplete="off" />
+            <button type="submit">Add</button>
+          </form>
+          <ul class="words" id="words"></ul>
+        </div>
+      </details>
+
+      </div>
+        </section>
+
+        <!-- Models -->
+        <section class="page" id="page-models" aria-label="Models" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <h1>Models</h1>
+              <p class="muted small">What listens, and where it runs.</p>
+            </div>
+          </header>
+          <div class="page-grid">
+      <details class="card fold" id="model-card" open>
+        <summary class="fold-head">
+          <span class="fold-icon sound" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" /></svg>
+          </span>
+          <span class="fold-text">
+            <h2>Speech model</h2>
+            <span class="fold-value" id="model-summary"></span>
+          </span>
+          <span class="badge" id="model-badge">…</span>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <div class="fold-body">
+          <p class="muted" id="model-text">Checking…</p>
+          <ul class="models" id="models"></ul>
+          <p class="error" id="model-error" aria-live="polite" hidden></p>
+          <div class="device-row">
+            <div class="device-switch" role="group" aria-label="Where the speech model runs">
+              <button id="device-auto" class="device-tab" title="Try the graphics card, fall back to the CPU">Auto</button>
+              <button id="device-gpu" class="device-tab" title="Run the model on the graphics card">Graphics card</button>
+              <button id="device-cpu" class="device-tab" title="Keep the card out of it entirely">CPU</button>
+            </div>
+            <button id="gpu-runtime-download" class="ghost small-btn" hidden>Download card runtime</button>
+          </div>
+          <p class="muted small" id="device-note"></p>
+          <p class="muted small" id="gpu-runtime-progress" aria-live="polite" hidden></p>
+        </div>
+      </details>
+
+            <section class="card" id="format-card">
+        <div class="fold-head">
+          <span class="fold-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /></svg>
+          </span>
+          <span class="fold-text">
+            <h2>Smart formatting</h2>
+          </span>
           <label class="switch" title="Smart formatting">
             <input type="checkbox" id="smart-toggle" aria-label="Smart formatting" />
             <span class="slider"></span>
           </label>
         </div>
-        <p class="muted" id="llm-text"></p>
+        <p class="muted fold-note" id="llm-text"></p>
         <div class="cloud" id="cloud">
           <h3>AI engine</h3>
           <p class="muted small">
@@ -108,25 +251,30 @@
         </div>
       </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Dictionary</h2>
-        </div>
-        <p class="muted small">
-          Names, product terms and rare words. When something you say sounds like one of these, it's spelled exactly
-          this way.
-        </p>
-        <form class="word-form" id="word-form">
-          <input id="word-input" type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Sruthi" maxlength="60" autocomplete="off" />
-          <button type="submit">Add</button>
-        </form>
-        <ul class="words" id="words"></ul>
-      </section>
+      </div>
+        </section>
 
-      <section class="card">
-        <div class="card-head">
-          <h2>Shortcut</h2>
-        </div>
+        <!-- Settings -->
+        <section class="page" id="page-settings" aria-label="Settings" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <h1>Settings</h1>
+              <p class="muted small">Shortcut, microphone and what is kept.</p>
+            </div>
+          </header>
+          <div class="page-grid">
+      <details class="card fold" id="shortcut-card" open>
+        <summary class="fold-head">
+          <span class="fold-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 14h10M7 10h.01M11 10h.01M15 10h.01" /></svg>
+          </span>
+          <span class="fold-text">
+            <h2>Shortcut and pill</h2>
+            <span class="fold-value" id="shortcut-summary"></span>
+          </span>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <div class="fold-body">
         <p>
           Click into any text box, then <strong>hold <kbd id="hotkey">Ctrl+Shift+Space</kbd></strong>,
           speak, and let go. The text is typed where your cursor is.
@@ -173,44 +321,45 @@
             </span>
           </label>
         </div>
-      </section>
-      </div>
+        </div>
+      </details>
+      <details class="card fold" id="mic-card">
+        <summary class="fold-head">
+          <span class="fold-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+          </span>
+          <span class="fold-text">
+            <h2>Microphone</h2>
+            <span class="fold-value" id="mic-summary"></span>
+          </span>
+          <button id="mic-check" class="pill">Check microphones</button>
+          <span class="chev" aria-hidden="true"></span>
+        </summary>
+        <div class="fold-body">
+          <select id="mic-select" class="mic-select" aria-label="Microphone"></select>
+          <p class="muted small" id="mic-check-status" aria-live="polite" hidden></p>
+          <ul id="mic-probes" class="mic-probes"></ul>
+        </div>
+      </details>
 
-      <div id="view-stats" role="tabpanel" aria-label="Your dictation" hidden>
-        <section class="card" id="usage-card">
-          <div class="card-head">
-            <h2>Your dictation</h2>
-            <button id="usage-reset" class="ghost small-btn">Reset stats</button>
+            <section class="card" id="privacy-card">
+              <div class="fold-head">
+                <span class="fold-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v9H5zM8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                </span>
+                <span class="fold-text">
+                  <h2>Privacy and history</h2>
+                  <span class="fold-value">Audio never leaves this PC. Cloud engines only get text, and only if you pick one.</span>
+                </span>
+              </div>
+              <p class="muted small fold-note">Your last 1,000 dictations are kept with their audio in the app folder.</p>
+              <div class="privacy-actions">
+                <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
+              </div>
+            </section>
           </div>
-          <div class="usage-grid" id="usage-grid" hidden>
-            <div class="usage-cell">
-              <strong id="usage-words">0</strong>
-              <span>words · <span id="usage-today"></span></span>
-            </div>
-            <div class="usage-cell">
-              <strong id="usage-wpm">–</strong>
-              <span>words/min<span id="usage-vs"></span></span>
-            </div>
-            <div class="usage-cell">
-              <strong id="usage-saved">0</strong>
-              <span>typing time saved</span>
-            </div>
-            <div class="usage-cell">
-              <strong id="usage-streak">0</strong>
-              <span>day streak</span>
-            </div>
-          </div>
-          <div class="usage-week" id="usage-week" hidden></div>
-          <p class="muted small" id="usage-extra"></p>
-          <p class="muted small" id="usage-empty">
-            Dictate with the button above or the hotkey, and your words, speed and streak show up here.
-          </p>
         </section>
-      </div>
-
-      <footer class="app-foot">
-        <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
-      </footer>
-    </main>
+      </main>
+    </div>
   </body>
 </html>

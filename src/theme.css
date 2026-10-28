@@ -42,13 +42,21 @@
   --accent-ink: #fbfbfa;
   --accent-soft: #e9e9e8;
 
+  /* Sound: the one brand color, from the logo. It marks voice and selection
+     only (hold button, listening, the active choice, switches that are on,
+     focus). Buttons and everything else stay graphite. */
+  --sound: #2f5bea;
+  --sound-soft: #e8eefe;
+  --sound-ink: #ffffff;
+  --sound-glow: rgba(47, 91, 234, 0.32);
+
   /* Meaning (kept muted — the UI is otherwise colorless) */
   --ok: #386e46;
   --warn: #8a6414;
   --err: #ac3c3c;
 
   /* Focus and elevation */
-  --focus-ring: var(--text);
+  --focus-ring: var(--sound);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.28);
 
@@ -96,11 +104,16 @@
   --accent-ink: #161616;
   --accent-soft: #2d2d2c;
 
+  --sound: #8aa8ff;
+  --sound-soft: #232c4a;
+  --sound-ink: #0e1a3d;
+  --sound-glow: rgba(138, 168, 255, 0.28);
+
   --ok: #79b78e;
   --warn: #d0a95e;
   --err: #dd8484;
 
-  --focus-ring: var(--text);
+  --focus-ring: var(--sound);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.55);
 }
@@ -128,11 +141,16 @@
     --accent-ink: #161616;
     --accent-soft: #2d2d2c;
 
+    --sound: #8aa8ff;
+    --sound-soft: #232c4a;
+    --sound-ink: #0e1a3d;
+    --sound-glow: rgba(138, 168, 255, 0.28);
+
     --ok: #79b78e;
     --warn: #d0a95e;
     --err: #dd8484;
 
-    --focus-ring: var(--text);
+    --focus-ring: var(--sound);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-float: 0 10px 28px rgba(0, 0, 0, 0.55);
   }

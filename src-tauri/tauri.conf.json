@@ -15,10 +15,13 @@
         "label": "main",
         "title": "Sruthi",
         "url": "index.html",
-        "width": 520,
-        "height": 640,
-        "resizable": false,
-        "maximizable": false,
+        "width": 1120,
+        "height": 740,
+        "minWidth": 860,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "maximizable": true,
         "minimizable": true
       },
       {

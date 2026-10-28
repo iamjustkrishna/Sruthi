@@ -1110,6 +1110,8 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         emit_status(app);
     }
 
+    // record_usage takes the target; the history entry needs it too.
+    let app_name = state.inner.lock().unwrap().app_target.clone().unwrap_or_default();
     if !outcome.text.is_empty() {
         let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
         if caret::text_field_focused() == Some(false) {
@@ -1135,7 +1137,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
 
     // Keep the recording (even when nothing was heard, to help tune).
     if !outcome.audio.is_empty() {
-        match recordings::add(&outcome.audio, &outcome.heard, &outcome.text) {
+        match recordings::add(&outcome.audio, &outcome.heard, &outcome.text, &app_name) {
             Ok(entry) => {
                 let mut inner = state.inner.lock().unwrap();
                 inner.history.insert(0, entry);

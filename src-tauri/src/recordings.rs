@@ -24,6 +24,9 @@ pub struct Entry {
     pub heard: String,
     /// What was pasted (empty when nothing was heard).
     pub text: String,
+    /// Process name of the app the text went into (empty for older entries).
+    #[serde(default)]
+    pub app: String,
 }
 
 pub fn folder() -> PathBuf {
@@ -57,7 +60,7 @@ fn save_index(entries: &[Entry]) -> Result<()> {
 }
 
 /// Saves 16 kHz mono `samples` as a WAV and records the entry.
-pub fn add(samples: &[f32], heard: &str, text: &str) -> Result<Entry> {
+pub fn add(samples: &[f32], heard: &str, text: &str, app: &str) -> Result<Entry> {
     let time_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -68,6 +71,7 @@ pub fn add(samples: &[f32], heard: &str, text: &str) -> Result<Entry> {
         seconds: samples.len() as f32 / TARGET_RATE as f32,
         heard: heard.to_string(),
         text: text.to_string(),
+        app: app.to_string(),
     };
     fs::create_dir_all(folder())?;
     fs::write(wav_path(&entry.id)?, encode_wav(samples))?;
