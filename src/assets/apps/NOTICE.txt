@@ -1,0 +1,4 @@
+These logos are from Simple Icons (https://simpleicons.org, https://github.com/simple-icons/simple-icons),
+released under CC0 1.0. The logos themselves are trademarks of their respective owners and are used here
+only to identify the apps a dictation went into. Source: cdn.jsdelivr.net/npm/simple-icons@latest/icons/<slug>.svg,
+fetched 2026-10-28.

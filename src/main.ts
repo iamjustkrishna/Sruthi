@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { appInfo, iconUrl } from "./appIcons";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
@@ -173,6 +174,22 @@ const LLM_COPY: Record<LlmState, string> = {
 let status: Status | null = null;
 const progress: Record<string, DownloadProgress> = {};
 
+const confirmDialog = $<HTMLDialogElement>("confirm-dialog");
+
+/** Asks inside the app (a real dialog, not the browser's alert box). */
+function askConfirm(title: string, body: string, action = "Delete"): Promise<boolean> {
+  $("confirm-title").textContent = title;
+  $("confirm-body").textContent = body;
+  $("confirm-ok").textContent = action;
+  return new Promise((resolve) => {
+    confirmDialog.returnValue = "";
+    confirmDialog.addEventListener("close", () => resolve(confirmDialog.returnValue === "ok"), { once: true });
+    confirmDialog.showModal();
+    // Cancel is the safe default.
+    $("confirm-cancel").focus();
+  });
+}
+
 function formatMb(bytes: number) {
   return `${Math.round(bytes / 1_048_576)} MB`;
 }
@@ -259,7 +276,11 @@ function modelRow(o: RowOptions) {
       button(
         "Delete",
         () => {
-          if (confirm(`Delete ${o.name} (${o.sizeMb} MB) from this PC?`)) run(o.commands.remove, { id: o.id });
+          askConfirm(`Delete ${o.name}?`, `This removes the ${o.sizeMb} MB model from this PC. You can download it again later.`).then(
+            (ok) => {
+              if (ok) run(o.commands.remove, { id: o.id });
+            },
+          );
         },
         "ghost",
       ),
@@ -595,27 +616,27 @@ function icon(path: string) {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}" /></svg>`;
 }
 
-/** Friendly names for common process names; anything else is just capitalized. */
-const APP_NAMES: Record<string, string> = {
-  windowsterminal: "Terminal",
-  code: "VS Code",
-  cursor: "Cursor",
-  chrome: "Chrome",
-  msedge: "Edge",
-  firefox: "Firefox",
-  winword: "Word",
-  excel: "Excel",
-  outlook: "Outlook",
-  whatsapp: "WhatsApp",
-  powershell: "PowerShell",
-  cmd: "Command Prompt",
-};
-
 /** "chrome.exe" -> "Chrome"; empty or unknown stays empty. */
 function appLabel(process: string | undefined) {
-  const base = (process ?? "").replace(/\.exe$/i, "").trim();
-  if (!base || base === "unknown") return "";
-  return APP_NAMES[base.toLowerCase()] ?? base.charAt(0).toUpperCase() + base.slice(1);
+  return appInfo(process)?.name ?? "";
+}
+
+/** The app's logo in a small tile, or its first letter when there is no logo. */
+function appChip(process: string | undefined) {
+  const info = appInfo(process);
+  if (!info) return null;
+  const chip = el("span", "app-chip");
+  chip.setAttribute("aria-hidden", "true");
+  const url = iconUrl(info.icon);
+  if (url) {
+    chip.classList.add("logo");
+    chip.style.setProperty("--icon", `url("${url}")`);
+    chip.style.setProperty("--brand", info.color);
+    chip.append(document.createElement("i"));
+  } else {
+    chip.textContent = info.name.charAt(0);
+  }
+  return chip;
 }
 
 function dayLabel(ms: number) {
@@ -869,9 +890,9 @@ function historyEntry(e: HistoryEntry) {
   const meta = el("div", "entry-meta");
   const app = appLabel(e.app);
   if (app) {
-    const chip = el("span", "app-chip", app.charAt(0));
-    chip.setAttribute("aria-hidden", "true");
-    meta.append(chip, el("b", "", app));
+    const chip = appChip(e.app);
+    if (chip) meta.append(chip);
+    meta.append(el("b", "", app));
   }
   const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
   const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -919,8 +940,12 @@ function historyEntry(e: HistoryEntry) {
   }
   actions.append(
     el("span", "grow"),
-    actionButton("Delete", ICONS.trash, () => {
-      if (!confirm("Delete this dictation and its recording from this PC?")) return;
+    actionButton("Delete", ICONS.trash, async () => {
+      const ok = await askConfirm(
+        "Delete this dictation?",
+        "Its text and recording are removed from this PC. This can't be undone.",
+      );
+      if (!ok) return;
       if (playing?.id === e.id) stopPlayback();
       for (const set of [heardOpen, correcting, rerunOpen]) set.delete(e.id);
       run("delete_recording", { id: e.id });
@@ -1059,7 +1084,8 @@ snippetForm.addEventListener("submit", async (e) => {
 
 snippetDelete.addEventListener("click", async () => {
   if (editingSnippet === null) return;
-  if (!confirm(`Delete the snippet "${editingSnippet}"?`)) return;
+  const ok = await askConfirm(`Delete the snippet "${editingSnippet}"?`, "The phrase will no longer expand when you say it.");
+  if (!ok) return;
   await run("remove_snippet", { trigger: editingSnippet });
   editSnippet(null);
 });
@@ -1378,6 +1404,8 @@ function renderGlance(u: Usage) {
           const fillEl = el("span", "bar-fill");
           fillEl.style.width = `${Math.max(6, Math.round((a.words / top) * 100))}%`;
           track.append(fillEl);
+          const chip = appChip(a.name);
+          if (chip) row.append(chip);
           row.append(el("span", "bar-name", appLabel(a.name)), track);
           row.title = `${a.words.toLocaleString()} words`;
           return row;
@@ -1707,7 +1735,11 @@ function renderUsage(s: Status) {
 }
 
 $("usage-reset").addEventListener("click", () => {
-  if (confirm("Clear all your dictation stats on this PC?")) run("reset_usage", {});
+  askConfirm("Clear your stats?", "Your word counts, speed and streak start again from zero. Your dictations stay.", "Clear stats").then(
+    (ok) => {
+      if (ok) run("reset_usage", {});
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------

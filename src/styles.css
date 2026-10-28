@@ -275,8 +275,9 @@ h1 {
 .app-chip {
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--raise);
@@ -1812,4 +1813,67 @@ button.ghost:hover:not(:disabled) {
   .banner-line {
     font-size: 30px;
   }
+}
+
+/* App logos: the SVG is a mask painted in the brand colour, on a light tile so
+   dark logos stay visible in both themes. */
+.app-chip.logo {
+  background: #ffffff;
+  border-color: var(--border-strong);
+}
+.app-chip.logo i {
+  width: 14px;
+  height: 14px;
+  background: var(--brand);
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+.bar-row .app-chip {
+  width: 18px;
+  height: 18px;
+}
+.bar-row .app-chip.logo i {
+  width: 12px;
+  height: 12px;
+}
+
+/* In-app confirmation dialog */
+.dialog {
+  width: min(400px, calc(100% - 48px));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+}
+.dialog::backdrop {
+  background: rgba(10, 14, 30, 0.5);
+}
+.dialog-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-5) 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-float);
+  background: var(--card);
+  box-shadow: var(--shadow-float);
+}
+.dialog-card h2 {
+  font-size: var(--text-hero);
+  letter-spacing: -0.01em;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.dialog-actions button.danger {
+  background: var(--err);
+  border-color: var(--err);
+  color: var(--accent-ink);
+}
+.dialog-actions button.danger:hover:not(:disabled) {
+  background: var(--err);
+  filter: brightness(1.08);
 }

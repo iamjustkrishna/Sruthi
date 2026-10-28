@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 
 type Dictation =
   | { phase: "recording" }
+  | { phase: "partial"; text: string }
   | { phase: "transcribing" }
   | { phase: "done"; text: string }
   | { phase: "error"; message: string };
@@ -114,6 +115,11 @@ function isShowing() {
 }
 
 listen<Dictation>("dictation", ({ payload }) => {
+  // A preview of the words so far, sent every few seconds while the key is
+  // held. Previews are silent on the pill by design, and they are not a phase:
+  // treating one as the phase stopped the wave ("recording" is the only phase
+  // that draws it) a few seconds into every dictation.
+  if (payload.phase === "partial") return;
   pill.dataset.phase = payload.phase;
   switch (payload.phase) {
     case "recording":

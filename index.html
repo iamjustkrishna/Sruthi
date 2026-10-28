@@ -508,5 +508,15 @@
         </section>
       </main>
     </div>
+    <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+      <form method="dialog" class="dialog-card">
+        <h2 id="confirm-title"></h2>
+        <p class="muted" id="confirm-body"></p>
+        <div class="dialog-actions">
+          <button type="submit" value="cancel" id="confirm-cancel" class="ghost">Cancel</button>
+          <button type="submit" value="ok" id="confirm-ok" class="danger">Delete</button>
+        </div>
+      </form>
+    </dialog>
   </body>
 </html>
