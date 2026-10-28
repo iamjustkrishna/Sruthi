@@ -514,7 +514,7 @@ function render(s: Status) {
   modelText.textContent =
     s.detail ?? (s.model === "ready" && active ? `${active.name} · ${text}` : text);
   $("hotkey").textContent = s.hotkey;
-  $("hotkey-hint").textContent = s.hotkey;
+  document.querySelectorAll(".hotkey-label").forEach((k) => (k.textContent = s.hotkey));
   renderSummaries(s, active?.name);
   renderModels(s);
   renderDevice(s);

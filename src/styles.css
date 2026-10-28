@@ -697,13 +697,22 @@ h1 {
 }
 @media (max-width: 959px) {
   .banner {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 30%);
+    padding: var(--space-4) var(--space-5);
   }
   .banner-wave {
+    height: 56px;
+  }
+  .glance-card {
+    padding: var(--space-3);
+  }
+  .glance-ring svg {
+    width: 48px;
     height: 48px;
   }
-  .glance {
-    grid-template-columns: minmax(0, 1fr);
+  /* The numbers already sit in the banner and glance cards. */
+  .rail #usage-card {
+    display: none;
   }
 }
 
@@ -1683,4 +1692,40 @@ button.ghost:hover:not(:disabled) {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Wide windows (maximized): centre the page and use two columns instead of
+   leaving the right side empty. */
+.page,
+.alerts {
+  margin-inline: auto;
+}
+@media (min-width: 1360px) {
+  .page,
+  .alerts {
+    max-width: 1320px;
+  }
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 24px;
+  }
+  .page-col,
+  .page-grid {
+    max-width: none;
+    display: block;
+    columns: 2;
+    column-gap: 14px;
+  }
+  .page-col > *,
+  .page-grid > * {
+    break-inside: avoid;
+    margin-bottom: 14px;
+  }
+  .snippets-grid {
+    max-width: 1040px;
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+  .banner {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 42%);
+  }
 }
