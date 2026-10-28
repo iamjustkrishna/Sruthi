@@ -872,9 +872,6 @@ function historyEntry(e: HistoryEntry) {
     const chip = el("span", "app-chip", app.charAt(0));
     chip.setAttribute("aria-hidden", "true");
     meta.append(chip, el("b", "", app));
-  } else {
-    // Dictations made before the app name was kept, or when it couldn't be read.
-    meta.append(el("b", "", "App not recorded"));
   }
   const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
   const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -1298,10 +1295,32 @@ banner.addEventListener("pointerleave", () => {
   pointer.hoverTarget = 0;
 });
 
+/**
+ * The banner only moves while you are looking at this window. The pill and the
+ * speech model share this PC, and the window's web view is kept "visible" even
+ * when it is covered (so the pill never stalls), so without this check the
+ * banner burned about 40% of a CPU core and a third of the GPU in the
+ * background and starved the pill.
+ */
+function watching() {
+  return !document.hidden && document.hasFocus() && banner.offsetParent !== null && bannerSize.w >= 2;
+}
+function syncBannerIdle() {
+  banner.classList.toggle("idle", !watching());
+  if (!document.hasFocus()) pointer.hoverTarget = 0;
+}
+window.addEventListener("focus", syncBannerIdle);
+window.addEventListener("blur", syncBannerIdle);
+document.addEventListener("visibilitychange", syncBannerIdle);
+syncBannerIdle();
+
+/** About 30 frames a second is plenty for slow ribbons. */
+const FRAME_MS = 33;
+let lastBannerFrame = 0;
 function bannerLoop(now: number) {
   requestAnimationFrame(bannerLoop);
-  // Hidden window, another page, or not laid out yet: nothing to draw.
-  if (document.hidden || banner.offsetParent === null || bannerSize.w < 2) return;
+  if (now - lastBannerFrame < FRAME_MS || !watching()) return;
+  lastBannerFrame = now;
   drawBanner(now);
 }
 if (!reducedMotion) requestAnimationFrame(bannerLoop);

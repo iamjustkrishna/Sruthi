@@ -604,6 +604,10 @@ h1 {
   font-size: var(--text-caption);
   color: rgba(255, 255, 255, 0.78);
 }
+/* Covered or in the background: hold still and cost nothing. */
+.banner.idle .blob::after {
+  animation-play-state: paused;
+}
 @media (prefers-reduced-motion: reduce) {
   .blob::after { animation: none; }
 }

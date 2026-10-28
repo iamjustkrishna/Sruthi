@@ -157,7 +157,8 @@ button {
   transform-origin: left center;
   transform: scaleX(0);
 }
-.timer.running span {
+/* The class goes on the bar itself (result.ts), not on .timer. */
+.timer span.running {
   animation: countdown 10s linear forwards;
 }
 .card:hover .timer span {
