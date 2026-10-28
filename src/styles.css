@@ -1287,11 +1287,24 @@ h1 {
   border-radius: 3px 3px 0 0;
   background: var(--border-strong);
 }
-.usage-week .day:hover .bar {
-  background: var(--text);
+.usage-week .bar {
+  transition: background 0.18s ease, transform 0.18s ease;
+  transform-origin: bottom;
+}
+/* Hover lifts a day toward the accent instead of going black. */
+.usage-week .day:hover .bar,
+.usage-week .day:focus-visible .bar {
+  background: color-mix(in srgb, var(--sound) 55%, var(--border-strong));
+  transform: scaleY(1.04);
+}
+.usage-week .day:hover .day-name {
+  color: var(--text);
 }
 .usage-week .day.today .bar {
   background: var(--sound);
+}
+.usage-week .day.today:hover .bar {
+  background: color-mix(in srgb, var(--sound) 88%, #ffffff);
 }
 .usage-week .day-name {
   font-size: 11px;
@@ -2185,4 +2198,233 @@ button.ghost:hover:not(:disabled) {
 .idea-chip:hover:not(:disabled) {
   background: var(--raise);
   color: var(--text);
+}
+
+/* Share sheet */
+.share-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.share-open:disabled {
+  opacity: 0.45;
+}
+.dialog.share-dialog {
+  width: min(900px, calc(100% - 48px));
+  max-height: calc(100% - 32px);
+}
+.share-card {
+  gap: var(--space-4);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+.share-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.share-head > div {
+  flex: 1;
+}
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.share-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+.share-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--raise);
+}
+.share-stage canvas {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 380px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 22px 44px -22px rgba(16, 31, 104, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.share-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.share-group h3 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.seg {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.seg-btn {
+  height: 40px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--text);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.seg-btn[aria-pressed="true"] {
+  border-color: var(--sound);
+  background: color-mix(in srgb, var(--sound) 12%, var(--card));
+  color: var(--sound);
+  font-weight: 600;
+}
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.share-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 40px;
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+.share-check + .share-check {
+  border-top: 1px solid var(--border);
+}
+.share-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--sound);
+}
+.share-check span {
+  flex: 1;
+}
+.share-check em {
+  font-style: normal;
+  font-size: var(--text-caption);
+  color: var(--muted);
+}
+.share-cap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.share-cap-head h3 {
+  margin: 0;
+}
+.share-caption {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  min-height: 3.5em;
+}
+.share-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.share-foot .muted {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#share-status.bad {
+  color: var(--err);
+}
+@media (max-width: 760px) {
+  .share-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Card surfaces: a layered shadow with a lit top edge, softer corners, and a
+   gentle lift where a card is a summary you glance at. */
+.card {
+  border-radius: var(--radius-float);
+  box-shadow: var(--shadow-card);
+}
+.glance-card,
+#usage-card,
+.hero-card {
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.glance-card:hover,
+#usage-card:hover,
+.hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+  border-color: color-mix(in srgb, var(--sound) 22%, var(--border));
+}
+.glance-card h3 {
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.glance-ring strong {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+#ring-fg {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--sound) 50%, transparent));
+}
+.bar-track {
+  height: 7px;
+  border-radius: 4px;
+}
+.bar-fill {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--sound), color-mix(in srgb, var(--sound) 55%, #8a5cff));
+}
+.bar-fill.muted-fill {
+  background: var(--track-strong);
+}
+.usage-cell {
+  background: linear-gradient(160deg, var(--raise), color-mix(in srgb, var(--sound) 5%, var(--raise)));
+  border-radius: var(--radius-lg);
+}
+.usage-cell strong {
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+.usage-week .today .bar {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sound) 80%, #8a5cff), var(--sound));
+}
+@media (prefers-reduced-motion: reduce) {
+  .glance-card,
+  #usage-card,
+  .hero-card {
+    transition: none;
+  }
+  .glance-card:hover,
+  #usage-card:hover,
+  .hero-card:hover {
+    transform: none;
+  }
 }

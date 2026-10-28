@@ -75,6 +75,10 @@
               <h1>Home</h1>
               <p class="muted small">Everything you dictated, kept on this PC.</p>
             </div>
+            <button type="button" id="share-open" class="ghost share-open" title="Make a picture of your stats to post">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+              Share
+            </button>
             <label class="search">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
               <input id="history-search" type="search" placeholder="Search dictations" aria-label="Search dictations" autocomplete="off" spellcheck="false" />
@@ -127,8 +131,9 @@
               <h3>Today</h3>
               <div class="glance-ring">
                 <svg width="64" height="64" viewBox="0 0 56 56" aria-hidden="true">
+                  <defs><linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5f86ff" /><stop offset="1" stop-color="#8a5cff" /></linearGradient></defs>
                   <circle cx="28" cy="28" r="22" fill="none" stroke="var(--track)" stroke-width="6" />
-                  <circle id="ring-fg" cx="28" cy="28" r="22" fill="none" stroke="var(--sound)" stroke-width="6" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 28 28)" />
+                  <circle id="ring-fg" cx="28" cy="28" r="22" fill="none" stroke="url(#ring-grad)" stroke-width="6" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 28 28)" />
                 </svg>
                 <div>
                   <strong id="glance-today">0</strong>
@@ -585,6 +590,46 @@
         </section>
       </main>
     </div>
+    <dialog id="share-dialog" class="dialog share-dialog" aria-labelledby="share-title">
+      <div class="dialog-card share-card">
+        <header class="share-head">
+          <div>
+            <h2 id="share-title">Share your stats</h2>
+            <p class="muted small">A picture drawn on this PC. You choose what is on it.</p>
+          </div>
+          <button type="button" id="share-close" class="ghost icon-btn" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="share-body">
+          <div class="share-stage" id="share-stage"></div>
+          <div class="share-controls">
+            <div class="share-group">
+              <h3>Card</h3>
+              <div class="seg" id="share-kinds" role="group" aria-label="Card"></div>
+            </div>
+            <div class="share-group">
+              <h3>Show on the card</h3>
+              <label class="share-check"><input type="checkbox" id="share-opt-streak" checked /><span>Streak</span><em>your day count</em></label>
+              <label class="share-check"><input type="checkbox" id="share-opt-speed" checked /><span>Speed against typing</span><em>words a minute</em></label>
+              <label class="share-check"><input type="checkbox" id="share-opt-apps" /><span>App names</span><em>off, they can be private</em></label>
+            </div>
+            <div class="share-group">
+              <div class="share-cap-head">
+                <h3>Caption</h3>
+                <button type="button" id="share-copy-caption" class="ghost small-btn">Copy caption</button>
+              </div>
+              <p class="share-caption" id="share-caption"></p>
+            </div>
+          </div>
+        </div>
+        <footer class="share-foot">
+          <span class="muted small" id="share-status" aria-live="polite"></span>
+          <button type="button" id="share-save" class="ghost">Save PNG</button>
+          <button type="button" id="share-copy">Copy image</button>
+        </footer>
+      </div>
+    </dialog>
     <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">
       <form method="dialog" class="dialog-card">
         <h2 id="confirm-title"></h2>

@@ -2266,6 +2266,76 @@ fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// A header the share-card commands read as text (the body is the raw image).
+fn request_header(request: &tauri::ipc::Request<'_>, name: &str) -> Option<String> {
+    request
+        .headers()
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
+/// Saves a share card (the PNG is the request body) to Pictures\Sruthi and shows
+/// it in the file manager. Returns where it went.
+#[tauri::command]
+fn save_share_image(request: tauri::ipc::Request<'_>) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("No image was sent".into());
+    };
+    if !bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        return Err("That is not a PNG image".into());
+    }
+    let name: String = request_header(&request, "x-name")
+        .unwrap_or_else(|| "sruthi-card".into())
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        .take(60)
+        .collect();
+    let name = if name.is_empty() { "sruthi-card".to_string() } else { name };
+    let folder = dirs::picture_dir()
+        .unwrap_or_else(settings::app_root)
+        .join("Sruthi");
+    std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+    // Never overwrite an earlier card: -2, -3, ... when the name is taken.
+    let mut path = folder.join(format!("{name}.png"));
+    let mut n = 2;
+    while path.exists() {
+        path = folder.join(format!("{name}-{n}.png"));
+        n += 1;
+    }
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    if cfg!(windows) {
+        let _ = std::process::Command::new("explorer")
+            .arg(format!("/select,{}", path.display()))
+            .spawn();
+    }
+    Ok(path.display().to_string())
+}
+
+/// Puts a share card on the clipboard as a picture. The body is raw RGBA
+/// pixels; the width and height come in headers.
+#[tauri::command]
+fn copy_share_image(request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("No image was sent".into());
+    };
+    let dim = |h: &str| request_header(&request, h).and_then(|v| v.parse::<usize>().ok());
+    let (Some(width), Some(height)) = (dim("x-width"), dim("x-height")) else {
+        return Err("The image size is missing".into());
+    };
+    if width == 0 || height == 0 || bytes.len() != width * height * 4 {
+        return Err("The image data does not match its size".into());
+    }
+    let image = arboard::ImageData {
+        width,
+        height,
+        bytes: std::borrow::Cow::Borrowed(bytes.as_slice()),
+    };
+    arboard::Clipboard::new()
+        .and_then(|mut c| c.set_image(image))
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn open_recordings_folder() -> Result<(), String> {
     let folder = recordings::folder();
@@ -2414,6 +2484,8 @@ pub fn run() {
             place_result,
             hide_result,
             open_recordings_folder,
+            save_share_image,
+            copy_share_image,
             press_dictation,
             release_dictation,
             reset_usage

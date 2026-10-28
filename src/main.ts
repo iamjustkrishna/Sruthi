@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, iconUrl } from "./appIcons";
 import sruthiLogo from "./assets/sruthi-logo.png";
+import { openShare } from "./shareSheet";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
@@ -1494,7 +1495,22 @@ function renderGlanceApps(apps: UsageApp[]) {
   sync();
 }
 
+$("share-open").addEventListener("click", () => {
+  if (!status) return;
+  const u = status.usage;
+  openShare({
+    words: u.words,
+    savedMin: u.saved_min,
+    wpm: u.wpm,
+    streak: u.streak,
+    dictations: u.dictations,
+    week: u.week,
+    apps: u.top_apps.filter((a) => appLabel(a.name)).map((a) => ({ name: appLabel(a.name), words: a.words })),
+  });
+});
+
 function renderGlance(u: Usage) {
+  $<HTMLButtonElement>("share-open").disabled = u.dictations === 0;
   $("banner-greet").textContent = u.streak > 1 ? `${greeting()} · ${u.streak}-day streak` : greeting();
 
   const minutes = Math.max(1, Math.round(u.words_today / TYPING_WPM));
