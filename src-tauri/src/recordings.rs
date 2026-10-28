@@ -27,6 +27,10 @@ pub struct Entry {
     /// Process name of the app the text went into (empty for older entries).
     #[serde(default)]
     pub app: String,
+    /// What you actually said, as corrected by you; the benchmark's answer
+    /// key.
+    #[serde(default)]
+    pub reference: Option<String>,
 }
 
 pub fn folder() -> PathBuf {
@@ -72,6 +76,7 @@ pub fn add(samples: &[f32], heard: &str, text: &str, app: &str) -> Result<Entry>
         heard: heard.to_string(),
         text: text.to_string(),
         app: app.to_string(),
+        reference: None,
     };
     fs::create_dir_all(folder())?;
     fs::write(wav_path(&entry.id)?, encode_wav(samples))?;
@@ -81,6 +86,21 @@ pub fn add(samples: &[f32], heard: &str, text: &str, app: &str) -> Result<Entry>
     entries.truncate(MAX_ENTRIES);
     save_index(&entries)?;
     Ok(entry)
+}
+
+/// Sets (or clears) the corrected text of one dictation.
+pub fn set_reference(id: &str, reference: Option<String>) -> Result<()> {
+    let mut entries = load();
+    let Some(entry) = entries.iter_mut().find(|e| e.id == id) else {
+        bail!("That dictation is gone");
+    };
+    entry.reference = reference;
+    save_index(&entries)
+}
+
+/// The 16 kHz samples of one recording.
+pub fn read_samples(id: &str) -> Result<Vec<f32>> {
+    transcribe_rs::audio::read_wav_samples(&wav_path(id)?).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 pub fn read_wav(id: &str) -> Result<Vec<u8>> {

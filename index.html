@@ -80,6 +80,44 @@
               <input id="history-search" type="search" placeholder="Search dictations" aria-label="Search dictations" autocomplete="off" spellcheck="false" />
             </label>
           </header>
+          <section class="banner" aria-label="Your dictation at a glance">
+            <div class="banner-copy">
+              <p class="banner-greet" id="banner-greet"></p>
+              <h2 class="banner-line" id="banner-line"></h2>
+              <div class="milestone">
+                <span class="milestone-bar"><i id="milestone-fill"></i></span>
+                <p class="muted small" id="milestone-text"></p>
+              </div>
+            </div>
+            <div class="banner-wave" id="banner-wave" aria-hidden="true"></div>
+          </section>
+          <div class="glance">
+            <section class="card glance-card" aria-label="Today">
+              <h3>Today</h3>
+              <div class="glance-ring">
+                <svg width="64" height="64" viewBox="0 0 56 56" aria-hidden="true">
+                  <circle cx="28" cy="28" r="22" fill="none" stroke="var(--track)" stroke-width="6" />
+                  <circle id="ring-fg" cx="28" cy="28" r="22" fill="none" stroke="var(--sound)" stroke-width="6" stroke-linecap="round" stroke-dasharray="138.2" stroke-dashoffset="138.2" transform="rotate(-90 28 28)" />
+                </svg>
+                <div>
+                  <strong id="glance-today">0</strong>
+                  <span class="muted small" id="glance-today-sub">words today</span>
+                </div>
+              </div>
+            </section>
+            <section class="card glance-card" aria-label="Where you dictate">
+              <h3>Where you dictate</h3>
+              <div id="glance-apps" class="bars"></div>
+            </section>
+            <section class="card glance-card" aria-label="Speed">
+              <h3>You and typing</h3>
+              <div class="bars">
+                <div class="bar-row"><span class="bar-name">Talking</span><span class="bar-track"><span class="bar-fill" id="speed-you"></span></span></div>
+                <div class="bar-row"><span class="bar-name">Typing</span><span class="bar-track"><span class="bar-fill muted-fill" id="speed-type"></span></span></div>
+              </div>
+              <p class="muted small" id="speed-text"></p>
+            </section>
+          </div>
           <div class="home-grid">
             <div class="feed" id="history-feed">
               <div id="history-list" class="history-list"></div>
@@ -150,7 +188,19 @@
             </div>
           </header>
           <div class="page-col">
-      <details class="card fold" id="dictionary-card" open>
+                <section class="card" id="suggest-card" hidden>
+            <div class="fold-head">
+              <span class="fold-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /></svg>
+              </span>
+              <span class="fold-text">
+                <h2>Suggested from your dictations</h2>
+                <span class="fold-value">Words you corrected, and names you keep saying.</span>
+              </span>
+            </div>
+            <ul class="suggest-list" id="suggest-list"></ul>
+          </section>
+          <details class="card fold" id="dictionary-card" open>
         <summary class="fold-head">
           <span class="fold-icon" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h10a4 4 0 0 1 4 4v12H9a4 4 0 0 1-4-4z" /><path d="M9 8h6" /></svg>
@@ -259,7 +309,22 @@
         </div>
       </details>
 
-            <section class="card" id="format-card">
+            <section class="card" id="bench-card">
+            <div class="fold-head">
+              <span class="fold-icon sound" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>
+              </span>
+              <span class="fold-text">
+                <h2>Your benchmark</h2>
+                <span class="fold-value">Every model, scored on your own voice</span>
+              </span>
+              <button id="bench-run" class="pill" disabled>Score models</button>
+            </div>
+            <p class="muted small fold-note" id="bench-intro"></p>
+            <p class="small fold-note" id="bench-status" aria-live="polite" hidden></p>
+            <ul class="bench-list" id="bench-list"></ul>
+          </section>
+          <section class="card" id="format-card">
         <div class="fold-head">
           <span class="fold-icon" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5 13.8 11.3 12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /></svg>

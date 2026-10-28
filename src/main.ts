@@ -102,6 +102,8 @@ interface HistoryEntry {
   text: string;
   /** Process name of the app the text went into; empty for older entries. */
   app?: string;
+  /** What you said, as you corrected it: the benchmark's answer key. */
+  reference?: string | null;
 }
 
 interface UsageWeek {
@@ -527,6 +529,9 @@ function render(s: Status) {
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
+  renderGlance(s.usage);
+  renderSuggestions(s);
+  renderBenchmark(s);
   renderSnippets(s.snippets);
 
   showHoldPhase(holdPhase);
@@ -582,17 +587,35 @@ const ICONS = {
   stop: "M7 7h10v10H7z",
   trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
   changes: "M4 7h16M4 12h10M4 17h16",
+  edit: "M4 20h4L19 9l-4-4L4 16z",
+  rerun: "M20 11a8 8 0 0 0-14-4M4 4v4h4M4 13a8 8 0 0 0 14 4M20 20v-4h-4",
 };
 
 function icon(path: string) {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}" /></svg>`;
 }
 
+/** Friendly names for common process names; anything else is just capitalized. */
+const APP_NAMES: Record<string, string> = {
+  windowsterminal: "Terminal",
+  code: "VS Code",
+  cursor: "Cursor",
+  chrome: "Chrome",
+  msedge: "Edge",
+  firefox: "Firefox",
+  winword: "Word",
+  excel: "Excel",
+  outlook: "Outlook",
+  whatsapp: "WhatsApp",
+  powershell: "PowerShell",
+  cmd: "Command Prompt",
+};
+
 /** "chrome.exe" -> "Chrome"; empty or unknown stays empty. */
 function appLabel(process: string | undefined) {
   const base = (process ?? "").replace(/\.exe$/i, "").trim();
   if (!base || base === "unknown") return "";
-  return base.charAt(0).toUpperCase() + base.slice(1);
+  return APP_NAMES[base.toLowerCase()] ?? base.charAt(0).toUpperCase() + base.slice(1);
 }
 
 function dayLabel(ms: number) {
@@ -690,31 +713,174 @@ async function togglePlay(id: string) {
   renderHistory(true);
 }
 
-function historyEntry(e: HistoryEntry) {
-  const root = document.createElement("article");
-  root.className = "entry";
+/** Word errors of `heard` against `reference`; the same measure the benchmark uses. */
+function wordList(text: string) {
+  return text
+    .split(/[^\p{L}\p{N}']+/u)
+    .map((w) => w.replace(/^'+|'+$/g, "").toLowerCase())
+    .filter(Boolean);
+}
 
-  const meta = document.createElement("div");
-  meta.className = "entry-meta";
+function wordErrors(reference: string, heard: string): [number, number] {
+  const a = wordList(reference);
+  const b = wordList(heard);
+  const row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 0; i < a.length; i++) {
+    let diagonal = row[0];
+    row[0] = i + 1;
+    for (let j = 0; j < b.length; j++) {
+      const above = row[j + 1];
+      row[j + 1] = a[i] === b[j] ? diagonal : 1 + Math.min(diagonal, above, row[j]);
+      diagonal = above;
+    }
+  }
+  return [row[b.length], a.length];
+}
+
+interface Rerun {
+  model_id: string;
+  name: string;
+  heard: string;
+  text: string;
+  ms: number;
+}
+
+/** Per-dictation UI state that has to survive the feed being redrawn. */
+const correcting = new Set<string>();
+const rerunOpen = new Set<string>();
+const rerunBusy = new Set<string>();
+const drafts = new Map<string, string>();
+const rerunPick = new Map<string, string>();
+const rerunError = new Map<string, string>();
+const rerunResults = new Map<string, Rerun[]>();
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text = "") {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text) node.textContent = text;
+  return node;
+}
+
+function saveReference(id: string, text: string | null) {
+  correcting.delete(id);
+  drafts.delete(id);
+  run("set_reference", { id, text }).then(() => renderHistory(true));
+  renderHistory(true);
+}
+
+/** The box where you write what you actually said: the benchmark's answer key. */
+function correctionPanel(e: HistoryEntry) {
+  const panel = el("div", "entry-panel");
+  const field = el("label", "field");
+  field.append(el("span", "", "What you actually said"));
+  const area = el("textarea");
+  area.rows = 3;
+  area.value = drafts.get(e.id) ?? e.reference ?? e.text;
+  area.addEventListener("input", () => drafts.set(e.id, area.value));
+  field.append(area);
+
+  const row = el("div", "panel-actions");
+  const save = el("button", "", "Save correction");
+  save.type = "button";
+  save.addEventListener("click", () => saveReference(e.id, area.value));
+  const right = el("button", "ghost", "It was right as pasted");
+  right.type = "button";
+  right.addEventListener("click", () => saveReference(e.id, e.text));
+  row.append(save, right);
+  if (e.reference) {
+    const clear = el("button", "ghost", "Clear");
+    clear.type = "button";
+    clear.addEventListener("click", () => saveReference(e.id, null));
+    row.append(clear);
+  }
+  const cancel = el("button", "ghost", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => {
+    correcting.delete(e.id);
+    drafts.delete(e.id);
+    renderHistory(true);
+  });
+  row.append(cancel);
+  panel.append(field, row);
+  return panel;
+}
+
+/** Runs the saved audio through another model and shows what it heard. */
+function rerunPanel(e: HistoryEntry) {
+  const panel = el("div", "entry-panel");
+  const installed = (status?.models ?? []).filter((m) => m.installed);
+  const row = el("div", "panel-actions");
+  if (!installed.length) {
+    panel.append(el("p", "muted small", "Download another speech model on the Models page to compare."));
+    return panel;
+  }
+  const select = el("select", "mic-select");
+  select.setAttribute("aria-label", "Model to run");
+  for (const m of installed) {
+    const option = el("option", "", m.id === status?.active ? `${m.name} (in use)` : m.name);
+    option.value = m.id;
+    select.append(option);
+  }
+  select.value = rerunPick.get(e.id) ?? (installed.find((m) => m.id !== status?.active) ?? installed[0]).id;
+  select.addEventListener("change", () => rerunPick.set(e.id, select.value));
+  const busy = rerunBusy.has(e.id);
+  const go = el("button", "", busy ? "Running…" : "Run on this recording");
+  go.type = "button";
+  go.disabled = busy;
+  go.addEventListener("click", async () => {
+    rerunPick.set(e.id, select.value);
+    rerunBusy.add(e.id);
+    rerunError.delete(e.id);
+    renderHistory(true);
+    try {
+      const r = await invoke<Rerun>("rerun_recording", { id: e.id, modelId: select.value });
+      rerunResults.set(e.id, [...(rerunResults.get(e.id) ?? []).filter((x) => x.model_id !== r.model_id), r]);
+    } catch (err) {
+      rerunError.set(e.id, String(err));
+    } finally {
+      rerunBusy.delete(e.id);
+      renderHistory(true);
+    }
+  });
+  row.append(select, go);
+  panel.append(row);
+
+  const error = rerunError.get(e.id);
+  if (error) panel.append(el("p", "error", error));
+  for (const r of rerunResults.get(e.id) ?? []) {
+    const [wrong, total] = e.reference ? wordErrors(e.reference, r.text) : wordErrors(e.text, r.text);
+    const verdict = e.reference
+      ? `${wrong} of ${total} words wrong`
+      : wrong === 0
+        ? "same words as pasted"
+        : `${wrong} words differ from what was pasted`;
+    const item = el("div", "rerun-result");
+    const head = el("p", "rerun-head");
+    head.append(el("b", "", r.name), el("span", "", ` · ${(r.ms / 1000).toFixed(1)} s · ${verdict}`));
+    item.append(head, el("p", "rerun-text", r.text || "Nothing heard."));
+    panel.append(item);
+  }
+  return panel;
+}
+
+function historyEntry(e: HistoryEntry) {
+  const root = el("article", "entry");
+
+  const meta = el("div", "entry-meta");
   const app = appLabel(e.app);
   if (app) {
-    const chip = document.createElement("span");
-    chip.className = "app-chip";
-    chip.textContent = app.charAt(0);
+    const chip = el("span", "app-chip", app.charAt(0));
     chip.setAttribute("aria-hidden", "true");
-    const name = document.createElement("b");
-    name.textContent = app;
-    meta.append(chip, name);
+    meta.append(chip, el("b", "", app));
   }
   const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
   const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  const rest = document.createElement("span");
-  rest.textContent = `${when} · ${Math.max(1, Math.round(e.seconds))} s${words ? ` · ${words} ${words === 1 ? "word" : "words"}` : ""}`;
-  meta.append(rest);
+  meta.append(
+    el("span", "", `${when} · ${Math.max(1, Math.round(e.seconds))} s${words ? ` · ${words} ${words === 1 ? "word" : "words"}` : ""}`),
+  );
+  if (e.reference) meta.append(el("span", "tag-chip", "Corrected"));
 
-  const text = document.createElement("p");
-  text.className = e.text ? "entry-text" : "entry-text none";
-  text.textContent = e.text || "Nothing was heard.";
+  const text = el("p", e.text ? "entry-text" : "entry-text none", e.text || "Nothing was heard.");
 
   const copy = actionButton("Copy", ICONS.copy, async () => {
     const label = copy.querySelector("span")!;
@@ -736,47 +902,42 @@ function historyEntry(e: HistoryEntry) {
     isPlaying,
   );
 
-  const actions = document.createElement("div");
-  actions.className = "entry-actions";
-  actions.append(copy, play);
-  if (e.heard && e.heard !== e.text) {
-    const open = heardOpen.has(e.id);
-    actions.append(
-      actionButton(
-        open ? "Hide changes" : "See changes",
-        ICONS.changes,
-        () => {
-          if (heardOpen.has(e.id)) heardOpen.delete(e.id);
-          else heardOpen.add(e.id);
-          renderHistory(true);
-        },
-        open,
-      ),
-    );
-  }
-  const grow = document.createElement("span");
-  grow.className = "grow";
+  const toggle = (set: Set<string>) => () => {
+    if (set.has(e.id)) set.delete(e.id);
+    else set.add(e.id);
+    renderHistory(true);
+  };
+  const actions = el("div", "entry-actions");
   actions.append(
-    grow,
+    copy,
+    play,
+    actionButton("Correct", ICONS.edit, toggle(correcting), correcting.has(e.id)),
+    actionButton("Try another model", ICONS.rerun, toggle(rerunOpen), rerunOpen.has(e.id)),
+  );
+  if (e.heard && e.heard !== e.text) {
+    actions.append(actionButton(heardOpen.has(e.id) ? "Hide changes" : "See changes", ICONS.changes, toggle(heardOpen), heardOpen.has(e.id)));
+  }
+  actions.append(
+    el("span", "grow"),
     actionButton("Delete", ICONS.trash, () => {
       if (!confirm("Delete this dictation and its recording from this PC?")) return;
       if (playing?.id === e.id) stopPlayback();
-      heardOpen.delete(e.id);
+      for (const set of [heardOpen, correcting, rerunOpen]) set.delete(e.id);
       run("delete_recording", { id: e.id });
     }),
   );
 
   root.append(meta, text);
   if (heardOpen.has(e.id) && e.heard) {
-    const panel = document.createElement("div");
-    panel.className = "entry-heard";
-    const label = document.createElement("h3");
-    label.textContent = "What the model heard";
-    const body = document.createElement("p");
+    const panel = el("div", "entry-heard");
+    panel.append(el("h3", "", "What the model heard"));
+    const body = el("p");
     body.append(...heardWithChanges(e.heard, e.text));
-    panel.append(label, body);
+    panel.append(body);
     root.append(panel);
   }
+  if (correcting.has(e.id)) root.append(correctionPanel(e));
+  if (rerunOpen.has(e.id)) root.append(rerunPanel(e));
   root.append(actions);
   return root;
 }
@@ -784,7 +945,7 @@ function historyEntry(e: HistoryEntry) {
 function renderHistory(force = false) {
   const all = status?.history ?? [];
   const query = historySearch.value.trim().toLowerCase();
-  const signature = `${all.map((e) => e.id).join(",")}|${query}|${[...heardOpen].join(",")}|${playing?.id ?? ""}`;
+  const signature = `${all.map((e) => `${e.id}:${e.reference ?? ""}`).join(",")}|${query}|${playing?.id ?? ""}|${status?.active ?? ""}|${status?.models.filter((m) => m.installed).length ?? 0}`;
   if (!force && signature === historySignature) return;
   historySignature = signature;
 
@@ -1021,6 +1182,273 @@ listen<DictationPhaseEvent>("dictation", ({ payload }) => {
         ? "transcribing"
         : "idle",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Home, top: a greeting that tells the truth about your numbers, a waveform
+// that moves with your voice, and three glance cards
+
+const MILESTONES = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
+/** Typing speed the "saved" numbers compare against (the same 40 wpm as the stats). */
+const TYPING_WPM = 40;
+
+const waveEl = $("banner-wave");
+const WAVE_BARS = 44;
+const waveLevels = new Array<number>(WAVE_BARS).fill(0);
+const waveBars: HTMLElement[] = [];
+for (let i = 0; i < WAVE_BARS; i++) {
+  const bar = document.createElement("i");
+  bar.style.setProperty("--i", String(i));
+  waveBars.push(bar);
+}
+waveEl.append(...waveBars);
+
+let waveTimer = 0;
+
+/** While you speak the bars follow the microphone (button or hotkey); otherwise they breathe. */
+listen<number>("audio-level", (e) => {
+  waveEl.classList.add("live");
+  waveLevels.push(Math.min(1, Math.max(0, e.payload)));
+  waveLevels.shift();
+  waveBars.forEach((bar, i) => bar.style.setProperty("--h", String(0.1 + 0.9 * waveLevels[i])));
+  window.clearTimeout(waveTimer);
+  waveTimer = window.setTimeout(() => {
+    waveEl.classList.remove("live");
+    waveLevels.fill(0);
+  }, 400);
+});
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? "Late night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+function renderGlance(u: Usage) {
+  $("banner-greet").textContent = u.streak > 1 ? `${greeting()} · ${u.streak}-day streak` : greeting();
+
+  const minutes = Math.max(1, Math.round(u.words_today / TYPING_WPM));
+  $("banner-line").textContent =
+    u.words_today > 0
+      ? `${u.words_today.toLocaleString()} words today, about ${minutes} min of typing you skipped.`
+      : u.streak > 0
+        ? `Keep your ${u.streak}-day streak going. Say something.`
+        : "Hold the shortcut and say your first sentence.";
+
+  // Milestone bar: words said, toward the next round number.
+  const next = MILESTONES.find((m) => m > u.words);
+  const prev = [...MILESTONES].reverse().find((m) => m <= u.words) ?? 0;
+  const fill = next ? (u.words - prev) / (next - prev) : 1;
+  $("milestone-fill").style.width = `${Math.round(fill * 100)}%`;
+  $("milestone-text").textContent = next
+    ? `${u.words.toLocaleString()} of ${next.toLocaleString()} words to your next milestone`
+    : `${u.words.toLocaleString()} words, past every milestone`;
+
+  // Today against your best day this week.
+  const best = u.week.reduce((m, d) => (d.words > m.words ? d : m), { date: "", words: 0 });
+  const ratio = best.words > 0 ? Math.min(1, u.words_today / best.words) : 0;
+  $("ring-fg").setAttribute("stroke-dashoffset", String(138.2 * (1 - ratio)));
+  $("glance-today").textContent = u.words_today.toLocaleString();
+  $("glance-today-sub").textContent =
+    best.words > 0
+      ? `Best day this week: ${new Date(`${best.date}T00:00:00`).toLocaleDateString([], { weekday: "short" })}, ${best.words.toLocaleString()}`
+      : "words today";
+
+  // Where the words went.
+  const apps = u.top_apps.filter((a) => appLabel(a.name)).slice(0, 4);
+  const top = apps[0]?.words ?? 1;
+  $("glance-apps").replaceChildren(
+    ...(apps.length
+      ? apps.map((a) => {
+          const row = el("div", "bar-row");
+          const track = el("span", "bar-track");
+          const fillEl = el("span", "bar-fill");
+          fillEl.style.width = `${Math.max(6, Math.round((a.words / top) * 100))}%`;
+          track.append(fillEl);
+          row.append(el("span", "bar-name", appLabel(a.name)), track);
+          row.title = `${a.words.toLocaleString()} words`;
+          return row;
+        })
+      : [el("p", "muted small", "Appears once you dictate into an app.")]),
+  );
+
+  // You against typing.
+  const fastest = Math.max(u.wpm, TYPING_WPM);
+  $("speed-you").style.width = u.wpm > 0 ? `${Math.round((u.wpm / fastest) * 100)}%` : "0%";
+  $("speed-type").style.width = `${Math.round((TYPING_WPM / fastest) * 100)}%`;
+  $("speed-text").textContent =
+    u.wpm > 0
+      ? `${Math.round(u.wpm)} words per minute, ${(u.wpm / TYPING_WPM).toFixed(1).replace(/\.0$/, "")}× typing`
+      : "Dictate to see your speed.";
+}
+
+// ---------------------------------------------------------------------------
+// Dictionary: suggestions from your own dictations
+
+const dismissedWords = new Set<string>(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem("dismissed-words") ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  })(),
+);
+
+const SKIP_CAPS = new Set([
+  "i", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+  "january", "february", "march", "april", "june", "july", "august", "september", "october", "november", "december",
+]);
+
+/** Words worth adding: ones you corrected, and names you keep saying. */
+function suggestWords(s: Status): { word: string; why: string }[] {
+  const have = new Set(s.dictionary.map((w) => w.toLowerCase()));
+  const skip = (w: string) =>
+    w.length < 3 || have.has(w.toLowerCase()) || dismissedWords.has(w.toLowerCase()) || SKIP_CAPS.has(w.toLowerCase());
+  const found = new Map<string, { word: string; why: string; n: number; corrected: boolean }>();
+  const bump = (word: string, corrected: boolean) => {
+    const key = word.toLowerCase();
+    const seen = found.get(key);
+    if (seen) {
+      seen.n++;
+      seen.corrected ||= corrected;
+    } else found.set(key, { word, why: "", n: 1, corrected });
+  };
+
+  for (const e of s.history) {
+    if (e.reference) {
+      // Words you wrote that the app did not paste.
+      const pasted = new Set(wordList(e.text));
+      for (const w of e.reference.match(/[\p{L}][\p{L}\p{N}'-]*/gu) ?? []) {
+        if (!pasted.has(w.toLowerCase()) && !skip(w)) bump(w, true);
+      }
+    }
+    // Names: capitalized in the middle of a sentence.
+    for (const sentence of e.text.split(/(?<=[.!?])\s+/)) {
+      for (const w of (sentence.match(/[\p{L}][\p{L}\p{N}'-]*/gu) ?? []).slice(1)) {
+        if (/^\p{Lu}/u.test(w) && !skip(w)) bump(w, false);
+      }
+    }
+  }
+  return [...found.values()]
+    .filter((f) => f.corrected || f.n >= 3)
+    .sort((a, b) => Number(b.corrected) - Number(a.corrected) || b.n - a.n)
+    .slice(0, 5)
+    .map((f) => ({
+      word: f.word,
+      why: f.corrected
+        ? `you wrote it differently in ${f.n} ${f.n === 1 ? "dictation" : "dictations"}`
+        : `appears ${f.n} times in your dictations`,
+    }));
+}
+
+function renderSuggestions(s: Status) {
+  const picks = suggestWords(s);
+  $("suggest-card").hidden = picks.length === 0;
+  $("suggest-list").replaceChildren(
+    ...picks.map(({ word, why }) => {
+      const row = el("li", "suggest-row");
+      const label = el("span", "suggest-label");
+      label.append(el("strong", "", word), el("span", "muted small", ` · ${why}`));
+      const add = el("button", "", "Add");
+      add.type = "button";
+      add.addEventListener("click", () => run("add_word", { word }));
+      const dismiss = el("button", "ghost", "Dismiss");
+      dismiss.type = "button";
+      dismiss.addEventListener("click", () => {
+        dismissedWords.add(word.toLowerCase());
+        try {
+          localStorage.setItem("dismissed-words", JSON.stringify([...dismissedWords]));
+        } catch {
+          // Dismissals just won't persist.
+        }
+        renderSuggestions(s);
+      });
+      row.append(label, add, dismiss);
+      return row;
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Models: your own benchmark
+
+interface Score {
+  model_id: string;
+  name: string;
+  clips: number;
+  words: number;
+  wrong: number;
+  total_ms: number;
+  audio_s: number;
+  at_ms: number;
+}
+
+let scores: Score[] = [];
+let benchmarkRunning = false;
+const benchStatus = $("bench-status");
+const benchRun = $<HTMLButtonElement>("bench-run");
+
+function renderBenchmark(s: Status) {
+  const corrected = s.history.filter((e) => e.reference).length;
+  const installed = s.models.filter((m) => m.installed);
+  $("bench-intro").textContent = corrected
+    ? `${corrected} corrected ${corrected === 1 ? "dictation is" : "dictations are"} the answer key. Each installed model transcribes ${corrected === 1 ? "it" : "them"} again and is scored on the words it gets wrong.`
+    : "Correct a few dictations on Home (Correct, or It was right as pasted). Those become the answer key every model is scored against.";
+  benchRun.disabled = benchmarkRunning || corrected === 0 || installed.length === 0;
+  benchRun.textContent = benchmarkRunning ? "Scoring…" : `Score ${installed.length} installed ${installed.length === 1 ? "model" : "models"}`;
+
+  const ranked = [...scores].sort((a, b) => a.wrong / Math.max(1, a.words) - b.wrong / Math.max(1, b.words));
+  const worst = Math.max(0.05, ...ranked.map((r) => r.wrong / Math.max(1, r.words)));
+  $("bench-list").replaceChildren(
+    ...ranked.map((r) => {
+      const rate = r.wrong / Math.max(1, r.words);
+      const row = el("li", "bench-row");
+      const track = el("span", "bar-track");
+      const fill = el("span", "bar-fill");
+      fill.style.width = `${Math.max(3, Math.round((rate / worst) * 100))}%`;
+      track.append(fill);
+      const speed = r.total_ms > 0 ? r.audio_s / (r.total_ms / 1000) : 0;
+      row.append(
+        el("strong", "bench-name", r.name),
+        track,
+        el("span", "bench-rate", `${(rate * 100).toFixed(1)}% wrong`),
+        el("span", "bench-meta muted small", `${speed.toFixed(1)}× real time · ${r.clips} clips`),
+      );
+      return row;
+    }),
+  );
+}
+
+benchRun.addEventListener("click", async () => {
+  if (!status) return;
+  benchmarkRunning = true;
+  benchStatus.hidden = false;
+  benchStatus.classList.remove("error");
+  benchStatus.textContent = "Starting…";
+  renderBenchmark(status);
+  try {
+    scores = await invoke<Score[]>("run_benchmark", {
+      models: status.models.filter((m) => m.installed).map((m) => m.id),
+    });
+    benchStatus.hidden = true;
+  } catch (err) {
+    benchStatus.classList.add("error");
+    benchStatus.textContent = String(err);
+  } finally {
+    benchmarkRunning = false;
+    if (status) renderBenchmark(status);
+  }
+});
+
+listen<{ model: string; step: number; of: number }>("benchmark-progress", (e) => {
+  benchStatus.hidden = false;
+  benchStatus.classList.remove("error");
+  benchStatus.textContent = `Scoring ${e.payload.model} (${e.payload.step + 1} of ${e.payload.of})…`;
+});
+
+invoke<Score[]>("get_benchmark").then((s) => {
+  scores = s;
+  if (status) renderBenchmark(status);
 });
 
 // ---------------------------------------------------------------------------

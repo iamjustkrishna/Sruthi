@@ -217,6 +217,19 @@ impl Session {
     }
 }
 
+/// Transcribes a whole recording the way a dictation's tail is: in pieces
+/// split at pauses, joined back into one text.
+pub(crate) fn transcribe_audio(engine: &Engine, audio: &[f32]) -> Result<String> {
+    let mut texts = Vec::new();
+    let mut rest = audio.to_vec();
+    while let Some(cut) = chunks::next_cut(&rest, true) {
+        texts.push(transcribe_piece(engine, &rest[..cut])?);
+        rest.drain(..cut);
+    }
+    texts.push(transcribe_piece(engine, &rest)?);
+    Ok(chunks::join(&texts))
+}
+
 /// Boosts quiet speech and transcribes one piece; silence comes back empty
 /// without running the model.
 fn transcribe_piece(engine: &Engine, audio: &[f32]) -> Result<String> {

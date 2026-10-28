@@ -1,4 +1,5 @@
 mod audio;
+mod benchmark;
 mod caret;
 mod chunks;
 mod context;
@@ -932,7 +933,7 @@ fn stream_levels(app: &AppHandle, level: Arc<AtomicU32>) {
                 break;
             }
             let value = f32::from_bits(level.load(Ordering::Relaxed));
-            let _ = app.emit_to("overlay", "audio-level", value);
+            let _ = app.emit("audio-level", value);
         }
     });
 }
@@ -1575,6 +1576,218 @@ fn remove_word(app: AppHandle, word: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Sets (or clears, when empty) what you actually said in one dictation.
+#[tauri::command]
+fn set_reference(app: AppHandle, id: String, text: Option<String>) -> Result<(), String> {
+    let text = text
+        .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|t| !t.is_empty());
+    recordings::set_reference(&id, text.clone()).map_err(|e| e.to_string())?;
+    for entry in app
+        .state::<AppState>()
+        .inner
+        .lock()
+        .unwrap()
+        .history
+        .iter_mut()
+        .filter(|e| e.id == id)
+    {
+        entry.reference = text.clone();
+    }
+    emit_status(&app);
+    Ok(())
+}
+
+/// What one model made of one recording.
+#[derive(Serialize)]
+struct RerunResult {
+    model_id: String,
+    name: String,
+    heard: String,
+    /// `heard` with the dictionary and the instant rules applied, like a
+    /// dictation without the AI step.
+    text: String,
+    ms: u64,
+}
+
+/// Runs `work` with a ready engine for `model_id`: the live one when that is
+/// the active model, otherwise a fresh load that is dropped afterwards.
+fn with_engine<T>(
+    app: &AppHandle,
+    model_id: &str,
+    work: impl FnOnce(&dictation::Engine, &'static model::ModelInfo) -> anyhow::Result<T>,
+) -> Result<T, String> {
+    let info = model::find(model_id).ok_or("That model isn't in the catalog")?;
+    if !info.is_installed() {
+        return Err(format!("{} isn't downloaded yet", info.name));
+    }
+    let state = app.state::<AppState>();
+    {
+        let inner = state.inner.lock().unwrap();
+        if inner.session.is_some() || inner.busy {
+            return Err("Wait for the current dictation to finish".into());
+        }
+    }
+    if state.inner.lock().unwrap().active.id == info.id {
+        if state.engine.lock().unwrap().is_none() {
+            return Err(format!("{} is still loading", info.name));
+        }
+        return work(&state.engine, info).map_err(|e| e.to_string());
+    }
+    if memory::is_tight(memory::free_ram_mb(), info.size_mb, false) {
+        return Err(format!(
+            "Not enough free memory to try {} next to the model in use. Close something or try a smaller model.",
+            info.name
+        ));
+    }
+    let mut loaded = info
+        .load()
+        .map_err(|e| format!("Couldn't load {}: {e}", info.name))?;
+    loaded.set_hotwords(&settings::load().dictionary);
+    loaded.set_latin_only(true);
+    let engine: dictation::Engine = Arc::new(Mutex::new(Some(loaded)));
+    work(&engine, info).map_err(|e| e.to_string())
+}
+
+/// The transcript the app would paste without its AI step.
+fn rules_text(heard: &str) -> String {
+    let words = settings::load().dictionary;
+    format::rules::tidy_lines(&format::rules::apply(&format::dictionary::apply(
+        heard, &words,
+    )))
+}
+
+/// Transcribes one saved dictation again with `model_id`.
+#[tauri::command]
+async fn rerun_recording(
+    app: AppHandle,
+    id: String,
+    model_id: String,
+) -> Result<RerunResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let audio = recordings::read_samples(&id).map_err(|e| e.to_string())?;
+        with_engine(&app, &model_id, |engine, info| {
+            let started = Instant::now();
+            let heard = dictation::transcribe_audio(engine, &audio)?;
+            Ok(RerunResult {
+                model_id: info.id.to_string(),
+                name: info.name.to_string(),
+                text: rules_text(&heard),
+                heard,
+                ms: started.elapsed().as_millis() as u64,
+            })
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Progress of a benchmark run, for the Models page.
+#[derive(Clone, Serialize)]
+struct BenchmarkProgress {
+    model: String,
+    step: usize,
+    of: usize,
+}
+
+static BENCHMARK_RUNNING: AtomicBool = AtomicBool::new(false);
+/// The newest corrected dictations a benchmark uses.
+const BENCHMARK_CLIPS: usize = 40;
+
+#[tauri::command]
+fn get_benchmark() -> Vec<benchmark::Score> {
+    benchmark::load()
+}
+
+/// Scores each of `models` on your corrected dictations (the newest
+/// `BENCHMARK_CLIPS`), one model at a time, and remembers the result.
+#[tauri::command]
+async fn run_benchmark(
+    app: AppHandle,
+    models: Vec<String>,
+) -> Result<Vec<benchmark::Score>, String> {
+    if BENCHMARK_RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("A benchmark is already running".into());
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let clips: Vec<(String, String)> = recordings::load()
+            .into_iter()
+            .filter_map(|e| {
+                e.reference
+                    .filter(|r| !r.trim().is_empty())
+                    .map(|r| (e.id, r))
+            })
+            .take(BENCHMARK_CLIPS)
+            .collect();
+        if clips.is_empty() {
+            return Err(
+                "Correct a few dictations on Home first; they are the answer key.".to_string(),
+            );
+        }
+        let audio: Vec<Vec<f32>> = clips
+            .iter()
+            .map(|(id, _)| recordings::read_samples(id).map_err(|e| e.to_string()))
+            .collect::<Result<_, _>>()?;
+        let mut scores = benchmark::load();
+        let mut first_error = None;
+        let mut any_new = false;
+        for (step, model_id) in models.iter().enumerate() {
+            let name = model::find(model_id).map_or(model_id.as_str(), |m| m.name);
+            let _ = app.emit(
+                "benchmark-progress",
+                BenchmarkProgress {
+                    model: name.to_string(),
+                    step,
+                    of: models.len(),
+                },
+            );
+            let scored = with_engine(&app, model_id, |engine, info| {
+                let (mut words, mut wrong, mut audio_s) = (0, 0, 0.0f32);
+                let started = Instant::now();
+                for ((_, reference), samples) in clips.iter().zip(&audio) {
+                    let text = rules_text(&dictation::transcribe_audio(engine, samples)?);
+                    let (edits, n) = benchmark::word_errors(reference, &text);
+                    wrong += edits;
+                    words += n;
+                    audio_s += samples.len() as f32 / audio::TARGET_RATE as f32;
+                }
+                Ok(benchmark::Score {
+                    model_id: info.id.to_string(),
+                    name: info.name.to_string(),
+                    clips: clips.len(),
+                    words,
+                    wrong,
+                    total_ms: started.elapsed().as_millis() as u64,
+                    audio_s,
+                    at_ms: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0),
+                })
+            });
+            match scored {
+                Ok(score) => {
+                    any_new = true;
+                    scores.retain(|s| s.model_id != score.model_id);
+                    scores.push(score);
+                }
+                Err(e) => first_error = first_error.or(Some(e)),
+            }
+        }
+        benchmark::save(scores.clone()).map_err(|e| e.to_string())?;
+        match first_error {
+            // Some models scored and one could not (memory, not installed):
+            // the new scores are kept; the reason is shown if none came in.
+            Some(e) if !any_new => Err(e),
+            _ => Ok(scores),
+        }
+    })
+    .await
+    .map_err(|e| e.to_string());
+    BENCHMARK_RUNNING.store(false, Ordering::SeqCst);
+    result?
+}
+
 /// Longest spoken phrase and longest expansion a snippet may have.
 const MAX_TRIGGER_LEN: usize = 60;
 const MAX_SNIPPET_LEN: usize = 4000;
@@ -2110,6 +2323,10 @@ pub fn run() {
             remove_word,
             save_snippet,
             remove_snippet,
+            set_reference,
+            rerun_recording,
+            run_benchmark,
+            get_benchmark,
             set_hotkey,
             hotkey_options,
             set_instant_mic,

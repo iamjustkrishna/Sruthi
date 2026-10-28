@@ -738,6 +738,7 @@ mod tests {
                 heard: "um the launch slips".into(),
                 text: "The launch slips.".into(),
                 app: String::new(),
+                reference: None,
             },
             recordings::Entry {
                 id: "b".into(),
@@ -746,6 +747,7 @@ mod tests {
                 heard: "hello there".into(),
                 text: "Hello there.".into(),
                 app: String::new(),
+                reference: None,
             },
         ]
     }
