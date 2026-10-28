@@ -30,6 +30,28 @@ pub enum Theme {
     Dark,
 }
 
+/// The key that sends what was just pasted. Chat boxes take Enter; mail,
+/// GitHub and most post boxes want Ctrl+Enter; some apps want neither.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SendKey {
+    #[default]
+    Enter,
+    CtrlEnter,
+    ShiftEnter,
+    AltEnter,
+    /// Paste only, in the apps this applies to.
+    Off,
+}
+
+/// "In anything whose app name or window title contains `matches`, send
+/// with `key`." The first rule that fits wins.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SendRule {
+    pub matches: String,
+    pub key: SendKey,
+}
+
 /// Where the speech model runs: on the graphics card (default, with an
 /// automatic CPU fallback) or pinned to the CPU.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Default)]
@@ -64,6 +86,10 @@ pub struct Settings {
     pub instant_mic: bool,
     /// Press Enter after each paste, so a chat message or search sends itself.
     pub auto_enter: bool,
+    /// How to send when `auto_enter` is on, unless a rule says otherwise.
+    pub send_key: SendKey,
+    /// Per-app and per-site overrides of `send_key`.
+    pub send_rules: Vec<SendRule>,
     /// Microphone to record from (None: Windows' default).
     pub microphone: Option<String>,
     /// Window palette: follow the system, or force light / dark.
@@ -89,6 +115,8 @@ impl Default for Settings {
             hotkey: None,
             instant_mic: true,
             auto_enter: false,
+            send_key: SendKey::default(),
+            send_rules: Vec::new(),
             microphone: None,
             cloud: None,
             cloud_models: HashMap::new(),

@@ -118,6 +118,8 @@ struct Status {
     hotkey: String,
     instant_mic: bool,
     auto_enter: bool,
+    send_key: settings::SendKey,
+    send_rules: Vec<settings::SendRule>,
     /// The window palette choice.
     theme: settings::Theme,
     microphone: Option<String>,
@@ -400,6 +402,8 @@ impl AppState {
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
             auto_enter: settings::load().auto_enter,
+            send_key: settings::load().send_key,
+            send_rules: settings::load().send_rules,
             theme: settings::load().theme,
             microphone: settings::load().microphone,
             microphones: list_microphone_names(),
@@ -1134,7 +1138,8 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
             // Trailing space keeps back-to-back dictations from running together;
             // when Enter follows, the message is done and the space would only
             // sit at the end of what gets sent.
-            let enter = settings::load().auto_enter;
+            let saved = settings::load();
+            let enter = saved.auto_enter;
             let pasted = if enter {
                 outcome.text.clone()
             } else {
@@ -1142,7 +1147,16 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
             };
             timing::measure("paste", || paste::paste_text(&pasted))?;
             if enter {
-                timing::measure("enter", paste::press_enter)?;
+                // The window that took the paste is the one still in front.
+                let target = context::active_app();
+                let key = paste::send_key_for(
+                    saved.send_key,
+                    &saved.send_rules,
+                    &target.process,
+                    &target.title,
+                );
+                log::info!("Sending with {key:?} in {}", target.process);
+                timing::measure("send", || paste::press_send(key))?;
             }
             record_usage(app, &outcome.heard, &outcome.text, speech_s, released);
         }
@@ -1982,6 +1996,41 @@ fn set_auto_enter(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+const MAX_SEND_RULES: usize = 30;
+
+#[tauri::command]
+fn set_send_key(app: AppHandle, key: settings::SendKey) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.send_key = key;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
+/// Replaces the per-app send rules. Blank and duplicate rules are dropped.
+#[tauri::command]
+fn set_send_rules(app: AppHandle, rules: Vec<settings::SendRule>) -> Result<(), String> {
+    let mut clean: Vec<settings::SendRule> = Vec::new();
+    for r in rules {
+        let matches = r.matches.split_whitespace().collect::<Vec<_>>().join(" ");
+        if matches.is_empty() || matches.len() > 60 {
+            continue;
+        }
+        if clean.iter().any(|c| c.matches.eq_ignore_ascii_case(&matches)) {
+            continue;
+        }
+        clean.push(settings::SendRule { matches, key: r.key });
+    }
+    if clean.len() > MAX_SEND_RULES {
+        return Err(format!("Up to {MAX_SEND_RULES} rules"));
+    }
+    let mut saved = settings::load();
+    saved.send_rules = clean;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_theme(app: AppHandle, theme: settings::Theme) -> Result<(), String> {
     let mut saved = settings::load();
@@ -2353,6 +2402,8 @@ pub fn run() {
             hotkey_options,
             set_instant_mic,
             set_auto_enter,
+            set_send_key,
+            set_send_rules,
             set_theme,
             get_theme,
             set_microphone,

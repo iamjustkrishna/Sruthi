@@ -2068,3 +2068,76 @@ button.ghost:hover:not(:disabled) {
   background: var(--err);
   filter: brightness(1.08);
 }
+
+/* Settings > Sending */
+.send-select {
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-caption);
+}
+.send-rules {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.send-rules:empty {
+  display: none;
+}
+.send-rules li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.send-match {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--track);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-form {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.send-form input {
+  flex: 1;
+  min-width: 0;
+}
+.send-ideas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--space-3);
+}
+.send-ideas:empty {
+  display: none;
+}
+.idea-chip {
+  height: auto;
+  padding: 3px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: var(--text-caption);
+  font-weight: 500;
+}
+.idea-chip:hover:not(:disabled) {
+  background: var(--raise);
+  color: var(--text);
+}

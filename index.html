@@ -174,12 +174,12 @@
             <kbd class="hotkey-label">Ctrl+Shift+Space</kbd>
             <span class="muted small">works in any app</span>
           </p>
-          <label class="auto-enter" title="After the text lands, Sruthi presses Enter for you: a chat message sends, a search runs. In an editor it starts a new line.">
+          <label class="auto-enter" title="After the text lands, Sruthi presses the send key for you (Enter by default; change it per app in Settings > Sending). In an editor, Enter starts a new line.">
             <span class="switch">
-              <input type="checkbox" id="auto-enter-toggle" aria-label="Press Enter after pasting" />
+              <input type="checkbox" id="auto-enter-toggle" aria-label="Send after pasting" />
               <span class="slider"></span>
             </span>
-            <span>Press Enter after pasting</span>
+            <span>Send after pasting</span>
           </label>
         </div>
       </section>
@@ -524,6 +524,34 @@
           <ul id="mic-probes" class="mic-probes"></ul>
         </div>
       </details>
+
+            <section class="card" id="sending-card">
+              <div class="fold-head">
+                <span class="fold-icon" aria-hidden="true">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></svg>
+                </span>
+                <span class="fold-text">
+                  <h2>Sending</h2>
+                  <span class="fold-value">Which key sends after pasting, when that is switched on (Home).</span>
+                </span>
+              </div>
+              <div class="setting-row">
+                <span><strong>Usually send with</strong></span>
+                <select id="send-key" class="send-select" aria-label="Usually send with"></select>
+              </div>
+              <p class="muted small fold-note">
+                Chat boxes send with Enter. Mail, GitHub and many post boxes want Ctrl+Enter. Add a rule for those: it
+                matches the app name (like <code>slack.exe</code>) or any word in the window title, which is where a
+                browser shows the site (like <code>github</code>).
+              </p>
+              <ul class="send-rules" id="send-rules"></ul>
+              <form class="send-form" id="send-form">
+                <input id="send-match" type="text" placeholder="App or site, e.g. github" maxlength="60" autocomplete="off" aria-label="App or site" />
+                <select id="send-rule-key" class="send-select" aria-label="Send with"></select>
+                <button type="submit">Add rule</button>
+              </form>
+              <div class="send-ideas" id="send-ideas"></div>
+            </section>
 
             <section class="card" id="privacy-card">
               <div class="fold-head">

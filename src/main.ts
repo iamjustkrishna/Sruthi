@@ -57,6 +57,8 @@ interface Status {
   hotkey: string;
   instant_mic: boolean;
   auto_enter: boolean;
+  send_key: SendKey;
+  send_rules: SendRule[];
   theme: ThemeName;
   microphone: string | null;
   microphones: string[];
@@ -72,6 +74,29 @@ interface Status {
   history: HistoryEntry[];
   usage: Usage;
 }
+
+type SendKey = "enter" | "ctrl_enter" | "shift_enter" | "alt_enter" | "off";
+
+interface SendRule {
+  matches: string;
+  key: SendKey;
+}
+
+const SEND_KEY_LABEL: Record<SendKey, string> = {
+  enter: "Enter",
+  ctrl_enter: "Ctrl+Enter",
+  shift_enter: "Shift+Enter",
+  alt_enter: "Alt+Enter",
+  off: "Don't send",
+};
+
+/** Starting points for the rules list; the user edits or removes them freely. */
+const SEND_IDEAS: SendRule[] = [
+  { matches: "github", key: "ctrl_enter" },
+  { matches: "gmail", key: "ctrl_enter" },
+  { matches: "outlook", key: "ctrl_enter" },
+  { matches: "code.exe", key: "off" },
+];
 
 interface Snippet {
   trigger: string;
@@ -550,6 +575,7 @@ function render(s: Status) {
   renderWords(s.dictionary);
   renderWordUse(s.dictionary, s.history);
   renderFixed(s.dictionary, s.history);
+  renderSending(s);
   renderSetup(s, active?.name);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   $<HTMLInputElement>("auto-enter-toggle").checked = s.auto_enter;
@@ -2013,7 +2039,7 @@ function renderSetup(s: Status, modelName: string | undefined) {
     ["Tidy up", tidy],
     ["Microphone", s.microphone ?? s.default_microphone ?? "Windows default"],
     ["Shortcut", s.hotkey],
-    ["After pasting", s.auto_enter ? "Presses Enter for you" : "Waits for you"],
+    ["After pasting", s.auto_enter ? `Sends with ${SEND_KEY_LABEL[s.send_key]}` : "Waits for you"],
     ["Audio", cloud ? "Stays on this PC. Only text goes to the cloud." : "Stays on this PC."],
   ];
   $("setup-list").replaceChildren(
@@ -2032,6 +2058,68 @@ $<HTMLFormElement>("word-form").addEventListener("submit", async (e) => {
 });
 
 smartToggle.addEventListener("change", () => run("set_smart", { enabled: smartToggle.checked }));
+
+/** Settings > Sending: the usual send key and the per-app rules. */
+function fillKeySelect(select: HTMLSelectElement, withOff: boolean) {
+  const keys = (Object.keys(SEND_KEY_LABEL) as SendKey[]).filter((k) => withOff || k !== "off");
+  select.replaceChildren(
+    ...keys.map((k) => {
+      const o = el("option", "", SEND_KEY_LABEL[k]);
+      o.value = k;
+      return o;
+    }),
+  );
+}
+const sendKeySelect = $<HTMLSelectElement>("send-key");
+const sendRuleKey = $<HTMLSelectElement>("send-rule-key");
+fillKeySelect(sendKeySelect, false);
+fillKeySelect(sendRuleKey, true);
+sendKeySelect.addEventListener("change", () => run("set_send_key", { key: sendKeySelect.value }));
+
+function saveRules(rules: SendRule[]) {
+  return run("set_send_rules", { rules });
+}
+
+function renderSending(s: Status) {
+  sendKeySelect.value = s.send_key;
+  $("send-rules").replaceChildren(
+    ...s.send_rules.map((r, i) => {
+      const li = el("li");
+      const pick = el("select", "send-select");
+      fillKeySelect(pick, true);
+      pick.value = r.key;
+      pick.setAttribute("aria-label", `Send with, for ${r.matches}`);
+      pick.addEventListener("change", () =>
+        saveRules(s.send_rules.map((x, j) => (j === i ? { ...x, key: pick.value as SendKey } : x))),
+      );
+      const rm = el("button", "ghost small-btn", "Remove");
+      rm.type = "button";
+      rm.addEventListener("click", () => saveRules(s.send_rules.filter((_, j) => j !== i)));
+      li.append(el("span", "send-match", r.matches), pick, rm);
+      return li;
+    }),
+  );
+  const unused = SEND_IDEAS.filter((i) => !s.send_rules.some((r) => r.matches.toLowerCase() === i.matches));
+  $("send-ideas").replaceChildren(
+    ...(unused.length ? [el("span", "muted small", "Try:")] : []),
+    ...unused.map((idea) => {
+      const b = el("button", "idea-chip", `${idea.matches} → ${SEND_KEY_LABEL[idea.key]}`);
+      b.type = "button";
+      b.addEventListener("click", () => saveRules([...s.send_rules, idea]));
+      return b;
+    }),
+  );
+}
+
+$<HTMLFormElement>("send-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $<HTMLInputElement>("send-match");
+  const matches = input.value.trim();
+  if (!matches || !status) return;
+  await saveRules([...status.send_rules, { matches, key: sendRuleKey.value as SendKey }]);
+  input.value = "";
+  input.focus();
+});
 
 const autoEnterToggle = $<HTMLInputElement>("auto-enter-toggle");
 autoEnterToggle.addEventListener("change", () => run("set_auto_enter", { enabled: autoEnterToggle.checked }));
