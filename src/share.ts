@@ -41,6 +41,15 @@ const FONT = '"Segoe UI Variable Display", "Segoe UI Variable Text", "Segoe UI",
 
 type Ctx = CanvasRenderingContext2D;
 
+/** Which of the "show on the card" switches change anything on each card, so
+ *  the sheet only offers the ones that do. */
+export const OPTIONS_FOR: Record<CardKind, ShareOptions> = {
+  time: { streak: true, speed: true, apps: false },
+  week: { streak: true, speed: true, apps: true },
+  speed: { streak: false, speed: false, apps: false },
+  milestone: { streak: true, speed: true, apps: false },
+};
+
 /** The biggest round number of words you have passed, if any. */
 export function milestoneReached(words: number): number | null {
   return [...MILESTONES].reverse().find((m) => m <= words) ?? null;

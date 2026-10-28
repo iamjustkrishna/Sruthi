@@ -3,8 +3,10 @@
 // to the app only to be written to Pictures or put on the clipboard.
 
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   CARD_NAMES,
+  OPTIONS_FOR,
   type CardKind,
   type ShareData,
   type ShareOptions,
@@ -26,15 +28,27 @@ const optSpeed = $<HTMLInputElement>("share-opt-speed");
 const optApps = $<HTMLInputElement>("share-opt-apps");
 
 let data: ShareData;
-let kind: CardKind = "time";
+let kind: CardKind = "week";
 let current: HTMLCanvasElement | null = null;
 let drawing = 0;
 
-const options = (): ShareOptions => ({
-  streak: optStreak.checked,
-  speed: optSpeed.checked,
-  apps: optApps.checked,
-});
+/** Only the switches that apply to this card count; the rest are hidden. */
+const options = (): ShareOptions => {
+  const on = OPTIONS_FOR[kind];
+  return {
+    streak: on.streak && optStreak.checked,
+    speed: on.speed && optSpeed.checked,
+    apps: on.apps && optApps.checked,
+  };
+};
+
+function syncOptions() {
+  const on = OPTIONS_FOR[kind];
+  for (const row of document.querySelectorAll<HTMLElement>(".share-check[data-opt]")) {
+    row.hidden = !on[row.dataset.opt as keyof ShareOptions];
+  }
+  $("share-opts-none").hidden = Object.values(on).some(Boolean);
+}
 
 function say(message: string, bad = false) {
   status.textContent = message;
@@ -55,6 +69,7 @@ function buildKinds() {
       b.addEventListener("click", () => {
         kind = k;
         buildKinds();
+        syncOptions();
         void redraw();
       });
       return b;
@@ -84,6 +99,7 @@ async function redraw() {
     $("share-caption").textContent = "";
   }
   const have = current !== null;
+  for (const b of document.querySelectorAll<HTMLButtonElement>(".post-btn")) b.disabled = !have;
   $<HTMLButtonElement>("share-save").disabled = !have;
   $<HTMLButtonElement>("share-copy").disabled = !have;
   $<HTMLButtonElement>("share-copy-caption").disabled = !have;
@@ -119,15 +135,50 @@ $("share-save").addEventListener("click", () =>
   }),
 );
 
+/** Puts the picture on the clipboard so it can be pasted into a post. */
+async function copyImage() {
+  if (!current) return;
+  const { width, height } = current;
+  const pixels = current.getContext("2d")!.getImageData(0, 0, width, height).data;
+  await invoke("copy_share_image", new Uint8Array(pixels.buffer), {
+    headers: { "x-width": String(width), "x-height": String(height) },
+  });
+}
+
 $("share-copy").addEventListener("click", () =>
   guard("share-copy", async () => {
-    if (!current) return;
-    const { width, height } = current;
-    const pixels = current.getContext("2d")!.getImageData(0, 0, width, height).data;
-    await invoke("copy_share_image", new Uint8Array(pixels.buffer), {
-      headers: { "x-width": String(width), "x-height": String(height) },
-    });
+    await copyImage();
     say("Copied. Paste it into your post.");
+  }),
+);
+
+// One click to a post: the picture goes on the clipboard, the site opens with
+// the caption filled in, and the person pastes the picture and presses Post.
+const POST_TO: { name: string; url: (text: string) => string }[] = [
+  { name: "X", url: (t) => `https://x.com/intent/post?text=${encodeURIComponent(t)}` },
+  { name: "LinkedIn", url: (t) => `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(t)}` },
+  { name: "WhatsApp", url: (t) => `https://wa.me/?text=${encodeURIComponent(t)}` },
+];
+
+$("share-post").replaceChildren(
+  ...POST_TO.map((target) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ghost post-btn";
+    b.textContent = target.name;
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      try {
+        await copyImage();
+        await openUrl(target.url($("share-caption").textContent ?? ""));
+        say(`Picture copied. Paste it into your ${target.name} post.`);
+      } catch (e) {
+        say(String(e instanceof Error ? e.message : e), true);
+      } finally {
+        b.disabled = current === null;
+      }
+    });
+    return b;
   }),
 );
 
@@ -145,6 +196,7 @@ export function openShare(d: ShareData) {
   data = d;
   if (unavailable(kind, d)) kind = KINDS.find((k) => !unavailable(k, d)) ?? "time";
   buildKinds();
+  syncOptions();
   dialog.showModal();
   void redraw();
 }

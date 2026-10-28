@@ -75,9 +75,9 @@
               <h1>Home</h1>
               <p class="muted small">Everything you dictated, kept on this PC.</p>
             </div>
-            <button type="button" id="share-open" class="ghost share-open" title="Make a picture of your stats to post">
+            <button type="button" id="share-open" class="ghost share-open" title="Make a picture of your own stats to post. This does not share the app.">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
-              Share
+              Share my stats
             </button>
             <label class="search">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
@@ -610,9 +610,10 @@
             </div>
             <div class="share-group">
               <h3>Show on the card</h3>
-              <label class="share-check"><input type="checkbox" id="share-opt-streak" checked /><span>Streak</span><em>your day count</em></label>
-              <label class="share-check"><input type="checkbox" id="share-opt-speed" checked /><span>Speed against typing</span><em>words a minute</em></label>
-              <label class="share-check"><input type="checkbox" id="share-opt-apps" /><span>App names</span><em>off, they can be private</em></label>
+              <label class="share-check" data-opt="streak"><input type="checkbox" id="share-opt-streak" checked /><span>Streak</span><em>your day count</em></label>
+              <label class="share-check" data-opt="speed"><input type="checkbox" id="share-opt-speed" checked /><span>Speed against typing</span><em>words a minute</em></label>
+              <label class="share-check" data-opt="apps"><input type="checkbox" id="share-opt-apps" /><span>App names</span><em>off, they can be private</em></label>
+              <p class="muted small" id="share-opts-none" hidden>This card is only your speed, so there is nothing to switch.</p>
             </div>
             <div class="share-group">
               <div class="share-cap-head">
@@ -620,6 +621,11 @@
                 <button type="button" id="share-copy-caption" class="ghost small-btn">Copy caption</button>
               </div>
               <p class="share-caption" id="share-caption"></p>
+            </div>
+            <div class="share-group">
+              <h3>Post it</h3>
+              <div class="share-post" id="share-post"></div>
+              <p class="muted small">Copies the picture, then opens the site in your browser with the caption filled in. Paste the picture into the post. Nothing is sent until you press Post there.</p>
             </div>
           </div>
         </div>

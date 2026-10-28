@@ -2428,3 +2428,32 @@ button.ghost:hover:not(:disabled) {
     transform: none;
   }
 }
+
+.share-post {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.share-post + .muted {
+  margin: var(--space-2) 0 0;
+}
+.post-btn {
+  height: 36px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.share-stage canvas {
+  animation: share-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes share-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-stage canvas {
+    animation: none;
+  }
+}
