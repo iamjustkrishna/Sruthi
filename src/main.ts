@@ -872,6 +872,9 @@ function historyEntry(e: HistoryEntry) {
     const chip = el("span", "app-chip", app.charAt(0));
     chip.setAttribute("aria-hidden", "true");
     meta.append(chip, el("b", "", app));
+  } else {
+    // Dictations made before the app name was kept, or when it couldn't be read.
+    meta.append(el("b", "", "App not recorded"));
   }
   const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
   const when = new Date(e.time_ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
