@@ -80,16 +80,51 @@
               <input id="history-search" type="search" placeholder="Search dictations" aria-label="Search dictations" autocomplete="off" spellcheck="false" />
             </label>
           </header>
-          <section class="banner" aria-label="Your dictation at a glance">
+          <section class="banner" id="home-banner" aria-label="Your dictation at a glance">
+            <div class="banner-art" aria-hidden="true">
+              <div class="aurora">
+                <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i>
+              </div>
+              <div class="banner-dots"></div>
+              <div class="banner-spot"></div>
+              <svg class="ribbons" id="banner-ribbons" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="rb-a" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stop-color="#7f9bff" stop-opacity="0" />
+                    <stop offset="0.3" stop-color="#8fb0ff" />
+                    <stop offset="0.65" stop-color="#a5f0ff" />
+                    <stop offset="1" stop-color="#c8aaff" stop-opacity="0.35" />
+                  </linearGradient>
+                  <linearGradient id="rb-b" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stop-color="#9a8cff" stop-opacity="0" />
+                    <stop offset="0.4" stop-color="#a99bff" />
+                    <stop offset="0.75" stop-color="#7fd3ff" />
+                    <stop offset="1" stop-color="#ffffff" stop-opacity="0.3" />
+                  </linearGradient>
+                  <filter id="rb-glow" x="-5%" y="-60%" width="110%" height="220%"><feGaussianBlur stdDeviation="6" /></filter>
+                </defs>
+                <g filter="url(#rb-glow)" fill="none" stroke-linecap="round" opacity="0.5">
+                  <path class="rib-glow" stroke="url(#rb-a)" stroke-width="8" />
+                  <path class="rib-glow" stroke="url(#rb-b)" stroke-width="7" />
+                  <path class="rib-glow" stroke="url(#rb-a)" stroke-width="5" />
+                </g>
+                <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+                  <path class="rib" stroke="url(#rb-a)" stroke-width="2.2" />
+                  <path class="rib" stroke="url(#rb-b)" stroke-width="1.6" opacity="0.9" />
+                  <path class="rib" stroke="url(#rb-a)" stroke-width="1.2" opacity="0.6" />
+                  <path class="rib" stroke="#ffffff" stroke-width="0.8" opacity="0.28" />
+                </g>
+              </svg>
+            </div>
+            <div class="banner-shade"></div>
             <div class="banner-copy">
               <p class="banner-greet" id="banner-greet"></p>
               <h2 class="banner-line" id="banner-line"></h2>
               <div class="milestone">
                 <span class="milestone-bar"><i id="milestone-fill"></i></span>
-                <p class="muted small" id="milestone-text"></p>
+                <p id="milestone-text"></p>
               </div>
             </div>
-            <div class="banner-wave" id="banner-wave" aria-hidden="true"></div>
           </section>
           <div class="glance">
             <section class="card glance-card" aria-label="Today">

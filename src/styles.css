@@ -459,34 +459,137 @@ h1 {
   }
 }
 
-/* Home, top: greeting, voice-reactive waveform, glance cards */
+/* Home, top: the hero banner. Aurora fields, sound ribbons, a dot grid and a
+   spotlight, all driven by --mx/--my/--px/--py/--hover/--voice set in main.ts.
+   Fixed deep blue in light and dark on purpose: it is the one place the app
+   is allowed to glow. */
 .banner {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 38%);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-5) var(--space-6);
-  border: 1px solid color-mix(in srgb, var(--sound) 28%, var(--border));
+  min-height: 176px;
+  padding: 0 var(--space-6) 0 32px;
   border-radius: var(--radius-float);
-  background: var(--sound-soft);
+  background: linear-gradient(120deg, #0a1233 0%, #13236b 52%, #2447c9 100%);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 14px 34px -14px rgba(36, 71, 201, 0.55);
+}
+.banner-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.aurora {
+  position: absolute;
+  inset: 0;
+  transform: scale(calc(1 + var(--voice, 0) * 0.07));
+  transform-origin: 75% 40%;
+}
+.blob {
+  position: absolute;
+  will-change: transform;
+}
+.blob::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  filter: blur(34px);
+  animation: aurora-drift 14s ease-in-out infinite alternate;
+}
+.b1 { right: 16%; top: -22%; width: 34%; height: 92%; transform: translate(calc(var(--mx, 0) * -26px), calc(var(--my, 0) * -16px)); }
+.b1::after { background: #3f6bff; opacity: 0.9; }
+.b2 { right: -8%; bottom: -34%; width: 38%; height: 104%; transform: translate(calc(var(--mx, 0) * 40px), calc(var(--my, 0) * 26px)); }
+.b2::after { background: #8a5cff; opacity: 0.7; animation-delay: -5s; }
+.b3 { right: 36%; bottom: -38%; width: 30%; height: 84%; transform: translate(calc(var(--mx, 0) * -14px), calc(var(--my, 0) * 30px)); }
+.b3::after { background: #1fc3ff; opacity: 0.5; animation-delay: -9s; }
+.b4 { right: 4%; top: -34%; width: 26%; height: 70%; transform: translate(calc(var(--mx, 0) * 22px), calc(var(--my, 0) * -22px)); }
+.b4::after { background: #c9a8ff; opacity: 0.5; animation-delay: -2s; }
+@keyframes aurora-drift {
+  from { transform: translate(-6%, -4%) scale(1); }
+  to { transform: translate(6%, 5%) scale(1.12); }
+}
+.banner-dots {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.6) 0.9px, transparent 1.3px);
+  background-size: 14px 14px;
+  opacity: 0.26;
+  -webkit-mask-image: linear-gradient(90deg, transparent 25%, #000 75%);
+  mask-image: linear-gradient(90deg, transparent 25%, #000 75%);
+}
+.banner-spot {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(260px circle at var(--px, 70%) var(--py, 40%), rgba(170, 205, 255, 0.4), transparent 70%);
+  opacity: calc(var(--hover, 0) * 0.9 + var(--voice, 0) * 0.35);
+  mix-blend-mode: screen;
+}
+.ribbons {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.banner-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(10, 18, 51, 0.9) 0%, rgba(10, 18, 51, 0.55) 38%, rgba(10, 18, 51, 0) 68%);
+}
+.banner-copy {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 520px;
+  padding: 18px 0;
+  pointer-events: none;
 }
 .banner-greet {
-  font-size: var(--text-small);
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 11px 4px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: var(--text-caption);
   font-weight: 600;
-  color: var(--sound);
+  color: #dbe5ff;
+}
+.banner-greet::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9be7ff;
+  box-shadow: 0 0 8px #9be7ff;
 }
 .banner-line {
-  margin: 2px 0 var(--space-3);
-  font-size: var(--text-stat);
+  margin: 0;
+  font-size: 26px;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  line-height: 1.3;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #ffffff;
+}
+.milestone {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 .milestone-bar {
-  display: block;
-  height: 6px;
+  flex: 1;
+  max-width: 300px;
+  height: 5px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--sound) 18%, transparent);
+  background: rgba(255, 255, 255, 0.2);
   overflow: hidden;
 }
 .milestone-bar i {
@@ -494,42 +597,15 @@ h1 {
   height: 100%;
   width: 0;
   border-radius: 999px;
-  background: var(--sound);
+  background: linear-gradient(90deg, #8aa8ff, #bfe9ff);
   transition: width 0.6s ease;
 }
 .milestone p {
-  margin-top: var(--space-1);
-}
-.banner-wave {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 3px;
-  height: 72px;
-}
-.banner-wave i {
-  flex: 1;
-  height: 100%;
-  max-width: 6px;
-  border-radius: 3px;
-  background: var(--sound);
-  opacity: 0.55;
-  transform: scaleY(0.12);
-  animation: breathe-wave 3.2s ease-in-out infinite;
-  animation-delay: calc(var(--i) * -0.11s);
-}
-.banner-wave.live i {
-  opacity: 1;
-  animation: none;
-  transform: scaleY(var(--h, 0.1));
-  transition: transform 0.08s linear;
-}
-@keyframes breathe-wave {
-  0%, 100% { transform: scaleY(0.12); }
-  50% { transform: scaleY(0.55); }
+  font-size: var(--text-caption);
+  color: rgba(255, 255, 255, 0.78);
 }
 @media (prefers-reduced-motion: reduce) {
-  .banner-wave i { animation: none; transform: scaleY(0.3); }
+  .blob::after { animation: none; }
 }
 
 .glance {
@@ -697,11 +773,11 @@ h1 {
 }
 @media (max-width: 959px) {
   .banner {
-    grid-template-columns: minmax(0, 1fr) minmax(140px, 30%);
-    padding: var(--space-4) var(--space-5);
+    min-height: 148px;
+    padding: 0 var(--space-5);
   }
-  .banner-wave {
-    height: 56px;
+  .banner-line {
+    font-size: 22px;
   }
   .glance-card {
     padding: var(--space-3);
@@ -1726,6 +1802,10 @@ button.ghost:hover:not(:disabled) {
     grid-template-columns: 300px minmax(0, 1fr);
   }
   .banner {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 42%);
+    min-height: 200px;
+    padding-left: 40px;
+  }
+  .banner-line {
+    font-size: 30px;
   }
 }

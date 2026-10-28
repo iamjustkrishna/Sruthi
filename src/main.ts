@@ -1186,36 +1186,128 @@ listen<DictationPhaseEvent>("dictation", ({ payload }) => {
 
 // ---------------------------------------------------------------------------
 // Home, top: a greeting that tells the truth about your numbers, a waveform
-// that moves with your voice, and three glance cards
+// that moves with the pointer and your voice, and three glance cards
 
 const MILESTONES = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 250_000, 500_000];
 /** Typing speed the "saved" numbers compare against (the same 40 wpm as the stats). */
 const TYPING_WPM = 40;
 
-const waveEl = $("banner-wave");
-const WAVE_BARS = 44;
-const waveLevels = new Array<number>(WAVE_BARS).fill(0);
-const waveBars: HTMLElement[] = [];
-for (let i = 0; i < WAVE_BARS; i++) {
-  const bar = document.createElement("i");
-  bar.style.setProperty("--i", String(i));
-  waveBars.push(bar);
+// The banner's art: aurora fields behind, sound ribbons on top. The aurora
+// leans toward the pointer, the ribbons bend toward it, and both swell with
+// your voice (button or hotkey). The ribbons are redrawn each frame while
+// the banner is on screen; nothing runs while the window is hidden.
+const banner = $("home-banner");
+const ribbonSvg = document.getElementById("banner-ribbons") as unknown as SVGSVGElement;
+const crispRibbons = [...ribbonSvg.querySelectorAll<SVGPathElement>(".rib")];
+const glowRibbons = [...ribbonSvg.querySelectorAll<SVGPathElement>(".rib-glow")];
+
+interface Ribbon {
+  amp: number;
+  freq: number;
+  speed: number;
+  phase: number;
+  cy: number;
 }
-waveEl.append(...waveBars);
+const RIBBONS: Ribbon[] = [
+  { amp: 0.2, freq: 2.1, speed: 0.55, phase: 0, cy: 0.52 },
+  { amp: 0.15, freq: 2.8, speed: -0.4, phase: 1.3, cy: 0.56 },
+  { amp: 0.24, freq: 1.5, speed: 0.3, phase: 2.4, cy: 0.48 },
+  { amp: 0.12, freq: 3.4, speed: 0.7, phase: 0.6, cy: 0.52 },
+];
 
-let waveTimer = 0;
+const bannerSize = { w: 1, h: 1 };
+const pointer = { x: 0.78, y: 0.4, tx: 0.78, ty: 0.4, hover: 0, hoverTarget: 0 };
+let voice = 0;
+let voiceTarget = 0;
+let voiceTimer = 0;
 
-/** While you speak the bars follow the microphone (button or hotkey); otherwise they breathe. */
+function ribbonPath(r: Ribbon, t: number) {
+  const { w, h } = bannerSize;
+  const x0 = w * 0.26;
+  const span = w - x0;
+  const sigma = w * 0.12;
+  const px = pointer.x * w;
+  const py = pointer.y * h;
+  const points: [number, number][] = [];
+  for (let x = x0; x < w + 10; x += 10) {
+    const u = (x - x0) / span;
+    const ease = Math.min(1, u / 0.35);
+    const fade = ease * ease * (3 - 2 * ease);
+    const breathe = 0.75 + 0.25 * Math.sin(t * 0.4 + r.phase);
+    let y =
+      h * r.cy +
+      h * r.amp * fade * breathe * (1 + 1.1 * voice) * Math.sin(Math.PI * 2 * r.freq * u + r.phase + t * r.speed);
+    const dx = x - px;
+    y += (py - y) * 0.5 * pointer.hover * fade * Math.exp(-(dx * dx) / (2 * sigma * sigma));
+    points.push([x, Math.min(h * 0.94, Math.max(h * 0.06, y))]);
+  }
+  let d = `M${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const [x, y] = points[i];
+    const [nx, ny] = points[i + 1];
+    d += `Q${x.toFixed(1)} ${y.toFixed(1)} ${((x + nx) / 2).toFixed(1)} ${((y + ny) / 2).toFixed(1)}`;
+  }
+  return d;
+}
+
+function drawBanner(now: number) {
+  const t = now / 1000;
+  voice += (voiceTarget - voice) * 0.25;
+  pointer.x += (pointer.tx - pointer.x) * 0.08;
+  pointer.y += (pointer.ty - pointer.y) * 0.08;
+  pointer.hover += (pointer.hoverTarget - pointer.hover) * 0.1;
+  const { w, h } = bannerSize;
+  banner.style.setProperty("--mx", ((pointer.x - 0.5) * 2).toFixed(3));
+  banner.style.setProperty("--my", ((pointer.y - 0.5) * 2).toFixed(3));
+  banner.style.setProperty("--px", `${(pointer.x * w).toFixed(0)}px`);
+  banner.style.setProperty("--py", `${(pointer.y * h).toFixed(0)}px`);
+  banner.style.setProperty("--hover", pointer.hover.toFixed(3));
+  banner.style.setProperty("--voice", voice.toFixed(3));
+  RIBBONS.forEach((r, i) => {
+    const d = ribbonPath(r, t);
+    crispRibbons[i]?.setAttribute("d", d);
+    glowRibbons[i]?.setAttribute("d", d);
+  });
+}
+
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function sizeBanner() {
+  const rect = banner.getBoundingClientRect();
+  if (rect.width < 2) return;
+  bannerSize.w = rect.width;
+  bannerSize.h = rect.height;
+  ribbonSvg.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+  if (reducedMotion) drawBanner(0);
+}
+new ResizeObserver(sizeBanner).observe(banner);
+sizeBanner();
+
+banner.addEventListener("pointermove", (e) => {
+  const rect = banner.getBoundingClientRect();
+  pointer.tx = (e.clientX - rect.left) / rect.width;
+  pointer.ty = (e.clientY - rect.top) / rect.height;
+  pointer.hoverTarget = 1;
+});
+banner.addEventListener("pointerleave", () => {
+  pointer.tx = 0.78;
+  pointer.ty = 0.4;
+  pointer.hoverTarget = 0;
+});
+
+function bannerLoop(now: number) {
+  requestAnimationFrame(bannerLoop);
+  // Hidden window, another page, or not laid out yet: nothing to draw.
+  if (document.hidden || banner.offsetParent === null || bannerSize.w < 2) return;
+  drawBanner(now);
+}
+if (!reducedMotion) requestAnimationFrame(bannerLoop);
+
 listen<number>("audio-level", (e) => {
-  waveEl.classList.add("live");
-  waveLevels.push(Math.min(1, Math.max(0, e.payload)));
-  waveLevels.shift();
-  waveBars.forEach((bar, i) => bar.style.setProperty("--h", String(0.1 + 0.9 * waveLevels[i])));
-  window.clearTimeout(waveTimer);
-  waveTimer = window.setTimeout(() => {
-    waveEl.classList.remove("live");
-    waveLevels.fill(0);
-  }, 400);
+  voiceTarget = Math.min(1, Math.max(0, e.payload) * 1.4);
+  window.clearTimeout(voiceTimer);
+  voiceTimer = window.setTimeout(() => (voiceTarget = 0), 400);
+  if (reducedMotion) drawBanner(0);
 });
 
 function greeting() {
