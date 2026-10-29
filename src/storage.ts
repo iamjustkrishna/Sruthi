@@ -68,6 +68,11 @@ const KEEP: { name: string; note: string; days: number | null }[] = [
 let hooks: Hooks;
 export let usage: AudioUsage | null = null;
 
+/** The reminder level as the buttons name it ("1 GB"), not as raw megabytes. */
+function limitLabel(mb: number) {
+  return LIMITS.find((l) => l.mb === mb)?.label ?? fmtBytes(mb * MB);
+}
+
 export function fmtBytes(bytes: number) {
   if (bytes >= 1024 * MB) return `${(bytes / (1024 * MB)).toFixed(1)} GB`;
   if (bytes >= MB) return `${Math.round(bytes / MB)} MB`;
@@ -114,7 +119,7 @@ export function render() {
   nudge.hidden = !(over && Date.now() > snoozedUntil());
   $("nudge-text").replaceChildren(
     el("strong", "", `Audio is using ${fmtBytes(usage.bytes)}`),
-    document.createTextNode(`, past the ${fmtBytes((limit ?? 0) * MB)} you set. Your words stay whatever you choose.`),
+    document.createTextNode(`, past the ${limitLabel(limit ?? 0)} you set. Your words stay whatever you choose.`),
   );
 
   // Settings card.
@@ -128,7 +133,7 @@ export function render() {
   $("store-legend").textContent =
     limit === null
       ? `${plural(usage.recordings, "recording")} on disk · no reminder`
-      : `${plural(usage.recordings, "recording")} on disk · reminder at ${fmtBytes(limit * MB)}`;
+      : `${plural(usage.recordings, "recording")} on disk · reminder at ${limitLabel(limit)}`;
 
   $("limit-seg")
     .querySelectorAll<HTMLButtonElement>("button")

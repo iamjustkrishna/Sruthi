@@ -2571,6 +2571,14 @@ button.ghost:hover:not(:disabled) {
   color: var(--text);
   box-shadow: var(--shadow-card);
 }
+.rail-arrow {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.day-rail-wrap:hover .rail-arrow,
+.rail-arrow:focus-visible {
+  opacity: 1;
+}
 .rail-arrow[hidden] {
   display: none;
 }
