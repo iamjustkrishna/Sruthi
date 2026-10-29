@@ -68,7 +68,7 @@ The default shortcut is <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Space</kbd>, a
   <img src="docs/images/history.png" alt="Filter Home to a single day and see everything you dictated that day" width="900" />
 </p>
 
-- **A home for every dictation.** See what you said, which app it went into and when. Filter by day, or search across all of it.
+- **A home for every dictation.** See what you said, which app it went into and when. Step through days with a small wheel, pick a date from a heat calendar, or search across all of it.
 - **Replay and correct.** Listen to any recording, fix a mishearing, or run it through another model to compare. See exactly what formatting changed.
 - **Your speed, honestly measured.** Words, words per minute against typing, time saved, streaks and the apps you dictate into.
 - **A speed test on your own voice.** Correct a few dictations and Sruthi scores each installed model against what you actually said.
