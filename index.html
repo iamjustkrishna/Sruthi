@@ -154,10 +154,31 @@
               <p class="muted small" id="speed-text"></p>
             </section>
           </div>
+          <div class="audio-nudge" id="audio-nudge" role="status" hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4" /></svg>
+            <span class="nudge-text" id="nudge-text"></span>
+            <button type="button" id="nudge-free">Free up space</button>
+            <button type="button" id="nudge-later" class="ghost">Not now</button>
+          </div>
           <div class="home-grid">
             <div class="feed" id="history-feed">
+              <div class="day-strip-row" id="day-strip-row" hidden>
+                <span class="strip-label">Jump to</span>
+                <div class="day-strip" id="day-strip"></div>
+                <span class="strip-meta" id="strip-meta"></span>
+              </div>
+              <div class="search-narrow" id="search-narrow" hidden>
+                <span class="strip-label">Narrow it</span>
+                <div class="range-chips" id="range-chips" role="group" aria-label="Time range"></div>
+                <span class="strip-meta" id="search-summary" aria-live="polite"></span>
+              </div>
               <div id="history-list" class="history-list"></div>
               <p class="muted" id="history-empty"></p>
+              <div class="history-foot" id="history-foot" hidden>
+                <button type="button" id="earlier-days" class="ghost">Show earlier days</button>
+                <span class="muted small" id="history-kept"></span>
+                <button type="button" id="manage-history" class="link-btn">Manage history</button>
+              </div>
             </div>
             <aside class="rail">
       <section class="hero hero-card">
@@ -564,13 +585,42 @@
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v9H5zM8 11V8a4 4 0 0 1 8 0v3" /></svg>
                 </span>
                 <span class="fold-text">
-                  <h2>Privacy and history</h2>
+                  <h2>History and storage</h2>
                   <span class="fold-value">Audio never leaves this PC. Cloud engines only get text, and only if you pick one.</span>
                 </span>
               </div>
-              <p class="muted small fold-note">Your last 1,000 dictations are kept with their audio in the app folder.</p>
-              <div class="privacy-actions">
+
+              <div class="store-block">
+                <div class="store-head"><b>Used by dictations</b><span class="muted small" id="store-meta"></span></div>
+                <div class="store-bar" id="store-bar"><i id="store-fill"></i><u id="store-mark" hidden></u></div>
+                <p class="muted small" id="store-legend"></p>
+              </div>
+
+              <div class="store-row">
+                <span>
+                  <b>Remind me when audio passes</b>
+                  <span class="muted small">A note on Home offers to free up space. Nothing is removed without your say.</span>
+                </span>
+                <div class="seg-inline" id="limit-seg" role="group" aria-label="Reminder level"></div>
+              </div>
+
+              <div class="store-block">
+                <b class="block-title">Keep audio for</b>
+                <div class="keep-list" id="keep-list"></div>
+                <p class="muted small">Your words stay either way, so search, the Home list and your stats are not affected. Dictations you corrected always keep their audio.</p>
+              </div>
+
+              <div class="store-block">
+                <b class="block-title" id="archive-title" hidden>Archived audio</b>
+                <ul class="archive-list" id="archive-list" hidden></ul>
+              </div>
+
+              <p class="muted small store-status" id="store-status" aria-live="polite" hidden></p>
+              <div class="privacy-actions store-actions">
+                <button type="button" id="free-space-open">Free up space…</button>
+                <span class="muted small grow">Zip, move, or delete audio. Words and stats stay.</span>
                 <button id="open-folder" class="ghost small-btn">Open recordings folder</button>
+                <button type="button" id="empty-audio" class="ghost danger-text">Empty all audio</button>
               </div>
             </section>
 
@@ -634,6 +684,34 @@
           <button type="button" id="share-save" class="ghost">Save PNG</button>
           <button type="button" id="share-copy">Copy image</button>
         </footer>
+      </div>
+    </dialog>
+    <dialog id="space-dialog" class="dialog space-dialog" aria-labelledby="space-title">
+      <div class="dialog-card space-card">
+        <h2 id="space-title">Free up space</h2>
+        <p class="muted small" id="space-sub"></p>
+        <div class="space-scope">
+          <label for="space-days">Audio older than</label>
+          <select id="space-days" class="send-select">
+            <option value="1">1 day</option>
+            <option value="7" selected>7 days</option>
+            <option value="30">30 days</option>
+            <option value="90">90 days</option>
+            <option value="0">All of it</option>
+          </select>
+          <span class="space-count" id="space-count"></span>
+        </div>
+        <div class="space-options" id="space-options" role="radiogroup" aria-label="What to do with it"></div>
+        <div class="space-folder" id="space-folder" hidden>
+          <input id="space-path" type="text" placeholder="Folder to move the audio to, e.g. D:\Sruthi audio" autocomplete="off" spellcheck="false" aria-label="Folder to move the audio to" />
+          <button type="button" id="space-browse" class="ghost">Browse…</button>
+        </div>
+        <p class="muted small" id="space-kept" hidden></p>
+        <div class="dialog-actions space-actions">
+          <span class="muted small grow" id="space-status" aria-live="polite"></span>
+          <button type="button" id="space-cancel" class="ghost">Cancel</button>
+          <button type="button" id="space-go">Zip</button>
+        </div>
       </div>
     </dialog>
     <dialog id="confirm-dialog" class="dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body">

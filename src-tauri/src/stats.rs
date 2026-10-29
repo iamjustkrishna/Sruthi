@@ -333,7 +333,7 @@ pub fn today_key() -> String {
 
 /// The local calendar day a timestamp falls in ("2026-10-22"); used to
 /// replay recordings made before the stats started labelling their days.
-fn local_day_key(time_ms: u64) -> String {
+pub(crate) fn local_day_key(time_ms: u64) -> String {
     day_key_for_offset(time_ms, utc_offset_ms())
 }
 
@@ -759,6 +759,8 @@ mod tests {
                 text: "The launch slips.".into(),
                 app: String::new(),
                 reference: None,
+                audio: true,
+                stored: None,
             },
             recordings::Entry {
                 id: "b".into(),
@@ -768,6 +770,8 @@ mod tests {
                 text: "Hello there.".into(),
                 app: String::new(),
                 reference: None,
+                audio: true,
+                stored: None,
             },
         ]
     }

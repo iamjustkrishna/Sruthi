@@ -118,6 +118,8 @@ struct Status {
     hotkey: String,
     instant_mic: bool,
     auto_enter: bool,
+    audio_limit_mb: Option<u32>,
+    keep_audio_days: Option<u32>,
     send_key: settings::SendKey,
     send_rules: Vec<settings::SendRule>,
     /// The window palette choice.
@@ -402,6 +404,8 @@ impl AppState {
             hotkey: current_hotkey(),
             instant_mic: settings::load().instant_mic,
             auto_enter: settings::load().auto_enter,
+            audio_limit_mb: settings::load().audio_limit_mb,
+            keep_audio_days: settings::load().keep_audio_days,
             send_key: settings::load().send_key,
             send_rules: settings::load().send_rules,
             theme: settings::load().theme,
@@ -1739,6 +1743,7 @@ async fn run_benchmark(
     let result = tauri::async_runtime::spawn_blocking(move || {
         let clips: Vec<(String, String)> = recordings::load()
             .into_iter()
+            .filter(|e| e.audio && e.stored.is_none())
             .filter_map(|e| {
                 e.reference
                     .filter(|r| !r.trim().is_empty())
@@ -2266,6 +2271,158 @@ fn delete_recording(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Re-reads the newest dictations from disk (their audio may have changed)
+/// and tells the windows.
+fn refresh_history(app: &AppHandle) {
+    {
+        let state = app.state::<AppState>();
+        state.inner.lock().unwrap().history =
+            recordings::load().into_iter().take(HISTORY_LIMIT).collect();
+    }
+    emit_status(app);
+}
+
+/// Every day that has dictations, for the day strip and the group headers.
+#[tauri::command]
+async fn history_days() -> Result<Vec<recordings::DaySummary>, String> {
+    tauri::async_runtime::spawn_blocking(recordings::days)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Some of the history: older than a point, one day, a window, or matching a search.
+#[tauri::command]
+async fn history_page(query: recordings::PageQuery) -> Result<recordings::Page, String> {
+    tauri::async_runtime::spawn_blocking(move || recordings::page(&query))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// How much audio is on disk, and what has been zipped or moved elsewhere.
+#[tauri::command]
+async fn audio_usage() -> Result<recordings::AudioUsage, String> {
+    tauri::async_runtime::spawn_blocking(recordings::audio_usage)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// What "older than N days" would cover, before anything is touched.
+#[tauri::command]
+async fn audio_candidates(days: u32) -> Result<recordings::Candidates, String> {
+    tauri::async_runtime::spawn_blocking(move || recordings::candidates(days))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Deletes audio older than `days` (0: all). The words stay.
+#[tauri::command]
+async fn delete_audio(app: AppHandle, days: u32) -> Result<recordings::Candidates, String> {
+    let done = tauri::async_runtime::spawn_blocking(move || recordings::delete_audio(days))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    refresh_history(&app);
+    Ok(done)
+}
+
+/// Where zipped audio goes unless the person picks another folder.
+fn default_archive_folder() -> std::path::PathBuf {
+    dirs::document_dir()
+        .unwrap_or_else(settings::app_root)
+        .join("Sruthi")
+}
+
+/// Zips audio older than `days` into Documents\Sruthi (checked before the
+/// originals are removed).
+#[tauri::command]
+async fn zip_audio(app: AppHandle, days: u32) -> Result<recordings::Archived, String> {
+    let done = tauri::async_runtime::spawn_blocking(move || {
+        recordings::zip_audio(days, &default_archive_folder())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))?;
+    refresh_history(&app);
+    Ok(done)
+}
+
+/// Moves audio older than `days` to `folder` (copied and checked first).
+#[tauri::command]
+async fn move_audio(app: AppHandle, days: u32, folder: String) -> Result<recordings::Archived, String> {
+    if folder.trim().is_empty() {
+        return Err("Choose a folder first".into());
+    }
+    let done = tauri::async_runtime::spawn_blocking(move || {
+        recordings::move_audio(days, std::path::Path::new(folder.trim()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("{e:#}"))?;
+    refresh_history(&app);
+    Ok(done)
+}
+
+/// Brings zipped or moved audio back so it can be played again.
+#[tauri::command]
+async fn restore_audio(app: AppHandle, location: String) -> Result<usize, String> {
+    let n = tauri::async_runtime::spawn_blocking(move || recordings::restore(&location))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("{e:#}"))?;
+    refresh_history(&app);
+    Ok(n)
+}
+
+/// A folder picker (Windows' own), for "move the audio to...".
+#[tauri::command]
+async fn choose_folder() -> Result<Option<String>, String> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(|| {
+            use std::os::windows::process::CommandExt;
+            let script = "Add-Type -AssemblyName System.Windows.Forms; \
+                $d = New-Object System.Windows.Forms.FolderBrowserDialog; \
+                $d.Description = 'Choose where to move the audio'; \
+                $d.ShowNewFolderButton = $true; \
+                if ($d.ShowDialog() -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }";
+            let out = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-STA", "-Command", script])
+                .creation_flags(0x0800_0000) // no console window
+                .output()
+                .map_err(|e| e.to_string())?;
+            let picked = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            Ok(if picked.is_empty() { None } else { Some(picked) })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    Ok(None)
+}
+
+#[tauri::command]
+fn set_audio_limit(app: AppHandle, mb: Option<u32>) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.audio_limit_mb = mb;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
+    Ok(())
+}
+
+/// How long to keep audio: Some(0) none (words only), Some(n) n days, None the newest 1,000.
+#[tauri::command]
+async fn set_keep_audio(app: AppHandle, days: Option<u32>) -> Result<usize, String> {
+    let mut saved = settings::load();
+    saved.keep_audio_days = days;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    let removed = tauri::async_runtime::spawn_blocking(move || recordings::apply_retention(days))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    refresh_history(&app);
+    Ok(removed)
+}
+
 /// A header the share-card commands read as text (the body is the raw image).
 fn request_header(request: &tauri::ipc::Request<'_>, name: &str) -> Option<String> {
     request
@@ -2439,7 +2596,18 @@ pub fn run() {
             }
             sync_cloud(&handle);
             sync_llm(handle.clone());
-            sync_mic(handle);
+            sync_mic(handle.clone());
+            // Apply the keep-audio setting to what is already stored.
+            thread::spawn(move || {
+                match recordings::apply_retention(settings::load().keep_audio_days) {
+                    Ok(n) if n > 0 => {
+                        log::info!("Removed {n} old recordings to match the keep-audio setting");
+                        refresh_history(&handle);
+                    }
+                    Ok(_) => {}
+                    Err(e) => log::warn!("Couldn't apply the keep-audio setting: {e}"),
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2485,6 +2653,17 @@ pub fn run() {
             hide_result,
             open_recordings_folder,
             save_share_image,
+            history_days,
+            history_page,
+            audio_usage,
+            audio_candidates,
+            delete_audio,
+            zip_audio,
+            move_audio,
+            restore_audio,
+            choose_folder,
+            set_audio_limit,
+            set_keep_audio,
             copy_share_image,
             press_dictation,
             release_dictation,

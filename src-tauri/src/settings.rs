@@ -86,6 +86,10 @@ pub struct Settings {
     pub instant_mic: bool,
     /// Press Enter after each paste, so a chat message or search sends itself.
     pub auto_enter: bool,
+    /// Past this much audio on disk (MB) Home offers to free space; None: never.
+    pub audio_limit_mb: Option<u32>,
+    /// How many days of audio to keep (0: none, words only); None: the newest 1,000.
+    pub keep_audio_days: Option<u32>,
     /// How to send when `auto_enter` is on, unless a rule says otherwise.
     pub send_key: SendKey,
     /// Per-app and per-site overrides of `send_key`.
@@ -115,6 +119,8 @@ impl Default for Settings {
             hotkey: None,
             instant_mic: true,
             auto_enter: false,
+            audio_limit_mb: Some(1000),
+            keep_audio_days: None,
             send_key: SendKey::default(),
             send_rules: Vec::new(),
             microphone: None,

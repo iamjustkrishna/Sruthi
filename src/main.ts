@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, iconUrl } from "./appIcons";
 import sruthiLogo from "./assets/sruthi-logo.png";
 import { openShare } from "./shareSheet";
+import { fmtBytes, initStorage, refreshUsage, render as renderStorage, usage as audioUsage } from "./storage";
 
 type ModelState = "missing" | "downloading" | "loading" | "ready" | "error";
 type LlmState = "off" | "missing" | "downloading" | "starting" | "ready" | "error";
@@ -58,6 +59,8 @@ interface Status {
   hotkey: string;
   instant_mic: boolean;
   auto_enter: boolean;
+  audio_limit_mb: number | null;
+  keep_audio_days: number | null;
   send_key: SendKey;
   send_rules: SendRule[];
   theme: ThemeName;
@@ -133,6 +136,10 @@ interface HistoryEntry {
   app?: string;
   /** What you said, as you corrected it: the benchmark's answer key. */
   reference?: string | null;
+  /** False once the audio was deleted; the words stay. */
+  audio?: boolean;
+  /** Where the audio is when zipped (a .zip) or moved (a folder). */
+  stored?: string | null;
 }
 
 interface UsageWeek {
@@ -583,6 +590,7 @@ function render(s: Status) {
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
+  renderStorage();
   renderGlance(s.usage);
   renderSuggestions(s);
   renderBenchmark(s);
@@ -818,6 +826,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text 
 function saveReference(id: string, text: string | null) {
   correcting.delete(id);
   drafts.delete(id);
+  const loaded = older.get(id);
+  if (loaded) loaded.reference = text;
   run("set_reference", { id, text }).then(() => renderHistory(true));
   renderHistory(true);
 }
@@ -958,12 +968,20 @@ function historyEntry(e: HistoryEntry) {
   copy.disabled = !e.text;
 
   const isPlaying = playing?.id === e.id;
+  const inZip = !!e.stored && e.stored.toLowerCase().endsWith(".zip");
+  const noAudio = e.audio === false || inZip;
+  const whyNot = e.audio === false ? "The audio for this dictation was deleted." : "The audio is in a zip file. Restore it in Settings to play it.";
   const play = actionButton(
     isPlaying ? "Stop" : "Play",
     isPlaying ? ICONS.stop : ICONS.play,
     () => togglePlay(e.id),
     isPlaying,
   );
+  if (noAudio) {
+    play.disabled = true;
+    play.title = whyNot;
+    play.querySelector("span")!.textContent = e.audio === false ? "No audio" : "Archived";
+  }
 
   const toggle = (set: Set<string>) => () => {
     if (set.has(e.id)) set.delete(e.id);
@@ -977,6 +995,11 @@ function historyEntry(e: HistoryEntry) {
     actionButton("Correct", ICONS.edit, toggle(correcting), correcting.has(e.id)),
     actionButton("Try another model", ICONS.rerun, toggle(rerunOpen), rerunOpen.has(e.id)),
   );
+  if (noAudio) {
+    const rerun = actions.lastElementChild as HTMLButtonElement;
+    rerun.disabled = true;
+    rerun.title = whyNot;
+  }
   if (e.heard && e.heard !== e.text) {
     actions.append(actionButton(heardOpen.has(e.id) ? "Hide changes" : "See changes", ICONS.changes, toggle(heardOpen), heardOpen.has(e.id)));
   }
@@ -990,7 +1013,8 @@ function historyEntry(e: HistoryEntry) {
       if (!ok) return;
       if (playing?.id === e.id) stopPlayback();
       for (const set of [heardOpen, correcting, rerunOpen]) set.delete(e.id);
-      run("delete_recording", { id: e.id });
+      older.delete(e.id);
+      run("delete_recording", { id: e.id }).then(() => scheduleDays());
     }),
   );
 
@@ -1009,41 +1033,401 @@ function historyEntry(e: HistoryEntry) {
   return root;
 }
 
-function renderHistory(force = false) {
-  const all = status?.history ?? [];
-  const query = historySearch.value.trim().toLowerCase();
-  const signature = `${all.map((e) => `${e.id}:${e.reference ?? ""}`).join(",")}|${query}|${playing?.id ?? ""}|${status?.active ?? ""}|${status?.models.filter((m) => m.installed).length ?? 0}`;
-  if (!force && signature === historySignature) return;
-  historySignature = signature;
+// ---------------------------------------------------------------------------
+// Home: every day, not just the latest 50
+//
+// The app keeps the newest dictations live; older days are fetched when you
+// open them or search, so nothing on disk is out of reach.
 
-  const shown = query
-    ? all.filter((e) => `${e.text} ${e.heard} ${appLabel(e.app)}`.toLowerCase().includes(query))
-    : all;
+interface DaySummary {
+  date: string;
+  count: number;
+  words: number;
+}
 
-  const nodes: HTMLElement[] = [];
-  let lastDay = "";
-  for (const e of shown) {
-    const day = dayLabel(e.time_ms);
-    if (day !== lastDay) {
-      const label = document.createElement("div");
-      label.className = "day-label";
-      label.textContent = day;
-      nodes.push(label);
-      lastDay = day;
-    }
-    nodes.push(historyEntry(e));
+interface HistoryPage {
+  entries: HistoryEntry[];
+  more: boolean;
+  matches: number;
+  days_matched: number;
+  searched: number;
+}
+
+type Range = "any" | "week" | "today";
+
+const DAY_PAGE = 20;
+const FIRST_DAYS = 7;
+const SEARCH_LIMIT = 100;
+const DAY_MS = 86_400_000;
+
+let days: DaySummary[] = [];
+/** Dictations fetched from disk that are not in the live list. */
+const older = new Map<string, HistoryEntry>();
+const dayToggled = new Map<string, boolean>();
+const dayLimit = new Map<string, number>();
+const dayFetched = new Set<string>();
+const dayLoading = new Set<string>();
+let daysShown = FIRST_DAYS;
+let range: Range = "any";
+let found: HistoryPage | null = null;
+let foundFor = "";
+let searchSeq = 0;
+let searchTimer = 0;
+let daysSig = "";
+let daysTimer = 0;
+let historyVersion = 0;
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+function localDay(ms: number) {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function dayDate(date: string) {
+  return new Date(`${date}T12:00:00`).getTime();
+}
+
+function bump() {
+  historyVersion++;
+  renderHistory(true);
+}
+
+/** The live list plus anything fetched, newest first. */
+function dictations(): HistoryEntry[] {
+  const live = status?.history ?? [];
+  const ids = new Set(live.map((e) => e.id));
+  return [...live, ...[...older.values()].filter((e) => !ids.has(e.id))].sort((a, b) => b.time_ms - a.time_ms);
+}
+
+function entriesOn(date: string) {
+  return dictations().filter((e) => localDay(e.time_ms) === date);
+}
+
+async function loadDays() {
+  try {
+    days = await invoke<DaySummary[]>("history_days");
+  } catch {
+    return;
   }
-  historyList.replaceChildren(...nodes);
+  const total = days.reduce((n, d) => n + d.count, 0);
+  historySearch.placeholder = total ? `Search all ${total.toLocaleString()} dictations` : "Search dictations";
+  // The footer shows the audio size, so redraw once that arrives too.
+  void refreshUsage().then(() => bump());
+  bump();
+}
 
-  historyEmpty.hidden = shown.length > 0;
-  if (!shown.length) {
-    historyEmpty.textContent = all.length
-      ? "No dictation matches that search."
-      : "Nothing yet. Hold the shortcut in any app, say a sentence, and it shows up here.";
+/** Re-reads the day list soon, once a burst of changes settles. */
+function scheduleDays() {
+  window.clearTimeout(daysTimer);
+  daysTimer = window.setTimeout(() => void loadDays(), 350);
+}
+
+async function fetchDay(date: string, before?: number) {
+  if (dayLoading.has(date)) return;
+  dayFetched.add(date);
+  dayLoading.add(date);
+  bump();
+  try {
+    const page = await invoke<HistoryPage>("history_page", {
+      query: { day: date, before_ms: before ?? null, limit: 100 },
+    });
+    for (const e of page.entries) older.set(e.id, e);
+  } catch (e) {
+    showError(String(e));
+  } finally {
+    dayLoading.delete(date);
+    bump();
   }
 }
 
-historySearch.addEventListener("input", () => renderHistory());
+function isOpen(date: string) {
+  const chosen = dayToggled.get(date);
+  if (chosen !== undefined) return chosen;
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return date === localDay(Date.now()) || date === localDay(yesterday.getTime());
+}
+
+function jumpToDay(date: string) {
+  dayToggled.set(date, true);
+  const at = days.findIndex((d) => d.date === date);
+  if (at >= daysShown) daysShown = at + 1;
+  bump();
+  requestAnimationFrame(() =>
+    historyList.querySelector(`[data-day="${date}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+  );
+}
+
+function dayGroup(d: DaySummary) {
+  const wrap = el("section", "day-group");
+  wrap.dataset.day = d.date;
+  const open = isOpen(d.date);
+  const head = el("button", "day-head");
+  head.type = "button";
+  head.setAttribute("aria-expanded", String(open));
+  const loaded = entriesOn(d.date);
+  head.append(
+    el("i", "day-chev"),
+    el("b", "", dayLabel(dayDate(d.date))),
+    el("span", "muted small", `${plural(d.count, "dictation")} · ${plural(d.words, "word")}`),
+  );
+  if (!open && loaded[0]?.text) {
+    const say = loaded[0].text.length > 70 ? `${loaded[0].text.slice(0, 70).trimEnd()}…` : loaded[0].text;
+    head.append(el("span", "day-preview", `Latest: “${say}”`));
+  }
+  head.addEventListener("click", () => {
+    dayToggled.set(d.date, !isOpen(d.date));
+    bump();
+  });
+  wrap.append(head);
+  if (!open) return wrap;
+
+  const limit = dayLimit.get(d.date) ?? DAY_PAGE;
+  if (!dayFetched.has(d.date) && loaded.length < Math.min(d.count, limit)) void fetchDay(d.date);
+  const body = el("div", "day-body");
+  const visible = loaded.slice(0, limit);
+  body.append(...visible.map(historyEntry));
+  if (dayLoading.has(d.date)) body.append(el("p", "muted small", "Loading…"));
+  const remaining = d.count - visible.length;
+  if (remaining > 0 && !dayLoading.has(d.date)) {
+    const label = dayLabel(dayDate(d.date));
+    const from = label === "Today" || label === "Yesterday" ? label.toLowerCase() : label;
+    const more = el("button", "ghost small-btn show-more", `Show ${Math.min(remaining, DAY_PAGE)} more from ${from}`);
+    more.type = "button";
+    more.addEventListener("click", () => {
+      const next = limit + DAY_PAGE;
+      dayLimit.set(d.date, next);
+      if (loaded.length < Math.min(next, d.count)) {
+        void fetchDay(d.date, loaded[loaded.length - 1]?.time_ms);
+      } else {
+        bump();
+      }
+    });
+    body.append(more);
+  }
+  wrap.append(body);
+  return wrap;
+}
+
+function daysFromLoaded(): DaySummary[] {
+  const out: DaySummary[] = [];
+  for (const e of dictations()) {
+    const date = localDay(e.time_ms);
+    const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
+    const last = out[out.length - 1];
+    if (last?.date === date) {
+      last.count++;
+      last.words += words;
+    } else {
+      out.push({ date, count: 1, words });
+    }
+  }
+  return out;
+}
+
+/** The last two weeks as small chips; each jumps to that day. */
+function renderStrip(list: DaySummary[]) {
+  const by = new Map(list.map((d) => [d.date, d]));
+  const most = Math.max(1, ...list.slice(0, 14).map((d) => d.words));
+  const chips: HTMLElement[] = [];
+  for (let back = 13; back >= 0; back--) {
+    const when = new Date();
+    when.setDate(when.getDate() - back);
+    const date = localDay(when.getTime());
+    const d = by.get(date);
+    const chip = el("button", "day-chip");
+    chip.type = "button";
+    chip.disabled = !d;
+    if (back === 0) chip.classList.add("today");
+    chip.setAttribute("aria-label", `${when.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${d ? `, ${plural(d.words, "word")}` : ", no dictations"}`);
+    const bar = el("span", "chip-bar");
+    const fill = el("span", "chip-fill");
+    fill.style.width = d ? `${Math.max(10, Math.round((d.words / most) * 100))}%` : "0%";
+    bar.append(fill);
+    chip.append(
+      el("span", "chip-dow", back === 0 ? "Today" : when.toLocaleDateString([], { weekday: "narrow" })),
+      el("span", "chip-num", String(when.getDate())),
+      bar,
+    );
+    chip.addEventListener("click", () => jumpToDay(date));
+    chips.push(chip);
+  }
+  $("day-strip").replaceChildren(...chips);
+  const total = list.reduce((n, d) => n + d.count, 0);
+  $("strip-meta").textContent = `${plural(list.length, "day")} · ${plural(total, "dictation")}`;
+}
+
+function renderFoot(list: DaySummary[], searching: boolean) {
+  const foot = $("history-foot");
+  foot.hidden = searching || list.length === 0;
+  if (foot.hidden) return;
+  const earlier = $<HTMLButtonElement>("earlier-days");
+  earlier.hidden = list.length <= daysShown;
+  earlier.textContent = `Show earlier days (${list.length - daysShown} more)`;
+  const total = list.reduce((n, d) => n + d.count, 0);
+  $("history-kept").textContent = `Kept on this PC: ${plural(total, "dictation")}${audioUsage ? `, ${fmtBytes(audioUsage.bytes)} of audio` : ""}.`;
+}
+
+/** Wraps every occurrence of `query` in the entry's text in a highlight. */
+function highlight(root: HTMLElement, query: string) {
+  const p = root.querySelector(".entry-text");
+  const text = p?.textContent ?? "";
+  const needle = query.toLowerCase();
+  if (!p || !needle || !text.toLowerCase().includes(needle)) return;
+  const parts: (string | HTMLElement)[] = [];
+  let at = 0;
+  for (let i = text.toLowerCase().indexOf(needle); i >= 0; i = text.toLowerCase().indexOf(needle, at)) {
+    parts.push(text.slice(at, i), el("mark", "", text.slice(i, i + needle.length)));
+    at = i + needle.length;
+  }
+  parts.push(text.slice(at));
+  p.replaceChildren(...parts);
+}
+
+function renderSearch(query: string) {
+  $("day-strip-row").hidden = true;
+  $("search-narrow").hidden = false;
+  const res = found && foundFor === query ? found : null;
+  if (!res) {
+    historyList.replaceChildren();
+    historyEmpty.hidden = false;
+    historyEmpty.textContent = "Searching…";
+    $("search-summary").textContent = "";
+    return;
+  }
+  $("search-summary").textContent = res.matches
+    ? `${plural(res.matches, "match", "matches")} in ${plural(res.days_matched, "day")} · searched all ${res.searched.toLocaleString()}`
+    : `searched all ${res.searched.toLocaleString()}`;
+  const nodes: HTMLElement[] = [];
+  let lastDay = "";
+  let group: HTMLElement | null = null;
+  for (const e of res.entries) {
+    const date = localDay(e.time_ms);
+    if (date !== lastDay) {
+      lastDay = date;
+      group = el("section", "day-group");
+      const count = res.entries.filter((x) => localDay(x.time_ms) === date).length;
+      const head = el("div", "day-head static");
+      head.append(el("b", "", dayLabel(e.time_ms)), el("span", "muted small", plural(count, "match", "matches")));
+      group.append(head, el("div", "day-body"));
+      nodes.push(group);
+    }
+    const entry = historyEntry(e);
+    highlight(entry, query);
+    group?.lastElementChild?.append(entry);
+  }
+  if (res.more) nodes.push(el("p", "muted small", `Showing the newest ${SEARCH_LIMIT} matches. Narrow the search to see the rest.`));
+  historyList.replaceChildren(...nodes);
+  historyEmpty.hidden = res.entries.length > 0;
+  historyEmpty.textContent = "No dictation matches that search.";
+}
+
+function renderDays() {
+  $("search-narrow").hidden = true;
+  const list = days.length ? days : daysFromLoaded();
+  $("day-strip-row").hidden = list.length === 0;
+  historyList.replaceChildren(...list.slice(0, daysShown).map(dayGroup));
+  historyEmpty.hidden = list.length > 0;
+  if (!list.length) historyEmpty.textContent = "Nothing yet. Hold the shortcut in any app, say a sentence, and it shows up here.";
+  if (list.length) renderStrip(list);
+  renderFoot(list, false);
+}
+
+function renderHistory(force = false) {
+  const query = historySearch.value.trim();
+  const live = status?.history ?? [];
+  const signature = `${live.map((e) => `${e.id}:${e.reference ?? ""}:${e.audio === false ? 0 : 1}:${e.stored ?? ""}`).join(",")}|${query}|${range}|${historyVersion}|${playing?.id ?? ""}|${status?.active ?? ""}|${status?.models.filter((m) => m.installed).length ?? 0}`;
+  if (!force && signature === historySignature) return;
+  historySignature = signature;
+
+  // New or removed dictations change the day counts: refresh them.
+  const ids = live.map((e) => e.id).join(",");
+  if (ids !== daysSig) {
+    daysSig = ids;
+    scheduleDays();
+  }
+  if (query) {
+    renderSearch(query);
+    renderFoot([], true);
+  } else {
+    renderDays();
+  }
+}
+
+function runSearch() {
+  window.clearTimeout(searchTimer);
+  const query = historySearch.value.trim();
+  const mine = ++searchSeq;
+  if (!query) {
+    found = null;
+    foundFor = "";
+    bump();
+    return;
+  }
+  bump();
+  searchTimer = window.setTimeout(async () => {
+    const since = range === "week" ? Date.now() - 7 * DAY_MS : range === "today" ? new Date().setHours(0, 0, 0, 0) : null;
+    try {
+      const page = await invoke<HistoryPage>("history_page", { query: { query, since_ms: since, limit: SEARCH_LIMIT } });
+      if (mine !== searchSeq) return;
+      found = page;
+      foundFor = query;
+    } catch (e) {
+      if (mine === searchSeq) showError(String(e));
+    }
+    bump();
+  }, 220);
+}
+
+historySearch.addEventListener("input", runSearch);
+historySearch.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && historySearch.value) {
+    historySearch.value = "";
+    runSearch();
+  }
+});
+
+$("range-chips").replaceChildren(
+  ...(
+    [
+      ["any", "Any time"],
+      ["week", "Last 7 days"],
+      ["today", "Today"],
+    ] as [Range, string][]
+  ).map(([value, label]) => {
+    const b = el("button", "range-chip", label);
+    b.type = "button";
+    b.dataset.range = value;
+    b.addEventListener("click", () => {
+      range = value;
+      document.querySelectorAll<HTMLElement>(".range-chip").forEach((c) => c.setAttribute("aria-pressed", String(c.dataset.range === range)));
+      runSearch();
+    });
+    b.setAttribute("aria-pressed", String(value === range));
+    return b;
+  }),
+);
+
+$("earlier-days").addEventListener("click", () => {
+  daysShown += FIRST_DAYS;
+  bump();
+});
+$("manage-history").addEventListener("click", () => {
+  setPage("settings");
+  requestAnimationFrame(() => $("privacy-card").scrollIntoView({ behavior: "smooth", block: "start" }));
+});
+
+initStorage({
+  askConfirm,
+  settings: () => (status ? { audio_limit_mb: status.audio_limit_mb, keep_audio_days: status.keep_audio_days } : null),
+  // Audio was zipped, moved, deleted or restored: what was fetched is stale.
+  changed: () => {
+    older.clear();
+    dayFetched.clear();
+    bump();
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Snippets: a spoken phrase that types a saved block of text
