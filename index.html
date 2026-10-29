@@ -164,22 +164,31 @@
             <div class="feed" id="history-feed">
               <div class="day-strip-row" id="day-strip-row" hidden>
                 <button type="button" class="day-all" id="day-all" aria-pressed="true">All days</button>
-                <div class="day-rail-wrap">
-                  <button type="button" class="rail-arrow left" id="rail-left" aria-label="Earlier days" hidden>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-                  </button>
-                  <div class="day-rail" id="day-strip" role="group" aria-label="Filter by day"></div>
-                  <button type="button" class="rail-arrow right" id="rail-right" aria-label="Later days" hidden>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
-                  </button>
+                <div class="day-wheel" id="day-wheel" tabindex="0" role="spinbutton" aria-label="Day. Scroll, drag or use the up and down arrow keys." aria-valuetext="All days" title="Scroll, drag, or press the up and down arrows">
+                  <div class="wheel-hi" aria-hidden="true"></div>
+                  <div class="wheel-rows" id="wheel-rows"></div>
                 </div>
-              </div>
-              <div class="day-focus" id="day-focus" hidden>
-                <div class="focus-text">
-                  <b id="focus-label"></b>
-                  <span class="muted small" id="focus-meta"></span>
+                <span class="grow"></span>
+                <div class="date-wrap">
+                  <button type="button" class="date-btn" id="date-btn" aria-haspopup="dialog" aria-expanded="false" aria-label="Pick a date from the calendar">
+                    <span class="date-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg></span>
+                    <span class="date-text"><b id="date-title">All days</b><span id="date-meta"></span></span>
+                    <svg class="date-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                  </button>
+                  <div class="cal-pop" id="cal-pop" role="dialog" aria-label="Pick a date" hidden>
+                    <div class="cal-head">
+                      <button type="button" id="cal-prev" aria-label="Previous month"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg></button>
+                      <b id="cal-title"></b>
+                      <button type="button" id="cal-next" aria-label="Next month"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg></button>
+                    </div>
+                    <div class="cal-dow" aria-hidden="true"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+                    <div class="cal-grid" id="cal-grid"></div>
+                    <div class="cal-foot">
+                      <span class="cal-legend" aria-hidden="true">Less <i class="heat-0"></i><i class="heat-1"></i><i class="heat-2"></i><i class="heat-3"></i><i class="heat-4"></i> More</span>
+                      <button type="button" class="link-btn" id="cal-today">Today</button>
+                    </div>
+                  </div>
                 </div>
-                <button type="button" id="focus-clear" class="ghost small-btn">Show all days</button>
               </div>
               <div class="search-narrow" id="search-narrow" hidden>
                 <span class="strip-label">Narrow it</span>

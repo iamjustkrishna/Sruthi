@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, iconUrl } from "./appIcons";
 import sruthiLogo from "./assets/sruthi-logo.png";
+import { type DaySummary, initDayPicker, renderDayPicker } from "./dayPicker";
 import { openShare } from "./shareSheet";
 import { fmtBytes, initStorage, refreshUsage, render as renderStorage, usage as audioUsage } from "./storage";
 
@@ -1039,12 +1040,6 @@ function historyEntry(e: HistoryEntry) {
 // pick a day, so nothing on disk is out of reach. "All days" is one
 // continuous feed grouped by day; picking a day filters to just that day.
 
-interface DaySummary {
-  date: string;
-  count: number;
-  words: number;
-}
-
 interface HistoryPage {
   entries: HistoryEntry[];
   more: boolean;
@@ -1057,7 +1052,6 @@ type Range = "any" | "week" | "today";
 
 const FEED_PAGE = 40;
 const FETCH_PAGE = 100;
-const RAIL_DAYS = 45;
 const SEARCH_LIMIT = 100;
 const DAY_MS = 86_400_000;
 
@@ -1077,9 +1071,6 @@ let searchSeq = 0;
 let searchTimer = 0;
 let daysSig = "";
 let daysTimer = 0;
-let railSig = "";
-let railPlaced = false;
-let railFromDays = false;
 let historyVersion = 0;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -1182,11 +1173,6 @@ function selectDay(date: string | null) {
   feedLimit = FEED_PAGE;
   if (date) void fetchDay(date);
   bump();
-  if (date) {
-    requestAnimationFrame(() =>
-      $("day-strip").querySelector(`[data-date="${date}"]`)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }),
-    );
-  }
 }
 
 function daysFromLoaded(): DaySummary[] {
@@ -1203,72 +1189,6 @@ function daysFromLoaded(): DaySummary[] {
     }
   }
   return out;
-}
-
-/** The scrolling row of days. It never squeezes: chips keep their size and the row scrolls. */
-function renderRail(list: DaySummary[]) {
-  const sig = `${list.slice(0, RAIL_DAYS).map((d) => `${d.date}:${d.words}`).join(",")}|${selectedDay ?? ""}`;
-  $("day-all").setAttribute("aria-pressed", String(selectedDay === null));
-  if (sig === railSig) return;
-  railSig = sig;
-
-  const rail = $("day-strip");
-  const first = rail.childElementCount === 0;
-  const kept = rail.scrollLeft;
-  const by = new Map(list.map((d) => [d.date, d]));
-  const oldest = list.length ? dayDate(list[list.length - 1].date) : Date.now();
-  const span = Math.min(RAIL_DAYS, Math.max(7, Math.round((Date.now() - oldest) / DAY_MS) + 1));
-  const most = Math.max(1, ...list.slice(0, span).map((d) => d.words));
-  const chips: HTMLElement[] = [];
-  for (let back = span - 1; back >= 0; back--) {
-    const when = new Date();
-    when.setDate(when.getDate() - back);
-    const date = localDay(when.getTime());
-    const d = by.get(date);
-    const chip = el("button", "day-chip");
-    chip.type = "button";
-    chip.dataset.date = date;
-    chip.disabled = !d;
-    chip.classList.toggle("today", back === 0);
-    chip.classList.toggle("selected", date === selectedDay);
-    chip.setAttribute("aria-pressed", String(date === selectedDay));
-    chip.setAttribute(
-      "aria-label",
-      `${when.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${d ? `, ${plural(d.count, "dictation")}` : ", no dictations"}`,
-    );
-    chip.title = d ? `${plural(d.count, "dictation")} · ${plural(d.words, "word")}` : "No dictations";
-    const bar = el("span", "chip-bar");
-    const fill = el("span", "chip-fill");
-    fill.style.width = d ? `${Math.max(12, Math.round((d.words / most) * 100))}%` : "0%";
-    bar.append(fill);
-    const label = back === 0 ? "Today" : when.getDate() === 1 ? when.toLocaleDateString([], { month: "short" }) : when.toLocaleDateString([], { weekday: "short" });
-    chip.append(el("span", "chip-dow", label), el("span", "chip-num", String(when.getDate())), bar);
-    chip.addEventListener("click", () => selectDay(date === selectedDay ? null : date));
-    chips.push(chip);
-  }
-  rail.replaceChildren(...chips);
-  // Newest at the right edge; keep your place when it redraws.
-  // The first draw may use only the live list; the real day list comes right after.
-  const fresh = first || (!railFromDays && days.length > 0);
-  if (days.length > 0) railFromDays = true;
-  rail.scrollLeft = fresh ? rail.scrollWidth : kept;
-  railPlaced = rail.clientWidth > 0;
-  updateRail();
-}
-
-function updateRail() {
-  const rail = $("day-strip");
-  // The row may have been drawn while Home was hidden (no width yet).
-  if (!railPlaced && rail.clientWidth > 0) {
-    rail.scrollLeft = rail.scrollWidth;
-    railPlaced = true;
-  }
-  const left = rail.scrollLeft > 4;
-  const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 4;
-  rail.classList.toggle("can-left", left);
-  rail.classList.toggle("can-right", right);
-  $("rail-left").hidden = !left;
-  $("rail-right").hidden = !right;
 }
 
 function renderFoot(searching: boolean, canMore: boolean, more: number) {
@@ -1307,7 +1227,6 @@ function dayHead(label: string, meta: string) {
 
 function renderSearch(query: string) {
   $("day-strip-row").hidden = true;
-  $("day-focus").hidden = true;
   $("search-narrow").hidden = false;
   const res = found && foundFor === query ? found : null;
   if (!res) {
@@ -1347,19 +1266,14 @@ function renderDays() {
   $("search-narrow").hidden = true;
   const list = days.length ? days : daysFromLoaded();
   $("day-strip-row").hidden = list.length === 0;
-  renderRail(list);
+  renderDayPicker(list, selectedDay, (date) => dayLabel(dayDate(date)));
   const by = new Map(list.map((d) => [d.date, d]));
   const total = list.reduce((n, d) => n + d.count, 0);
 
-  const focus = $("day-focus");
-  focus.hidden = !selectedDay;
   let nodes: HTMLElement[] = [];
   let canMore = false;
   let more = 0;
   if (selectedDay) {
-    const d = by.get(selectedDay);
-    $("focus-label").textContent = dayLabel(dayDate(selectedDay));
-    $("focus-meta").textContent = d ? `${plural(d.count, "dictation")} · ${plural(d.words, "word")}` : "";
     const entries = entriesOn(selectedDay);
     nodes = entries.map(historyEntry);
     if (dayLoading.has(selectedDay)) nodes.push(el("p", "muted small", "Loading…"));
@@ -1467,7 +1381,6 @@ $("range-chips").replaceChildren(
 );
 
 $("day-all").addEventListener("click", () => selectDay(null));
-$("focus-clear").addEventListener("click", () => selectDay(null));
 $("feed-more").addEventListener("click", () => {
   feedLimit += FEED_PAGE;
   if (feed().length < Math.min(feedLimit, days.reduce((n, d) => n + d.count, 0))) void fetchOlder();
@@ -1478,24 +1391,7 @@ $("manage-history").addEventListener("click", () => {
   requestAnimationFrame(() => $("privacy-card").scrollIntoView({ behavior: "smooth", block: "start" }));
 });
 
-// The rail: arrows, wheel and resize keep it usable at any window width.
-{
-  const rail = $("day-strip");
-  rail.addEventListener("scroll", updateRail, { passive: true });
-  $("rail-left").addEventListener("click", () => rail.scrollBy({ left: -rail.clientWidth * 0.7, behavior: "smooth" }));
-  $("rail-right").addEventListener("click", () => rail.scrollBy({ left: rail.clientWidth * 0.7, behavior: "smooth" }));
-  rail.addEventListener(
-    "wheel",
-    (e) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && rail.scrollWidth > rail.clientWidth) {
-        rail.scrollLeft += e.deltaY;
-        e.preventDefault();
-      }
-    },
-    { passive: false },
-  );
-  new ResizeObserver(updateRail).observe(rail);
-}
+initDayPicker({ select: selectDay });
 
 initStorage({
   askConfirm,
