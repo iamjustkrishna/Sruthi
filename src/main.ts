@@ -826,8 +826,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = "", text 
 function saveReference(id: string, text: string | null) {
   correcting.delete(id);
   drafts.delete(id);
-  const loaded = older.get(id);
-  if (loaded) loaded.reference = text;
+  for (const e of loadedCopies(id)) e.reference = text;
   run("set_reference", { id, text }).then(() => renderHistory(true));
   renderHistory(true);
 }
@@ -1013,7 +1012,7 @@ function historyEntry(e: HistoryEntry) {
       if (!ok) return;
       if (playing?.id === e.id) stopPlayback();
       for (const set of [heardOpen, correcting, rerunOpen]) set.delete(e.id);
-      older.delete(e.id);
+      forgetLoaded(e.id);
       run("delete_recording", { id: e.id }).then(() => scheduleDays());
     }),
   );
@@ -1036,8 +1035,9 @@ function historyEntry(e: HistoryEntry) {
 // ---------------------------------------------------------------------------
 // Home: every day, not just the latest 50
 //
-// The app keeps the newest dictations live; older days are fetched when you
-// open them or search, so nothing on disk is out of reach.
+// The newest dictations are live; older ones are fetched as you scroll on or
+// pick a day, so nothing on disk is out of reach. "All days" is one
+// continuous feed grouped by day; picking a day filters to just that day.
 
 interface DaySummary {
   date: string;
@@ -1055,19 +1055,21 @@ interface HistoryPage {
 
 type Range = "any" | "week" | "today";
 
-const DAY_PAGE = 20;
-const FIRST_DAYS = 7;
+const FEED_PAGE = 40;
+const FETCH_PAGE = 100;
+const RAIL_DAYS = 45;
 const SEARCH_LIMIT = 100;
 const DAY_MS = 86_400_000;
 
 let days: DaySummary[] = [];
-/** Dictations fetched from disk that are not in the live list. */
-const older = new Map<string, HistoryEntry>();
-const dayToggled = new Map<string, boolean>();
-const dayLimit = new Map<string, number>();
-const dayFetched = new Set<string>();
+/** Dictations fetched after the live list, in order, with no gaps. */
+let feedOlder: HistoryEntry[] = [];
+/** Every dictation of a day you picked (complete once fetched). */
+const dayCache = new Map<string, HistoryEntry[]>();
+let selectedDay: string | null = null;
+let feedLimit = FEED_PAGE;
+let feedLoading = false;
 const dayLoading = new Set<string>();
-let daysShown = FIRST_DAYS;
 let range: Range = "any";
 let found: HistoryPage | null = null;
 let foundFor = "";
@@ -1075,6 +1077,9 @@ let searchSeq = 0;
 let searchTimer = 0;
 let daysSig = "";
 let daysTimer = 0;
+let railSig = "";
+let railPlaced = false;
+let railFromDays = false;
 let historyVersion = 0;
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
@@ -1093,15 +1098,30 @@ function bump() {
   renderHistory(true);
 }
 
-/** The live list plus anything fetched, newest first. */
-function dictations(): HistoryEntry[] {
-  const live = status?.history ?? [];
-  const ids = new Set(live.map((e) => e.id));
-  return [...live, ...[...older.values()].filter((e) => !ids.has(e.id))].sort((a, b) => b.time_ms - a.time_ms);
+function merge(...lists: HistoryEntry[][]): HistoryEntry[] {
+  const seen = new Map<string, HistoryEntry>();
+  for (const list of lists) for (const e of list) if (!seen.has(e.id)) seen.set(e.id, e);
+  return [...seen.values()].sort((a, b) => b.time_ms - a.time_ms);
+}
+
+/** The continuous feed: the live list plus what has been loaded after it. */
+function feed() {
+  return merge(status?.history ?? [], feedOlder);
 }
 
 function entriesOn(date: string) {
-  return dictations().filter((e) => localDay(e.time_ms) === date);
+  return merge(status?.history ?? [], feedOlder, dayCache.get(date) ?? []).filter((e) => localDay(e.time_ms) === date);
+}
+
+/** Every loaded copy of one dictation, so a correction reaches all of them. */
+function loadedCopies(id: string) {
+  const all = [...feedOlder, ...[...dayCache.values()].flat(), ...(found?.entries ?? [])];
+  return all.filter((e) => e.id === id);
+}
+
+function forgetLoaded(id: string) {
+  feedOlder = feedOlder.filter((e) => e.id !== id);
+  for (const [date, list] of dayCache) dayCache.set(date, list.filter((e) => e.id !== id));
 }
 
 async function loadDays() {
@@ -1123,16 +1143,31 @@ function scheduleDays() {
   daysTimer = window.setTimeout(() => void loadDays(), 350);
 }
 
-async function fetchDay(date: string, before?: number) {
-  if (dayLoading.has(date)) return;
-  dayFetched.add(date);
+async function fetchOlder() {
+  if (feedLoading) return;
+  feedLoading = true;
+  bump();
+  try {
+    const f = feed();
+    const page = await invoke<HistoryPage>("history_page", {
+      query: { before_ms: f.length ? f[f.length - 1].time_ms : null, limit: FETCH_PAGE },
+    });
+    feedOlder = merge(feedOlder, page.entries);
+  } catch (e) {
+    showError(String(e));
+  } finally {
+    feedLoading = false;
+    bump();
+  }
+}
+
+async function fetchDay(date: string) {
+  if (dayCache.has(date) || dayLoading.has(date)) return;
   dayLoading.add(date);
   bump();
   try {
-    const page = await invoke<HistoryPage>("history_page", {
-      query: { day: date, before_ms: before ?? null, limit: 100 },
-    });
-    for (const e of page.entries) older.set(e.id, e);
+    const page = await invoke<HistoryPage>("history_page", { query: { day: date, limit: 500 } });
+    dayCache.set(date, page.entries);
   } catch (e) {
     showError(String(e));
   } finally {
@@ -1141,78 +1176,22 @@ async function fetchDay(date: string, before?: number) {
   }
 }
 
-function isOpen(date: string) {
-  const chosen = dayToggled.get(date);
-  if (chosen !== undefined) return chosen;
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return date === localDay(Date.now()) || date === localDay(yesterday.getTime());
-}
-
-function jumpToDay(date: string) {
-  dayToggled.set(date, true);
-  const at = days.findIndex((d) => d.date === date);
-  if (at >= daysShown) daysShown = at + 1;
+/** Filters Home to one day, or back to all days. */
+function selectDay(date: string | null) {
+  selectedDay = date;
+  feedLimit = FEED_PAGE;
+  if (date) void fetchDay(date);
   bump();
-  requestAnimationFrame(() =>
-    historyList.querySelector(`[data-day="${date}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
-  );
-}
-
-function dayGroup(d: DaySummary) {
-  const wrap = el("section", "day-group");
-  wrap.dataset.day = d.date;
-  const open = isOpen(d.date);
-  const head = el("button", "day-head");
-  head.type = "button";
-  head.setAttribute("aria-expanded", String(open));
-  const loaded = entriesOn(d.date);
-  head.append(
-    el("i", "day-chev"),
-    el("b", "", dayLabel(dayDate(d.date))),
-    el("span", "muted small", `${plural(d.count, "dictation")} · ${plural(d.words, "word")}`),
-  );
-  if (!open && loaded[0]?.text) {
-    const say = loaded[0].text.length > 70 ? `${loaded[0].text.slice(0, 70).trimEnd()}…` : loaded[0].text;
-    head.append(el("span", "day-preview", `Latest: “${say}”`));
+  if (date) {
+    requestAnimationFrame(() =>
+      $("day-strip").querySelector(`[data-date="${date}"]`)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }),
+    );
   }
-  head.addEventListener("click", () => {
-    dayToggled.set(d.date, !isOpen(d.date));
-    bump();
-  });
-  wrap.append(head);
-  if (!open) return wrap;
-
-  const limit = dayLimit.get(d.date) ?? DAY_PAGE;
-  if (!dayFetched.has(d.date) && loaded.length < Math.min(d.count, limit)) void fetchDay(d.date);
-  const body = el("div", "day-body");
-  const visible = loaded.slice(0, limit);
-  body.append(...visible.map(historyEntry));
-  if (dayLoading.has(d.date)) body.append(el("p", "muted small", "Loading…"));
-  const remaining = d.count - visible.length;
-  if (remaining > 0 && !dayLoading.has(d.date)) {
-    const label = dayLabel(dayDate(d.date));
-    const from = label === "Today" || label === "Yesterday" ? label.toLowerCase() : label;
-    const more = el("button", "ghost small-btn show-more", `Show ${Math.min(remaining, DAY_PAGE)} more from ${from}`);
-    more.type = "button";
-    more.addEventListener("click", () => {
-      const next = limit + DAY_PAGE;
-      dayLimit.set(d.date, next);
-      if (loaded.length < Math.min(next, d.count)) {
-        void fetchDay(d.date, loaded[loaded.length - 1]?.time_ms);
-      } else {
-        bump();
-      }
-    });
-    body.append(more);
-  }
-  wrap.append(body);
-  return wrap;
 }
 
 function daysFromLoaded(): DaySummary[] {
   const out: DaySummary[] = [];
-  for (const e of dictations()) {
+  for (const e of feed()) {
     const date = localDay(e.time_ms);
     const words = e.text.trim() ? e.text.trim().split(/\s+/).length : 0;
     const last = out[out.length - 1];
@@ -1226,46 +1205,81 @@ function daysFromLoaded(): DaySummary[] {
   return out;
 }
 
-/** The last two weeks as small chips; each jumps to that day. */
-function renderStrip(list: DaySummary[]) {
+/** The scrolling row of days. It never squeezes: chips keep their size and the row scrolls. */
+function renderRail(list: DaySummary[]) {
+  const sig = `${list.slice(0, RAIL_DAYS).map((d) => `${d.date}:${d.words}`).join(",")}|${selectedDay ?? ""}`;
+  $("day-all").setAttribute("aria-pressed", String(selectedDay === null));
+  if (sig === railSig) return;
+  railSig = sig;
+
+  const rail = $("day-strip");
+  const first = rail.childElementCount === 0;
+  const kept = rail.scrollLeft;
   const by = new Map(list.map((d) => [d.date, d]));
-  const most = Math.max(1, ...list.slice(0, 14).map((d) => d.words));
+  const oldest = list.length ? dayDate(list[list.length - 1].date) : Date.now();
+  const span = Math.min(RAIL_DAYS, Math.max(7, Math.round((Date.now() - oldest) / DAY_MS) + 1));
+  const most = Math.max(1, ...list.slice(0, span).map((d) => d.words));
   const chips: HTMLElement[] = [];
-  for (let back = 13; back >= 0; back--) {
+  for (let back = span - 1; back >= 0; back--) {
     const when = new Date();
     when.setDate(when.getDate() - back);
     const date = localDay(when.getTime());
     const d = by.get(date);
     const chip = el("button", "day-chip");
     chip.type = "button";
+    chip.dataset.date = date;
     chip.disabled = !d;
-    if (back === 0) chip.classList.add("today");
-    chip.setAttribute("aria-label", `${when.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${d ? `, ${plural(d.words, "word")}` : ", no dictations"}`);
+    chip.classList.toggle("today", back === 0);
+    chip.classList.toggle("selected", date === selectedDay);
+    chip.setAttribute("aria-pressed", String(date === selectedDay));
+    chip.setAttribute(
+      "aria-label",
+      `${when.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${d ? `, ${plural(d.count, "dictation")}` : ", no dictations"}`,
+    );
+    chip.title = d ? `${plural(d.count, "dictation")} · ${plural(d.words, "word")}` : "No dictations";
     const bar = el("span", "chip-bar");
     const fill = el("span", "chip-fill");
-    fill.style.width = d ? `${Math.max(10, Math.round((d.words / most) * 100))}%` : "0%";
+    fill.style.width = d ? `${Math.max(12, Math.round((d.words / most) * 100))}%` : "0%";
     bar.append(fill);
-    chip.append(
-      el("span", "chip-dow", back === 0 ? "Today" : when.toLocaleDateString([], { weekday: "narrow" })),
-      el("span", "chip-num", String(when.getDate())),
-      bar,
-    );
-    chip.addEventListener("click", () => jumpToDay(date));
+    const label = back === 0 ? "Today" : when.getDate() === 1 ? when.toLocaleDateString([], { month: "short" }) : when.toLocaleDateString([], { weekday: "short" });
+    chip.append(el("span", "chip-dow", label), el("span", "chip-num", String(when.getDate())), bar);
+    chip.addEventListener("click", () => selectDay(date === selectedDay ? null : date));
     chips.push(chip);
   }
-  $("day-strip").replaceChildren(...chips);
-  const total = list.reduce((n, d) => n + d.count, 0);
-  $("strip-meta").textContent = `${plural(list.length, "day")} · ${plural(total, "dictation")}`;
+  rail.replaceChildren(...chips);
+  // Newest at the right edge; keep your place when it redraws.
+  // The first draw may use only the live list; the real day list comes right after.
+  const fresh = first || (!railFromDays && days.length > 0);
+  if (days.length > 0) railFromDays = true;
+  rail.scrollLeft = fresh ? rail.scrollWidth : kept;
+  railPlaced = rail.clientWidth > 0;
+  updateRail();
 }
 
-function renderFoot(list: DaySummary[], searching: boolean) {
+function updateRail() {
+  const rail = $("day-strip");
+  // The row may have been drawn while Home was hidden (no width yet).
+  if (!railPlaced && rail.clientWidth > 0) {
+    rail.scrollLeft = rail.scrollWidth;
+    railPlaced = true;
+  }
+  const left = rail.scrollLeft > 4;
+  const right = rail.scrollLeft + rail.clientWidth < rail.scrollWidth - 4;
+  rail.classList.toggle("can-left", left);
+  rail.classList.toggle("can-right", right);
+  $("rail-left").hidden = !left;
+  $("rail-right").hidden = !right;
+}
+
+function renderFoot(searching: boolean, canMore: boolean, more: number) {
   const foot = $("history-foot");
-  foot.hidden = searching || list.length === 0;
+  const total = days.reduce((n, d) => n + d.count, 0);
+  foot.hidden = searching || (days.length === 0 && !canMore);
   if (foot.hidden) return;
-  const earlier = $<HTMLButtonElement>("earlier-days");
-  earlier.hidden = list.length <= daysShown;
-  earlier.textContent = `Show earlier days (${list.length - daysShown} more)`;
-  const total = list.reduce((n, d) => n + d.count, 0);
+  const button = $<HTMLButtonElement>("feed-more");
+  button.hidden = !canMore;
+  button.disabled = feedLoading;
+  button.textContent = feedLoading ? "Loading…" : more > 0 ? `Show more (${more.toLocaleString()} earlier)` : "Show more";
   $("history-kept").textContent = `Kept on this PC: ${plural(total, "dictation")}${audioUsage ? `, ${fmtBytes(audioUsage.bytes)} of audio` : ""}.`;
 }
 
@@ -1285,8 +1299,15 @@ function highlight(root: HTMLElement, query: string) {
   p.replaceChildren(...parts);
 }
 
+function dayHead(label: string, meta: string) {
+  const head = el("div", "day-head static");
+  head.append(el("b", "", label), el("span", "muted small", meta));
+  return head;
+}
+
 function renderSearch(query: string) {
   $("day-strip-row").hidden = true;
+  $("day-focus").hidden = true;
   $("search-narrow").hidden = false;
   const res = found && foundFor === query ? found : null;
   if (!res) {
@@ -1301,21 +1322,20 @@ function renderSearch(query: string) {
     : `searched all ${res.searched.toLocaleString()}`;
   const nodes: HTMLElement[] = [];
   let lastDay = "";
-  let group: HTMLElement | null = null;
+  let body: HTMLElement | null = null;
   for (const e of res.entries) {
     const date = localDay(e.time_ms);
     if (date !== lastDay) {
       lastDay = date;
-      group = el("section", "day-group");
+      const group = el("section", "day-group");
       const count = res.entries.filter((x) => localDay(x.time_ms) === date).length;
-      const head = el("div", "day-head static");
-      head.append(el("b", "", dayLabel(e.time_ms)), el("span", "muted small", plural(count, "match", "matches")));
-      group.append(head, el("div", "day-body"));
+      body = el("div", "day-body");
+      group.append(dayHead(dayLabel(e.time_ms), plural(count, "match", "matches")), body);
       nodes.push(group);
     }
     const entry = historyEntry(e);
     highlight(entry, query);
-    group?.lastElementChild?.append(entry);
+    body?.append(entry);
   }
   if (res.more) nodes.push(el("p", "muted small", `Showing the newest ${SEARCH_LIMIT} matches. Narrow the search to see the rest.`));
   historyList.replaceChildren(...nodes);
@@ -1327,11 +1347,48 @@ function renderDays() {
   $("search-narrow").hidden = true;
   const list = days.length ? days : daysFromLoaded();
   $("day-strip-row").hidden = list.length === 0;
-  historyList.replaceChildren(...list.slice(0, daysShown).map(dayGroup));
-  historyEmpty.hidden = list.length > 0;
-  if (!list.length) historyEmpty.textContent = "Nothing yet. Hold the shortcut in any app, say a sentence, and it shows up here.";
-  if (list.length) renderStrip(list);
-  renderFoot(list, false);
+  renderRail(list);
+  const by = new Map(list.map((d) => [d.date, d]));
+  const total = list.reduce((n, d) => n + d.count, 0);
+
+  const focus = $("day-focus");
+  focus.hidden = !selectedDay;
+  let nodes: HTMLElement[] = [];
+  let canMore = false;
+  let more = 0;
+  if (selectedDay) {
+    const d = by.get(selectedDay);
+    $("focus-label").textContent = dayLabel(dayDate(selectedDay));
+    $("focus-meta").textContent = d ? `${plural(d.count, "dictation")} · ${plural(d.words, "word")}` : "";
+    const entries = entriesOn(selectedDay);
+    nodes = entries.map(historyEntry);
+    if (dayLoading.has(selectedDay)) nodes.push(el("p", "muted small", "Loading…"));
+    historyEmpty.hidden = entries.length > 0 || dayLoading.has(selectedDay);
+    historyEmpty.textContent = "No dictations on that day.";
+  } else {
+    const all = feed();
+    const shown = all.slice(0, feedLimit);
+    let lastDay = "";
+    let body: HTMLElement | null = null;
+    for (const e of shown) {
+      const date = localDay(e.time_ms);
+      if (date !== lastDay) {
+        lastDay = date;
+        const group = el("section", "day-group");
+        const d = by.get(date);
+        body = el("div", "day-body");
+        group.append(dayHead(dayLabel(e.time_ms), d ? `${plural(d.count, "dictation")} · ${plural(d.words, "word")}` : ""), body);
+        nodes.push(group);
+      }
+      body?.append(historyEntry(e));
+    }
+    canMore = all.length > shown.length || all.length < total;
+    more = Math.max(0, total - shown.length);
+    historyEmpty.hidden = list.length > 0;
+    if (!list.length) historyEmpty.textContent = "Nothing yet. Hold the shortcut in any app, say a sentence, and it shows up here.";
+  }
+  historyList.replaceChildren(...nodes);
+  renderFoot(false, canMore, more);
 }
 
 function renderHistory(force = false) {
@@ -1349,7 +1406,7 @@ function renderHistory(force = false) {
   }
   if (query) {
     renderSearch(query);
-    renderFoot([], true);
+    renderFoot(true, false, 0);
   } else {
     renderDays();
   }
@@ -1409,22 +1466,44 @@ $("range-chips").replaceChildren(
   }),
 );
 
-$("earlier-days").addEventListener("click", () => {
-  daysShown += FIRST_DAYS;
-  bump();
+$("day-all").addEventListener("click", () => selectDay(null));
+$("focus-clear").addEventListener("click", () => selectDay(null));
+$("feed-more").addEventListener("click", () => {
+  feedLimit += FEED_PAGE;
+  if (feed().length < Math.min(feedLimit, days.reduce((n, d) => n + d.count, 0))) void fetchOlder();
+  else bump();
 });
 $("manage-history").addEventListener("click", () => {
   setPage("settings");
   requestAnimationFrame(() => $("privacy-card").scrollIntoView({ behavior: "smooth", block: "start" }));
 });
 
+// The rail: arrows, wheel and resize keep it usable at any window width.
+{
+  const rail = $("day-strip");
+  rail.addEventListener("scroll", updateRail, { passive: true });
+  $("rail-left").addEventListener("click", () => rail.scrollBy({ left: -rail.clientWidth * 0.7, behavior: "smooth" }));
+  $("rail-right").addEventListener("click", () => rail.scrollBy({ left: rail.clientWidth * 0.7, behavior: "smooth" }));
+  rail.addEventListener(
+    "wheel",
+    (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && rail.scrollWidth > rail.clientWidth) {
+        rail.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    },
+    { passive: false },
+  );
+  new ResizeObserver(updateRail).observe(rail);
+}
+
 initStorage({
   askConfirm,
   settings: () => (status ? { audio_limit_mb: status.audio_limit_mb, keep_audio_days: status.keep_audio_days } : null),
   // Audio was zipped, moved, deleted or restored: what was fetched is stale.
   changed: () => {
-    older.clear();
-    dayFetched.clear();
+    feedOlder = [];
+    dayCache.clear();
     bump();
   },
 });

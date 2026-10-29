@@ -163,9 +163,23 @@
           <div class="home-grid">
             <div class="feed" id="history-feed">
               <div class="day-strip-row" id="day-strip-row" hidden>
-                <span class="strip-label">Jump to</span>
-                <div class="day-strip" id="day-strip"></div>
-                <span class="strip-meta" id="strip-meta"></span>
+                <button type="button" class="day-all" id="day-all" aria-pressed="true">All days</button>
+                <div class="day-rail-wrap">
+                  <button type="button" class="rail-arrow left" id="rail-left" aria-label="Earlier days" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+                  </button>
+                  <div class="day-rail" id="day-strip" role="group" aria-label="Filter by day"></div>
+                  <button type="button" class="rail-arrow right" id="rail-right" aria-label="Later days" hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="day-focus" id="day-focus" hidden>
+                <div class="focus-text">
+                  <b id="focus-label"></b>
+                  <span class="muted small" id="focus-meta"></span>
+                </div>
+                <button type="button" id="focus-clear" class="ghost small-btn">Show all days</button>
               </div>
               <div class="search-narrow" id="search-narrow" hidden>
                 <span class="strip-label">Narrow it</span>
@@ -175,7 +189,7 @@
               <div id="history-list" class="history-list"></div>
               <p class="muted" id="history-empty"></p>
               <div class="history-foot" id="history-foot" hidden>
-                <button type="button" id="earlier-days" class="ghost">Show earlier days</button>
+                <button type="button" id="feed-more" class="ghost">Show more</button>
                 <span class="muted small" id="history-kept"></span>
                 <button type="button" id="manage-history" class="link-btn">Manage history</button>
               </div>

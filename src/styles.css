@@ -2512,50 +2512,138 @@ button.ghost:hover:not(:disabled) {
   color: var(--muted);
   white-space: nowrap;
 }
-.day-strip {
-  display: flex;
-  gap: 4px;
+.day-all {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--text);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.day-all[aria-pressed="true"] {
+  border-color: var(--sound);
+  background: color-mix(in srgb, var(--sound) 12%, var(--card));
+  color: var(--sound);
+}
+.day-rail-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
 }
-.day-chip {
+.day-rail {
+  display: flex;
+  gap: 6px;
+  padding: 2px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  --fade-l: 0px;
+  --fade-r: 0px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent 100%);
+}
+.day-rail::-webkit-scrollbar {
+  display: none;
+}
+.day-rail.can-left {
+  --fade-l: 28px;
+}
+.day-rail.can-right {
+  --fade-r: 28px;
+}
+.rail-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+}
+.rail-arrow[hidden] {
+  display: none;
+}
+.rail-arrow.left {
+  left: -4px;
+}
+.rail-arrow.right {
+  right: -4px;
+}
+.day-focus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--sound) 30%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--sound) 7%, var(--card));
+}
+.day-focus[hidden] {
+  display: none;
+}
+.focus-text {
   flex: 1;
   min-width: 0;
-  height: 42px;
-  padding: 4px 0 5px;
+  display: flex;
+  flex-direction: column;
+}
+.focus-text b {
+  font-size: var(--text-hero);
+  letter-spacing: -0.01em;
+}
+.day-chip {
+  flex: 0 0 54px;
+  min-width: 0;
+  height: 56px;
+  padding: 6px 0 7px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--raise);
   color: var(--text);
   font: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  scroll-snap-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 .day-chip:disabled {
   color: var(--muted);
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: default;
 }
 .day-chip:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--sound) 45%, var(--border));
+  transform: translateY(-1px);
 }
 .day-chip.today {
+  border-color: color-mix(in srgb, var(--sound) 55%, var(--border));
+}
+.day-chip.selected {
   border: 1.5px solid var(--sound);
-  background: color-mix(in srgb, var(--sound) 10%, var(--card));
+  background: var(--sound);
+  color: var(--accent-ink);
 }
 .chip-dow {
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1;
   color: var(--muted);
 }
-.day-chip.today .chip-dow {
-  color: var(--sound);
-}
 .chip-num {
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -2572,8 +2660,14 @@ button.ghost:hover:not(:disabled) {
   border-radius: 2px;
   background: color-mix(in srgb, var(--sound) 55%, var(--track));
 }
-.day-chip.today .chip-fill {
-  background: var(--sound);
+.day-chip.selected .chip-dow {
+  color: color-mix(in srgb, var(--accent-ink) 80%, transparent);
+}
+.day-chip.selected .chip-bar {
+  background: color-mix(in srgb, var(--accent-ink) 28%, transparent);
+}
+.day-chip.selected .chip-fill {
+  background: var(--accent-ink);
 }
 .range-chips {
   display: flex;
