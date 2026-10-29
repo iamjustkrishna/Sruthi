@@ -30,6 +30,8 @@ interface ModelEntry {
   languages: string;
   size_mb: number;
   installed: boolean;
+  /** False when this OS can't run the model (Whisper models off Windows). */
+  supported: boolean;
 }
 
 interface LlmEntry {
@@ -346,7 +348,7 @@ function modelRow(o: RowOptions) {
 
 function renderModels(s: Status) {
   modelList.replaceChildren(
-    ...s.models.map((m) =>
+    ...s.models.filter((m) => m.supported).map((m) =>
       modelRow({
         id: m.id,
         name: m.name,

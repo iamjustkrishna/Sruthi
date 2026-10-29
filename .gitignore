@@ -40,3 +40,7 @@ bench/hinglish/
 
 # Media drafts stay local (article covers etc.)
 media/
+
+# Personal planning notes and agent plans stay local
+PLAN.md
+docs/superpowers/

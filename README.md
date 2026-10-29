@@ -95,7 +95,7 @@ Audio takes space, so you decide what stays: keep it for 90, 30 or 7 days, or no
   <img src="docs/images/home-dark.png" alt="Sruthi in dark mode" width="900" />
 </p>
 
-- **Runs on your graphics card** for the larger models, with an automatic fall back to the CPU and a clear note about where it is running.
+- **Runs on your graphics card** (Windows, any NVIDIA, AMD or Intel card with Vulkan) for the larger Whisper models, with an automatic fall back to the CPU and a clear note about where it is running.
 - **Microphone check** finds out whether a microphone is actually delivering sound.
 - **Light and dark themes** that follow your system, and a tray icon so it stays out of your way.
 
@@ -121,7 +121,7 @@ Each model keeps its own license. Check the license on its download page.
 | Platform | File | Notes |
 | --- | --- | --- |
 | Windows 10 / 11 (64-bit) | `.exe` or `.msi` | Primary platform. Everything in this page works here. |
-| macOS 12+ (Apple Silicon) | `.dmg` | Early support, Apple Silicon only (Intel Macs are not supported yet). Dictation works, but features that need to know which app you are in (per-app tone, the app list and logos, per-app send keys) are Windows-only for now. The app is unsigned: right-click it and choose **Open** on first launch, or allow it in System Settings → Privacy & Security. |
+| macOS 12+ (Apple Silicon) | `.dmg` | Early support, Apple Silicon only (Intel Macs are not supported yet). Dictation works with the Parakeet and Moonshine models, which run on the processor; the Whisper models and the graphics-card path are Windows-only for now. Features that need to know which app you are in (per-app tone, the app list and logos, per-app send keys) are Windows-only for now. The app is unsigned: right-click it and choose **Open** on first launch, or allow it in System Settings → Privacy & Security. |
 
 Download from the [latest release](https://github.com/iamjustkrishna/Sruthi/releases/latest). Using a graphics card for the larger models is optional: see [docs/GPU.md](docs/GPU.md).
 
@@ -172,7 +172,7 @@ Sruthi stands on open work: the Parakeet speech models from NVIDIA, Whisper from
 
 ## Roadmap
 
-Where Sruthi is headed is in [PLAN.md](PLAN.md). Ideas and bug reports are welcome in the [issue tracker](https://github.com/iamjustkrishna/Sruthi/issues).
+Ideas and bug reports are welcome in the [issue tracker](https://github.com/iamjustkrishna/Sruthi/issues). Next up: tone per app, a tap-to-toggle mode, an automatic updater and more platforms.
 
 ## Contributing
 

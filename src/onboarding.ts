@@ -18,6 +18,8 @@ interface ModelRow {
   languages: string;
   size_mb: number;
   installed: boolean;
+  /** False when this OS can't run the model (Whisper models off Windows). */
+  supported: boolean;
 }
 
 /** The part of the app's Status that setup reads. */
@@ -45,6 +47,8 @@ interface Hardware {
   gpu: string | null;
   vram_mb: number | null;
   disk_free_mb: number | null;
+  platform: string;
+  whisper_engine: boolean;
 }
 
 interface Pick {
@@ -58,6 +62,7 @@ interface Plan {
   hardware: Hardware;
   primary: Pick;
   alternatives: Pick[];
+  notice: string | null;
 }
 
 interface HotkeyOption {
@@ -188,7 +193,9 @@ export function initOnboarding(logoUrl: string) {
       ),
       hw.gpu
         ? tile("gpu", hw.gpu, hw.vram_mb ? `${size(hw.vram_mb)} of its own memory.` : "A graphics card Sruthi can use.")
-        : tile("gpu", "No dedicated graphics card", "Sruthi will use your processor."),
+        : hw.platform === "windows"
+          ? tile("gpu", "No dedicated graphics card", "Sruthi will use your processor.")
+          : tile("gpu", "Runs on your processor", "Sruthi doesn't use the graphics chip on this system yet. The processor is plenty."),
       tile("disk", hw.disk_free_mb ? `${size(hw.disk_free_mb)} free` : "Disk space", range ? `Models need ${range}.` : ""),
     );
   }
@@ -220,8 +227,8 @@ export function initOnboarding(logoUrl: string) {
   function renderOptions() {
     if (!plan || !status) return;
     const shown = new Set([plan.primary.id, ...plan.alternatives.map((a) => a.id)]);
-    $("onb-pick").replaceChildren(option(plan.primary, true));
-    const rest = status.models.filter((m) => !shown.has(m.id));
+    $("onb-pick").replaceChildren(option(plan.primary, true), ...(plan.notice ? [el("p", "onb-hint", plan.notice)] : []));
+    const rest = status.models.filter((m) => m.supported && !shown.has(m.id));
     const rows = [
       ...plan.alternatives.map((a) => option(a, false)),
       ...(showAll ? rest.map((m) => option({ id: m.id, why: `${m.description} ${m.languages}.` }, false)) : []),
@@ -230,7 +237,7 @@ export function initOnboarding(logoUrl: string) {
     $("onb-others-label").hidden = rows.length === 0;
     const all = $<HTMLButtonElement>("onb-all");
     all.hidden = rest.length === 0;
-    all.textContent = showAll ? "Show fewer models" : `Show all ${status.models.length} models`;
+    all.textContent = showAll ? "Show fewer models" : `Show all ${status.models.filter((m) => m.supported).length} models`;
     const m = modelRow(selected);
     installBtn.textContent = m ? (m.installed ? `Use ${m.name}` : `Download ${m.name} (${size(m.size_mb)})`) : "Continue";
   }
@@ -242,9 +249,10 @@ export function initOnboarding(logoUrl: string) {
     } catch (e) {
       $("onb-tiles").replaceChildren(el("p", "onb-error", `Couldn't read your PC (${e}). The recommended model is still a safe choice.`));
       plan = {
-        hardware: { cpu: null, cores: 0, ram_total_mb: null, ram_free_mb: null, gpu: null, vram_mb: null, disk_free_mb: null },
+        hardware: { cpu: null, cores: 0, ram_total_mb: null, ram_free_mb: null, gpu: null, vram_mb: null, disk_free_mb: null, platform: "", whisper_engine: false },
         primary: { id: "parakeet-v3", why: "Best all-round accuracy, and quick on any modern processor.", fit: "plain", note: "" },
         alternatives: [],
+        notice: null,
       };
     }
     if (plan.hardware.cpu || plan.hardware.ram_total_mb) renderTiles(plan.hardware);

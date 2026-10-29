@@ -70,6 +70,8 @@ struct ModelEntry {
     languages: &'static str,
     size_mb: u32,
     installed: bool,
+    /// False when this OS can't run the model (Whisper models off Windows).
+    supported: bool,
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq)]
@@ -387,6 +389,7 @@ impl AppState {
                     languages: m.languages,
                     size_mb: m.size_mb,
                     installed: m.is_installed(),
+                    supported: m.available_here(),
                 })
                 .collect(),
             downloading: inner.downloading,
@@ -1281,6 +1284,16 @@ fn lookup(id: &str) -> Result<&'static model::ModelInfo, String> {
     model::find(id).ok_or_else(|| format!("Unknown model: {id}"))
 }
 
+/// A model this OS can actually run (Whisper models are Windows-only for now).
+fn lookup_supported(id: &str) -> Result<&'static model::ModelInfo, String> {
+    let info = lookup(id)?;
+    if info.available_here() {
+        Ok(info)
+    } else {
+        Err(format!("{} needs Windows for now", info.name))
+    }
+}
+
 #[tauri::command]
 fn get_status(state: State<AppState>) -> Status {
     state.status()
@@ -1288,7 +1301,7 @@ fn get_status(state: State<AppState>) -> Status {
 
 #[tauri::command]
 fn download_model(app: AppHandle, id: String) -> Result<(), String> {
-    let info = lookup(&id)?;
+    let info = lookup_supported(&id)?;
     {
         let state = app.state::<AppState>();
         let mut inner = state.inner.lock().unwrap();
@@ -1370,7 +1383,7 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
 /// model is simply selected and loaded.
 #[tauri::command]
 fn choose_model(app: AppHandle, id: String) -> Result<(), String> {
-    let info = lookup(&id)?;
+    let info = lookup_supported(&id)?;
     let mut saved = settings::load();
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;

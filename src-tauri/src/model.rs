@@ -167,6 +167,15 @@ pub const CATALOG: &[ModelInfo] = &[
     },
 ];
 
+impl ModelInfo {
+    /// Whether this OS can run the model. The Whisper engine (whisper.cpp
+    /// binaries) is Windows-only for now; Parakeet and Moonshine run through
+    /// ONNX Runtime everywhere.
+    pub fn available_here(&self) -> bool {
+        !self.uses_whisper() || cfg!(windows)
+    }
+}
+
 pub fn find(id: &str) -> Option<&'static ModelInfo> {
     CATALOG.iter().find(|m| m.id == id)
 }

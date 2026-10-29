@@ -30,6 +30,11 @@ pub struct Hardware {
     pub gpu: Option<String>,
     pub vram_mb: Option<u64>,
     pub disk_free_mb: Option<u64>,
+    /// "windows", "macos" and so on, for wording the hardware tiles.
+    pub platform: &'static str,
+    /// Whether the Whisper engine runs here (Windows only for now). Without
+    /// it only the Parakeet and Moonshine models are on offer.
+    pub whisper_engine: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -56,6 +61,8 @@ pub struct Plan {
     pub hardware: Hardware,
     pub primary: Pick,
     pub alternatives: Vec<Pick>,
+    /// Something the user should know about their choices on this OS.
+    pub notice: Option<&'static str>,
 }
 
 pub fn report() -> Hardware {
@@ -67,16 +74,23 @@ pub fn report() -> Hardware {
         gpu: gpu::device_name(),
         vram_mb: gpu::vram_mb(),
         disk_free_mb: disk_free_mb(),
+        platform: std::env::consts::OS,
+        whisper_engine: cfg!(windows),
     }
 }
 
 pub fn plan(languages: &[String]) -> Plan {
     let hardware = report();
     let (primary, alternatives) = recommend(&hardware, languages);
+    let wants_whisper = says(languages, "hinglish") || says(languages, "other");
+    let notice = (!hardware.whisper_engine && wants_whisper).then_some(
+        "The models for Hindi + English and other languages need Windows for now, so Parakeet V3 is the closest fit here.",
+    );
     Plan {
         hardware,
         primary,
         alternatives,
+        notice,
     }
 }
 
@@ -163,13 +177,15 @@ pub fn recommend(hw: &Hardware, languages: &[String]) -> (Pick, Vec<Pick>) {
         Pick { id, why, fit, note }
     };
 
-    let primary_id = if hinglish {
+    // The Whisper models (Hinglish, tiny, hybrid) need the Whisper engine.
+    let whisper = hw.whisper_engine;
+    let primary_id = if hinglish && whisper {
         if has_card {
             "hinglish-apex"
         } else {
             "hinglish-swift"
         }
-    } else if other_only {
+    } else if other_only && whisper {
         "whisper-tiny"
     } else if light && english_only {
         "moonshine-base"
@@ -178,17 +194,17 @@ pub fn recommend(hw: &Hardware, languages: &[String]) -> (Pick, Vec<Pick>) {
     };
 
     let mut wanted: Vec<&'static str> = Vec::new();
-    if !other_only {
+    if !(other_only && whisper) {
         wanted.push("parakeet-v3");
     }
-    if hinglish {
+    if hinglish && whisper {
         wanted.push(if primary_id == "hinglish-apex" {
             "hinglish-swift"
         } else {
             "hinglish-apex"
         });
     }
-    if !light && english_only {
+    if !light && english_only && whisper {
         wanted.push("hybrid");
     }
     if english_only {
@@ -290,6 +306,16 @@ mod tests {
             gpu: vram.map(|_| "Test GPU".into()),
             vram_mb: vram,
             disk_free_mb: Some(100_000),
+            platform: "windows",
+            whisper_engine: true,
+        }
+    }
+
+    fn mac(ram_total: u64, ram_free: u64) -> Hardware {
+        Hardware {
+            platform: "macos",
+            whisper_engine: false,
+            ..pc(ram_total, ram_free, None)
         }
     }
 
@@ -376,6 +402,25 @@ mod tests {
                 assert!(alternatives[..i].iter().all(|b| b.id != a.id));
             }
         }
+    }
+
+    #[test]
+    fn a_mac_is_only_offered_models_it_can_run() {
+        for languages in [
+            langs(&[]),
+            langs(&["hinglish"]),
+            langs(&["other"]),
+            langs(&["english", "european"]),
+        ] {
+            let (primary, alternatives) = recommend(&mac(16_384, 9_000), &languages);
+            for pick in std::iter::once(&primary).chain(alternatives.iter()) {
+                let info = crate::model::find(pick.id).unwrap();
+                assert!(!info.uses_whisper(), "{} needs the Whisper engine", pick.id);
+            }
+            assert_eq!(primary.id, "parakeet-v3");
+        }
+        let (small, _) = recommend(&mac(8_192, 2_000), &langs(&["english"]));
+        assert_eq!(small.id, "moonshine-base");
     }
 
     #[test]
