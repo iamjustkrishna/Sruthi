@@ -45,6 +45,13 @@
   --accent-ink: #fbfbfa;
   --accent-soft: #e9e9e8;
 
+  /* Hover washes: laid over a control's own colour, so no control ever turns
+     a different colour on hover. Filled lifts toward white, quiet is a faint
+     ink, sound is a faint blue. */
+  --wash-filled: rgba(255, 255, 255, 0.1);
+  --wash-quiet: rgba(22, 22, 22, 0.06);
+  --wash-sound: color-mix(in srgb, var(--sound) 12%, transparent);
+
   /* Sound: the one brand color, from the logo. It marks voice and selection
      only (hold button, listening, the active choice, switches that are on,
      focus). Buttons and everything else stay graphite. */
@@ -109,6 +116,8 @@
   --accent-ink: #161616;
   --accent-soft: #2d2d2c;
 
+  --wash-quiet: rgba(255, 255, 255, 0.07);
+
   --sound: #8aa8ff;
   --sound-soft: #232c4a;
   --sound-ink: #0e1a3d;
@@ -147,6 +156,8 @@
     --accent-hover: #ffffff;
     --accent-ink: #161616;
     --accent-soft: #2d2d2c;
+
+    --wash-quiet: rgba(255, 255, 255, 0.07);
 
     --sound: #8aa8ff;
     --sound-soft: #232c4a;

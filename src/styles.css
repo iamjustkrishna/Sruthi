@@ -1470,10 +1470,59 @@ button {
   background: var(--accent);
   color: var(--accent-ink);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease, --wash 0.12s ease;
+}
+
+/* Hover lays a faint wash over the control's own colour; it never repaints
+   it. Registered so the wash fades instead of snapping. Each kind of button
+   picks its wash with --hover-wash; one that draws its own hover says
+   transparent. */
+@property --wash {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+button {
+  --hover-wash: var(--wash-filled);
 }
 button:hover:not(:disabled) {
-  background: var(--accent-hover);
+  --wash: var(--hover-wash);
+  background-image: linear-gradient(var(--wash), var(--wash));
+}
+.linkish,
+.seg-btn,
+.day-all,
+.range-chip,
+.onb-skip,
+.onb-ghost,
+.onb-chip,
+.onb-keyopts button {
+  --hover-wash: var(--wash-quiet);
+}
+.seg-btn[aria-pressed="true"],
+.day-all[aria-pressed="true"],
+.range-chip[aria-pressed="true"],
+.onb-chip[aria-pressed="true"],
+.onb-link {
+  --hover-wash: var(--wash-sound);
+}
+.seg-btn[aria-pressed="true"]:hover:not(:disabled),
+.day-all[aria-pressed="true"]:hover:not(:disabled),
+.range-chip[aria-pressed="true"]:hover:not(:disabled),
+.onb-chip[aria-pressed="true"]:hover:not(:disabled),
+.onb-link:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--sound) 80%, var(--text));
+}
+.onb-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.copy,
+.close,
+.date-btn,
+.onb-go,
+.cal-cell,
+.usage-week .day {
+  --hover-wash: transparent;
 }
 button:disabled {
   opacity: 0.55;
