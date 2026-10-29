@@ -45,6 +45,18 @@
   font-weight: 600;
   font-size: var(--text-small);
 }
+/* The splash on every launch: no button, click anywhere to skip, fades out. */
+.onb[data-launch] {
+  cursor: pointer;
+}
+.onb[data-launch] .onb-go {
+  display: none;
+}
+.onb.leaving {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
 .onb-skip {
   background: none;
   border: 0;

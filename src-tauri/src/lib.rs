@@ -811,9 +811,14 @@ fn sync_mic(app: AppHandle) {
 
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
+        // Coming back from the tray or the taskbar replays the splash.
+        let was_away = !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false);
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
+        if was_away {
+            let _ = app.emit_to("main", "app-opened", ());
+        }
     }
 }
 

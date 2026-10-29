@@ -513,9 +513,56 @@ export function initOnboarding(logoUrl: string) {
     await finish();
   });
 
+  // ---- the splash on every launch ---------------------------------------
+
+  /** How long the splash plays before it fades out on its own. */
+  const SPLASH_MS = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1400 : 3700;
+  let launching = false;
+  let launchTimer = 0;
+
+  function endLaunch() {
+    if (!launching) return;
+    launching = false;
+    clearTimeout(launchTimer);
+    document.removeEventListener("keydown", onLaunchKey);
+    root.classList.add("leaving");
+    setTimeout(() => {
+      if (launching || isOpen) return;
+      root.hidden = true;
+      root.classList.remove("leaving");
+      delete root.dataset.launch;
+    }, 450);
+  }
+
+  function onLaunchKey(e: KeyboardEvent) {
+    if (e.key === "Escape" || e.key === "Enter" || e.key === " ") endLaunch();
+  }
+
+  /** Plays the splash over the app: at start, and each time the window is
+   *  brought back from the tray. Click or any of Esc/Enter/Space skips it. */
+  function splash() {
+    if (isOpen || launching) return;
+    launching = true;
+    root.classList.remove("leaving");
+    root.dataset.launch = "1";
+    go(0);
+    root.hidden = false;
+    document.addEventListener("keydown", onLaunchKey);
+    launchTimer = window.setTimeout(endLaunch, SPLASH_MS);
+  }
+  root.addEventListener("click", () => {
+    if (root.dataset.launch) endLaunch();
+  });
+
   // ---- entry points -----------------------------------------------------
 
   function open(again: boolean) {
+    // A real setup takes over from the launch splash, which keeps playing.
+    launching = false;
+    clearTimeout(launchTimer);
+    document.removeEventListener("keydown", onLaunchKey);
+    root.classList.remove("leaving");
+    delete root.dataset.launch;
     replay = again;
     isOpen = true;
     started = "";
@@ -531,7 +578,10 @@ export function initOnboarding(logoUrl: string) {
     go(again ? 1 : 0);
   }
 
+  splash();
+
   return {
+    splash,
     /** Called with every status the app gets; opens setup on a fresh install. */
     update(s: OnboardingStatus) {
       status = s;

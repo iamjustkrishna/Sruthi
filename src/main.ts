@@ -2584,6 +2584,7 @@ document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((in
 });
 
 listen<Status>("status-changed", (e) => render(e.payload));
+listen("app-opened", () => onboarding.splash());
 listen<DownloadProgress>("download-progress", (e) => {
   progress[e.payload.id] = e.payload;
   if (!status) return;
