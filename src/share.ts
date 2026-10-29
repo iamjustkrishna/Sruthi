@@ -6,7 +6,7 @@
 
 import sruthiLogo from "./assets/sruthi-logo.png";
 
-export type CardKind = "time" | "week" | "speed" | "milestone";
+export type CardKind = "time" | "week" | "month" | "alltime" | "speed" | "milestone";
 
 export interface ShareData {
   words: number;
@@ -15,6 +15,11 @@ export interface ShareData {
   streak: number;
   dictations: number;
   week: { date: string; words: number }[];
+  /** Every day with dictations, oldest first, for the month and all-time cards. */
+  days: { date: string; words: number }[];
+  /** The first day anything was dictated ("2026-10-03"). */
+  firstDay: string | null;
+  longestStreak: number;
   /** Apps with a readable name, most words first. */
   apps: { name: string; words: number }[];
 }
@@ -33,6 +38,8 @@ export const MILESTONES = [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100
 export const CARD_NAMES: Record<CardKind, string> = {
   time: "Time saved",
   week: "My week",
+  month: "My month",
+  alltime: "All time",
   speed: "Speed",
   milestone: "Milestone",
 };
@@ -46,6 +53,8 @@ type Ctx = CanvasRenderingContext2D;
 export const OPTIONS_FOR: Record<CardKind, ShareOptions> = {
   time: { streak: true, speed: true, apps: false },
   week: { streak: true, speed: true, apps: true },
+  month: { streak: true, speed: true, apps: true },
+  alltime: { streak: true, speed: true, apps: false },
   speed: { streak: false, speed: false, apps: false },
   milestone: { streak: true, speed: true, apps: false },
 };
@@ -73,6 +82,10 @@ export function unavailable(kind: CardKind, d: ShareData): string | null {
       return d.words > 0 ? null : "Dictate something first";
     case "week":
       return d.week.some((x) => x.words > 0) ? null : "No dictations this week yet";
+    case "month":
+      return monthInfo(d).words > 0 ? null : "No dictations this month yet";
+    case "alltime":
+      return d.days.length >= 2 ? null : "Needs at least two days of dictating";
     case "speed":
       return d.wpm > 0 ? null : "Needs a few longer dictations to measure your speed";
     case "milestone":
@@ -99,6 +112,28 @@ function times(wpm: number) {
   return (wpm / TYPING_WPM).toFixed(1).replace(/\.0$/, "");
 }
 
+/** "Oct 3" from "2026-10-03". */
+function shortDate(date: string) {
+  return new Date(`${date}T12:00:00`).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+/** This calendar month's share of `days`. */
+function monthInfo(d: ShareData) {
+  const now = new Date();
+  const prefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const mine = d.days.filter((x) => x.date.startsWith(prefix));
+  return {
+    now,
+    prefix,
+    mine,
+    words: mine.reduce((n, x) => n + x.words, 0),
+    name: now.toLocaleDateString([], { month: "long" }),
+    label: now.toLocaleDateString([], { month: "long", year: "numeric" }),
+    length: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
+    today: now.getDate(),
+  };
+}
+
 function weekWords(d: ShareData) {
   return d.week.reduce((n, x) => n + x.words, 0);
 }
@@ -113,6 +148,15 @@ export function caption(kind: CardKind, d: ShareData, o: ShareOptions): string {
     case "week": {
       const streak = o.streak && d.streak > 1 ? ` ${d.streak}-day streak.` : "";
       return `${weekWords(d).toLocaleString()} words this week, spoken instead of typed.${streak} Offline, on my PC.`;
+    }
+    case "month": {
+      const m = monthInfo(d);
+      const streak = o.streak && d.streak > 1 ? ` ${d.streak}-day streak.` : "";
+      return `${m.words.toLocaleString()} words in ${m.name}, spoken instead of typed.${streak} Offline, on my PC.`;
+    }
+    case "alltime": {
+      const since = d.firstDay ? ` since ${shortDate(d.firstDay)}` : "";
+      return `${d.words.toLocaleString()} words${since}, none of them typed. Offline, on my PC.`;
     }
     case "speed":
       return `I dictate at ${Math.round(d.wpm)} words a minute, ${times(d.wpm)}× my typing speed. Offline, on my PC.`;
@@ -726,6 +770,363 @@ async function drawMilestone(d: ShareData, o: ShareOptions) {
   return canvas;
 }
 
+
+/** The strip of where the words went, shared by the week and month cards. */
+function appsStrip(ctx: Ctx, d: ShareData, x0: number, y: number, width: number) {
+  const top = d.apps.slice(0, 4);
+  const sum = top.reduce((n, a) => n + a.words, 0) || 1;
+  let x = x0;
+  top.forEach((a, i) => {
+    const bw = Math.max(18, ((width - 4 * (top.length - 1)) * a.words) / sum);
+    ctx.beginPath();
+    ctx.roundRect(x, y, bw, 18, 9);
+    ctx.fillStyle = WEEK_COLORS[i];
+    ctx.fill();
+    x += bw + 4;
+  });
+  let lx = x0;
+  top.forEach((a, i) => {
+    const pct = Math.round((a.words / sum) * 100);
+    ctx.fillStyle = WEEK_COLORS[i];
+    ctx.beginPath();
+    ctx.arc(lx + 6, y + 52, 6, 0, Math.PI * 2);
+    ctx.fill();
+    lx += 18;
+    lx += text(ctx, a.name, lx, y + 58, { size: 21, weight: 500, fill: "#3d4a73" }) + 8;
+    lx += text(ctx, `${pct}%`, lx, y + 58, { size: 21, weight: 500, fill: "#7683ad" }) + 30;
+  });
+}
+
+const HEAT = ["#e9edf9", "#d3defc", "#a9bef8", "#6f8ff2", "#2f5bea"];
+
+async function drawMonth(d: ShareData, o: ShareOptions) {
+  const { w, h } = cardSize("month");
+  const { canvas, ctx } = newCanvas(w, h);
+  const pad = 72;
+  const m = monthInfo(d);
+  const bg = ctx.createLinearGradient(0, 0, w * 0.3, h);
+  bg.addColorStop(0, "#eef3ff");
+  bg.addColorStop(0.52, "#ffffff");
+  bg.addColorStop(1, "#f1eeff");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  blob(ctx, 900, 140, 360, 220, "#9fb8ff", 0.7, 90);
+  blob(ctx, 120, 1280, 360, 200, "#c9f0ff", 0.7, 90);
+  blob(ctx, 1000, 1180, 320, 220, "#d6c8ff", 0.6, 90);
+  grain(ctx, w, h, 0.1, "multiply");
+
+  await brand(ctx, pad, pad, 48, "#0e1a3d");
+  text(ctx, m.label, w - pad, pad + 34, { size: 22, fill: "#4a5a8c", align: "right" });
+  text(ctx, "MY MONTH, OUT LOUD", pad, 214, { size: 22, fill: "#2f5bea", spacing: 3.5 });
+  const numText = m.words.toLocaleString();
+  const numSize = fit(ctx, numText, 176, w - pad * 2, 600, -0.05);
+  const numFill = ctx.createLinearGradient(pad, 0, pad + measure(ctx, numText, numSize, 600, -numSize * 0.05), 0);
+  numFill.addColorStop(0.3, "#0e1a3d");
+  numFill.addColorStop(1, "#2f5bea");
+  text(ctx, numText, pad, 372, { size: numSize, fill: numFill, spacing: -numSize * 0.05 });
+  text(ctx, "words spoken instead of typed.", pad, 424, { size: 38, weight: 500, fill: "#3d4a73", spacing: -0.4 });
+
+  // The month as a heat calendar, Monday first.
+  const lead = (new Date(m.now.getFullYear(), m.now.getMonth(), 1).getDay() + 6) % 7;
+  const rows = Math.ceil((lead + m.length) / 7);
+  const cardX = pad;
+  const cardY = 466;
+  const cardW = w - pad * 2;
+  const gap = 10;
+  const cellH = 64;
+  const cardH = 128 + rows * cellH + (rows - 1) * gap + 30;
+  ctx.save();
+  ctx.shadowColor = "rgba(47,91,234,0.3)";
+  ctx.shadowBlur = 50;
+  ctx.shadowOffsetY = 28;
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 36);
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.fill();
+  ctx.restore();
+  ctx.beginPath();
+  ctx.roundRect(cardX, cardY, cardW, cardH, 36);
+  ctx.strokeStyle = "#dfe7fb";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  text(ctx, "Every day you dictated", cardX + 40, cardY + 58, { size: 22, fill: "#0e1a3d" });
+  // Legend, drawn from the right edge inwards.
+  let lx = cardX + cardW - 40;
+  lx -= text(ctx, "More", lx, cardY + 56, { size: 18, weight: 400, fill: "#6b7aa8", align: "right" }) + 8;
+  for (let i = HEAT.length - 1; i >= 0; i--) {
+    ctx.beginPath();
+    ctx.roundRect(lx - 16, cardY + 42, 16, 16, 4);
+    ctx.fillStyle = HEAT[i];
+    ctx.fill();
+    lx -= 24;
+  }
+  text(ctx, "Less", lx - 4, cardY + 56, { size: 18, weight: 400, fill: "#6b7aa8", align: "right" });
+
+  const cw = (cardW - 80 - gap * 6) / 7;
+  ["M", "T", "W", "T", "F", "S", "S"].forEach((letter, i) => {
+    text(ctx, letter, cardX + 40 + i * (cw + gap) + cw / 2, cardY + 106, { size: 18, fill: "#7683ad", align: "center" });
+  });
+  const byDay = new Map(m.mine.map((x) => [x.date, x.words]));
+  const most = Math.max(1, ...m.mine.map((x) => x.words));
+  const bestDate = [...m.mine].sort((a, b) => b.words - a.words)[0]?.date;
+  for (let n = 1; n <= m.length; n++) {
+    const date = `${m.prefix}-${String(n).padStart(2, "0")}`;
+    const col = (lead + n - 1) % 7;
+    const row = Math.floor((lead + n - 1) / 7);
+    const x = cardX + 40 + col * (cw + gap);
+    const y = cardY + 128 + row * (cellH + gap);
+    const words = byDay.get(date) ?? 0;
+    const future = n > m.today;
+    const ratio = words / most;
+    const level = words <= 0 ? 0 : ratio <= 0.25 ? 1 : ratio <= 0.5 ? 2 : ratio <= 0.75 ? 3 : 4;
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, cw, cellH, 14);
+    ctx.fillStyle = future ? "#f3f4f8" : HEAT[level];
+    if (level === 4 && !future) {
+      ctx.shadowColor = "rgba(47,91,234,0.55)";
+      ctx.shadowBlur = 18;
+      ctx.shadowOffsetY = 8;
+    }
+    ctx.fill();
+    ctx.restore();
+    if (date === bestDate) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, cw, cellH, 14);
+      ctx.strokeStyle = "#0e1a3d";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    text(ctx, String(n), x + cw / 2, y + cellH / 2 + 7, {
+      size: 20,
+      weight: date === bestDate ? 700 : 500,
+      fill: future ? "#b8bfd4" : level >= 3 ? "#ffffff" : "#0e1a3d",
+      align: "center",
+    });
+  }
+
+  const best = m.mine.find((x) => x.date === bestDate);
+  const tiles: [string, string][] = [[typedText(m.words / TYPING_WPM), "typing skipped"]];
+  tiles.push(
+    o.speed && d.wpm > 0
+      ? [String(Math.round(d.wpm)), "words a minute"]
+      : [best ? best.words.toLocaleString() : "0", best ? `on my best day, ${shortDate(best.date)}` : "on my best day"],
+  );
+  tiles.push(
+    o.streak && d.streak > 0
+      ? [String(d.streak), "day streak"]
+      : [String(m.mine.filter((x) => x.words > 0).length), "days with dictation"],
+  );
+  const tileY = cardY + cardH + 24;
+  const tileGap = 20;
+  const tileW = (cardW - tileGap * 2) / 3;
+  tiles.forEach(([v, label], i) => {
+    const tx = pad + i * (tileW + tileGap);
+    ctx.beginPath();
+    ctx.roundRect(tx, tileY, tileW, 112, 28);
+    ctx.fillStyle = i === 0 ? "#0e1a3d" : "rgba(255,255,255,0.82)";
+    ctx.fill();
+    if (i) {
+      ctx.strokeStyle = "#dfe7fb";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    const size = fit(ctx, v, 50, tileW - 52, 600, -0.03);
+    text(ctx, v, tx + 26, tileY + 58, { size, fill: i === 0 ? "#ffffff" : "#0e1a3d", spacing: -size * 0.03 });
+    text(ctx, label, tx + 26, tileY + 92, { size: 20, weight: 400, fill: i === 0 ? "#a9bcff" : "#5a6a99" });
+  });
+
+  // The apps strip only when there is room (a five-row month).
+  if (o.apps && d.apps.length > 0 && rows <= 5) appsStrip(ctx, d, pad, tileY + 112 + 36, cardW);
+  footer(ctx, w, h - pad, pad, "#5a6a99", 20, "Skipped time counts typing at 40 wpm");
+  return canvas;
+}
+
+async function drawAllTime(d: ShareData, o: ShareOptions) {
+  const { w, h } = cardSize("alltime");
+  const { canvas, ctx } = newCanvas(w, h);
+  const pad = 72;
+  const bg = ctx.createLinearGradient(0, 0, w * 0.45, h);
+  bg.addColorStop(0, "#070d2b");
+  bg.addColorStop(0.55, "#101f68");
+  bg.addColorStop(1, "#2447c9");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  blob(ctx, 900, 220, 400, 240, "#3f6bff", 0.85, 80);
+  blob(ctx, 1000, 760, 320, 240, "#8a5cff", 0.5, 80);
+  blob(ctx, 480, 1300, 460, 170, "#1fc3ff", 0.4, 80);
+  dots(ctx, w, h, 22, 0.12, vertical(ctx, 0, h, [[0, "rgba(255,255,255,0.9)"], [0.5, "rgba(255,255,255,0)"]]));
+  grain(ctx, w, h, 0.32, "overlay");
+  edge(ctx, w, h);
+
+  const DAY = 86_400_000;
+  const first = d.firstDay ?? d.days[0]?.date;
+  const start = new Date(`${first}T12:00:00`).getTime();
+  const end = new Date().setHours(12, 0, 0, 0);
+  const span = Math.max(1, Math.round((end - start) / DAY));
+
+  await brand(ctx, pad, pad, 48, "#ffffff");
+  pill(ctx, `Since ${shortDate(first)} · ${span + 1} days`, w - pad, pad + 24, {
+    size: 22,
+    fill: "rgba(255,255,255,0.12)",
+    stroke: "rgba(255,255,255,0.2)",
+    color: "#dbe5ff",
+  });
+
+  const totalText = d.words.toLocaleString();
+  const size = fit(ctx, totalText, 200, w - pad * 2, 600, -0.05);
+  text(ctx, "SO FAR", pad, 384 - size * 0.74 - 28, { size: 22, fill: "#a9bcff", spacing: 3.8 });
+  text(ctx, totalText, pad, 384, {
+    size,
+    fill: vertical(ctx, 384 - size * 0.75, 384, [[0.25, "#ffffff"], [1, "#b9ccff"]]),
+    spacing: -size * 0.05,
+  });
+  text(ctx, "words, none of them typed.", pad, 384 + 64, { size: 40, weight: 500, fill: "#ffffff", alpha: 0.88, spacing: -0.4 });
+
+  // The climb: your running total, day by day.
+  const cw = w - pad * 2;
+  const top = 520;
+  const chartH = 410;
+  const bottom = top + chartH;
+  const plot = chartH - 44;
+  const words = new Map(d.days.map((x) => [x.date, x.words]));
+  const listed = d.days.reduce((n, x) => n + x.words, 0);
+  let run = Math.max(0, d.words - listed); // words from days older than the list
+  const pts: { x: number; y: number; run: number }[] = [];
+  for (let i = 0; i <= span; i++) {
+    const t = new Date(start + i * DAY);
+    const key = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    run += words.get(key) ?? 0;
+    pts.push({ x: pad + (i / span) * cw, y: bottom - (run / Math.max(1, d.words)) * plot, run });
+  }
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.14)";
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([3, 8]);
+  for (const f of [0.25, 0.5, 0.75]) {
+    ctx.beginPath();
+    ctx.moveTo(pad, bottom - plot * f);
+    ctx.lineTo(pad + cw, bottom - plot * f);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  const trace = () => {
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+  };
+  ctx.save();
+  trace();
+  ctx.lineTo(pad + cw, bottom);
+  ctx.lineTo(pad, bottom);
+  ctx.closePath();
+  const area = ctx.createLinearGradient(0, top, 0, bottom);
+  area.addColorStop(0, "rgba(143,176,255,0.55)");
+  area.addColorStop(1, "rgba(143,176,255,0)");
+  ctx.fillStyle = area;
+  ctx.fill();
+  ctx.restore();
+  const lineFill = ctx.createLinearGradient(pad, 0, pad + cw, 0);
+  lineFill.addColorStop(0, "#7f9bff");
+  lineFill.addColorStop(0.6, "#a5f0ff");
+  lineFill.addColorStop(1, "#c8aaff");
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = lineFill;
+  ctx.shadowColor = "rgba(143,176,255,0.9)";
+  ctx.shadowBlur = 26;
+  ctx.lineWidth = 6;
+  ctx.globalAlpha = 0.6;
+  trace();
+  ctx.stroke();
+  ctx.restore();
+  ctx.save();
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = lineFill;
+  ctx.lineWidth = 4;
+  trace();
+  ctx.stroke();
+  ctx.restore();
+
+  // A ring where each round number was passed.
+  const passed = MILESTONES.filter((m) => m >= 1_000 && m <= d.words).slice(-4);
+  let lastLabelX = -999;
+  for (const m of passed) {
+    const p = pts.find((q) => q.run >= m);
+    if (!p) continue;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 6]);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x, bottom);
+    ctx.stroke();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+    ctx.fillStyle = "#070d2b";
+    ctx.fill();
+    ctx.strokeStyle = "#ffd79a";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    if (Math.abs(p.x - lastLabelX) > 74) {
+      const label = `${m / 1000}k`;
+      const tw = measure(ctx, label, 18, 600);
+      const lx = Math.max(pad, Math.min(pad + cw - tw - 24, p.x - tw / 2 - 12));
+      ctx.beginPath();
+      ctx.roundRect(lx, p.y - 58, tw + 24, 32, 16);
+      ctx.fillStyle = "rgba(255,215,154,0.14)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255,215,154,0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      text(ctx, label, lx + 12, p.y - 36, { size: 18, fill: "#ffe2b0" });
+      lastLabelX = p.x;
+    }
+  }
+  const tip = pts[pts.length - 1];
+  ctx.beginPath();
+  ctx.arc(tip.x, tip.y, 14, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(tip.x, tip.y, 26, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  text(ctx, shortDate(first), pad, bottom + 34, { size: 18, weight: 400, fill: "#ffffff", alpha: 0.6 });
+  text(ctx, "Today", pad + cw, bottom + 34, { size: 18, weight: 400, fill: "#ffffff", alpha: 0.6, align: "right" });
+
+  // Totals.
+  const active = d.days.filter((x) => x.words > 0).length;
+  const stats: [string, string][] = [
+    [typedText(d.words / TYPING_WPM), "typing skipped"],
+    o.speed && d.wpm > 0 ? [String(Math.round(d.wpm)), "words a minute"] : [String(active), "days with dictation"],
+    o.streak && d.longestStreak > 0 ? [String(d.longestStreak), "day best streak"] : [String(span + 1), "days since I started"],
+    [d.dictations.toLocaleString(), d.dictations === 1 ? "dictation" : "dictations"],
+  ];
+  const lineY = 1010;
+  ctx.fillStyle = "rgba(255,255,255,0.2)";
+  ctx.fillRect(pad, lineY, cw, 1.5);
+  const col = cw / 4;
+  stats.forEach(([v, label], i) => {
+    const x = pad + col * i + (i ? 28 : 0);
+    if (i) {
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
+      ctx.fillRect(pad + col * i, lineY + 30, 1.5, 100);
+    }
+    const sz = fit(ctx, v, 52, col - 44, 600, -0.03);
+    text(ctx, v, x, lineY + 30 + 54, { size: sz, fill: "#ffffff", spacing: -sz * 0.03 });
+    text(ctx, label, x, lineY + 30 + 92, { size: 20, weight: 400, fill: "#ffffff", alpha: 0.64 });
+  });
+  footer(ctx, w, h - pad, pad, "rgba(255,255,255,0.6)", 20, "Skipped time counts typing at 40 wpm");
+  return canvas;
+}
+
 /** Paints one card at its posting size. Rejects if the card can't be made. */
 export async function drawCard(kind: CardKind, d: ShareData, o: ShareOptions): Promise<HTMLCanvasElement> {
   const why = unavailable(kind, d);
@@ -735,6 +1136,10 @@ export async function drawCard(kind: CardKind, d: ShareData, o: ShareOptions): P
       return drawTime(d, o);
     case "week":
       return drawWeek(d, o);
+    case "month":
+      return drawMonth(d, o);
+    case "alltime":
+      return drawAllTime(d, o);
     case "speed":
       return drawSpeed(d);
     case "milestone":

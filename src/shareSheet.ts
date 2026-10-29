@@ -17,7 +17,7 @@ import {
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const KINDS: CardKind[] = ["time", "week", "speed", "milestone"];
+const KINDS: CardKind[] = ["time", "week", "month", "alltime", "speed", "milestone"];
 const IDLE = "Drawn on this PC. Nothing is uploaded, and no dictated text is on the card.";
 
 const dialog = $<HTMLDialogElement>("share-dialog");

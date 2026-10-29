@@ -105,10 +105,18 @@ pub struct Usage {
     pub streak: u32,
     pub longest_streak: u32,
     pub week: Vec<WeekDay>,
+    /// Every day with dictations, oldest first (the newest `MAX_DAYS_SHOWN`),
+    /// for the month and all-time share cards.
+    pub days: Vec<WeekDay>,
+    /// The first day anything was dictated ("2026-10-03"), if any.
+    pub first_day: Option<String>,
     pub top_apps: Vec<AppWords>,
     pub avg_latency_ms: u32,
     pub cleaned: u32,
 }
+
+/// How many days the usage snapshot lists (a little over a year).
+const MAX_DAYS_SHOWN: usize = 400;
 
 impl Stats {
     /// Counts one finished dictation. A dictation with no words at all is
@@ -257,6 +265,36 @@ impl Stats {
             .collect()
     }
 
+    /// Days that have dictations, oldest first, capped at the newest
+    /// `MAX_DAYS_SHOWN`. Day keys are ISO dates, so sorting them sorts time.
+    pub fn recent_days(&self) -> Vec<WeekDay> {
+        let mut keys: Vec<&String> = self
+            .days
+            .iter()
+            .filter(|(_, day)| day.words > 0)
+            .map(|(key, _)| key)
+            .collect();
+        keys.sort();
+        let skip = keys.len().saturating_sub(MAX_DAYS_SHOWN);
+        keys.into_iter()
+            .skip(skip)
+            .map(|key| WeekDay {
+                date: key.clone(),
+                words: self.days[key].words,
+            })
+            .collect()
+    }
+
+    /// The first day anything was dictated.
+    pub fn first_day(&self) -> Option<String> {
+        self.days
+            .iter()
+            .filter(|(_, day)| day.words > 0)
+            .map(|(key, _)| key)
+            .min()
+            .cloned()
+    }
+
     /// Everything the settings screen shows, in one shot.
     pub fn usage(&self, today: &str) -> Usage {
         let (mut words, mut dictations, mut cleaned) = (0, 0, 0);
@@ -274,6 +312,8 @@ impl Stats {
             streak: self.streak_from(today),
             longest_streak: self.longest_streak(),
             week: self.week(today),
+            days: self.recent_days(),
+            first_day: self.first_day(),
             top_apps: {
                 let mut apps: Vec<AppWords> = self
                     .apps
@@ -551,6 +591,45 @@ mod tests {
         assert_eq!(sample.words, 0);
         assert_eq!(stats.usage("2026-10-22").dictations, 0);
         assert_eq!(stats.usage("2026-10-22").words, 0);
+    }
+
+    #[test]
+    fn usage_lists_every_day_oldest_first_and_names_the_first() {
+        let mut stats = Stats::default();
+        for day in ["2026-10-24", "2026-10-03", "2026-10-22"] {
+            record(
+                &mut stats,
+                "one two three",
+                "one two three",
+                4.0,
+                "code.exe",
+                day,
+                500,
+            );
+        }
+        let usage = stats.usage("2026-10-24");
+        let dates: Vec<&str> = usage.days.iter().map(|d| d.date.as_str()).collect();
+        assert_eq!(dates, ["2026-10-03", "2026-10-22", "2026-10-24"]);
+        assert!(usage.days.iter().all(|d| d.words == 3));
+        assert_eq!(usage.first_day.as_deref(), Some("2026-10-03"));
+    }
+
+    #[test]
+    fn the_day_list_keeps_only_the_newest_days() {
+        let mut stats = Stats::default();
+        for i in 0..(MAX_DAYS_SHOWN + 10) {
+            let day = format!("2025-01-{i:03}");
+            record(&mut stats, "a b c", "a b c", 4.0, "code.exe", &day, 500);
+        }
+        let days = stats.usage("2025-01-409").days;
+        assert_eq!(days.len(), MAX_DAYS_SHOWN);
+        assert_eq!(days[0].date, "2025-01-010");
+        assert_eq!(days[MAX_DAYS_SHOWN - 1].date, "2025-01-409");
+        // The first day is still the true first, not the first listed.
+        assert_eq!(
+            stats.usage("2025-01-409").first_day.as_deref(),
+            Some("2025-01-000")
+        );
     }
 
     #[test]

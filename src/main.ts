@@ -162,6 +162,9 @@ interface Usage {
   streak: number;
   longest_streak: number;
   week: UsageWeek[];
+  /** Every day with dictations, oldest first. */
+  days: UsageWeek[];
+  first_day: string | null;
   top_apps: UsageApp[];
   avg_latency_ms: number;
   cleaned: number;
@@ -1864,6 +1867,9 @@ $("share-open").addEventListener("click", () => {
     streak: u.streak,
     dictations: u.dictations,
     week: u.week,
+    days: u.days,
+    firstDay: u.first_day,
+    longestStreak: u.longest_streak,
     apps: u.top_apps.filter((a) => appLabel(a.name)).map((a) => ({ name: appLabel(a.name), words: a.words })),
   });
 });
