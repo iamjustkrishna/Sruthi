@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 // The "Share your stats" sheet: pick a card, choose what is on it, then save
 // the picture or copy it. The picture is drawn here (see share.ts) and handed
 // to the app only to be written to Pictures or put on the clipboard.

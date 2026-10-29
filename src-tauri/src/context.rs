@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Which app the user is dictating into, so the text can be formatted to
 //! suit it: an email gets a greeting, paragraphs and a sign-off; a chat
 //! message stays short and casual; code editors and terminals get the

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Your own benchmark: every speech model, scored on the dictations you
 //! corrected. The audio never left this PC, so any model can be run on it
 //! again and compared with what you said you meant.

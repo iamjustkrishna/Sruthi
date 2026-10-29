@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! AI clean-up through a cloud provider with the user's own API key, as an
 //! alternative to the local model: smarter, but the text (never the audio)
 //! leaves the PC. Same instructions and examples as the local model, and the

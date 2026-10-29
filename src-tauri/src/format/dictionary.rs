@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Personal dictionary: words the user adds (names, product terms, rare
 //! words). After transcription, any stretch of 1–4 words that *sounds like*
 //! a dictionary entry is replaced with the entry's exact spelling, so

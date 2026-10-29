@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Picks the graphics card for Whisper and the AI clean-up.
 //!
 //! Laptops often have two: the processor's built-in graphics (which shares

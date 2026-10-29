@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Smart clean-up with a small local LLM. llama.cpp's `llama-server` runs as
 //! a hidden background process on 127.0.0.1; we send it each transcript
 //! and get the polished text back. Nothing leaves the PC.

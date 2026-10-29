@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Snippets: a short spoken phrase that types a longer block of text
 //! ("email sign-off" -> "Thanks and regards,\nKrishna").
 //!

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! User settings, stored as JSON next to the models.
 
 use std::collections::HashMap;

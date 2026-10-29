@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 // Share cards: your totals drawn as a picture, entirely on this PC.
 // Each card is painted onto a canvas at the size it is posted at (the look is
 // the "Shareable cards" section of the design canvas), then saved or copied.

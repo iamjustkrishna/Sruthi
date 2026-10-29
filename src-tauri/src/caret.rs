@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Finds where the user is writing, so the overlay pill can appear right
 //! where the words will land.
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Child processes (llama-server, whisper-cli) that must never outlive the
 //! app.
 

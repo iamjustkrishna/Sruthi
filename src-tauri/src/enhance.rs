@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Gets audio ready for the speech model: lifts quiet speech (whispers, a
 //! far-away mic) to a normal speaking level, removes low rumble, and spots
 //! recordings that hold no speech at all. Models hallucinate on silence and

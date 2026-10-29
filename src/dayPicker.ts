@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 // Home's day filter: a small vertical wheel beside "All days" for stepping
 // from day to day, and a date heading that opens a heat calendar for a date
 // far back. Scroll, drag, press the arrow keys or click a faded day; the feed

@@ -14,18 +14,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest, macos-latest]
+        include:
+          - platform: windows-latest
+          - platform: macos-latest
+          # Apple Silicon: the runner's own architecture.
+          # Intel Mac: cross-compiled on the same runner. It is marked optional
+          # because the speech engine (ONNX Runtime) may not ship Intel
+          # binaries; if it fails, the release still goes out without it.
+          - platform: macos-latest
+            args: --target x86_64-apple-darwin
+            rust_target: x86_64-apple-darwin
+            optional: true
     runs-on: ${{ matrix.platform }}
+    continue-on-error: ${{ matrix.optional == true }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.rust_target }}
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -36,7 +50,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # The tests run natively; the cross-compiled Intel build shares the
+      # same sources, so running them twice would add nothing.
       - name: Run the Rust tests
+        if: ${{ !matrix.optional }}
         working-directory: src-tauri
         run: cargo test --release --lib
 
@@ -50,7 +67,7 @@ jobs:
             echo 'RELEASE_NOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and draft the release
+      - name: Build and publish the release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -60,3 +77,40 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
+          args: ${{ matrix.args }}
+
+  # Once every installer is attached, publish a SHA256SUMS.txt next to them and
+  # sign the list with GitHub's build provenance, so anyone can check that a
+  # download is the file this workflow built.
+  checksums:
+    needs: build
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') && needs.build.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download the release files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir assets
+          gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            --dir assets --pattern '*.exe' --pattern '*.msi' --pattern '*.dmg'
+
+      - name: Write SHA256SUMS.txt
+        working-directory: assets
+        run: |
+          sha256sum * > ../SHA256SUMS.txt
+          cat ../SHA256SUMS.txt
+
+      - name: Attest the installers
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: assets/*
+
+      - name: Attach SHA256SUMS.txt to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" SHA256SUMS.txt --repo "${{ github.repository }}" --clobber

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Inserts text into whichever app has focus: put it on the clipboard, send
 //! the paste shortcut, then restore what the clipboard held before.
 

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+   Copyright (C) 2026 Sruthi contributors */
+
 @import "./theme.css";
 
 /*
@@ -476,6 +479,12 @@ h1 {
   margin: 0;
   font-weight: 500;
   overflow-wrap: anywhere;
+}
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 .word-use {
   list-style: none;

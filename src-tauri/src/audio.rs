@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Microphone capture, two ways:
 //!
 //! - [`Mic`] keeps the microphone open while the app runs and remembers the

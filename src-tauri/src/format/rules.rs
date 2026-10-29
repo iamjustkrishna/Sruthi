@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Instant, deterministic clean-up of a raw transcript: filler words, spoken
 //! punctuation, numbers, codes, times, money, emails and phone numbers.
 //!

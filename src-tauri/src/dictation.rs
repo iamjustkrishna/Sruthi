@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! One dictation: record while the key is held, then transcribe and format.
 //!
 //! Long dictations are transcribed in pieces split at pauses (`chunks.rs`).
