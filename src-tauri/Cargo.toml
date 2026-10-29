@@ -1,6 +1,6 @@
 [package]
 name = "sruthi"
-version = "0.3.0"
+version = "0.4.0"
 description = "Offline voice dictation for Windows and macOS"
 authors = ["Sruthi contributors"]
 edition = "2024"

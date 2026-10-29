@@ -20,7 +20,7 @@ coverage
 # Agent tooling (installed locally, not part of the app)
 .agents/
 .superpowers/
-.claude/settings.local.json
+.claude/
 
 # Editor directories and files
 .vscode/*
