@@ -11,7 +11,7 @@ Hold a key, speak, let go. Your words are typed wherever your cursor is, and you
 [![Downloads](https://img.shields.io/github/downloads/iamjustkrishna/Sruthi/total?style=flat-square&color=2f5bea)](https://github.com/iamjustkrishna/Sruthi/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/iamjustkrishna/Sruthi/ci.yml?style=flat-square&label=build)](https://github.com/iamjustkrishna/Sruthi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/iamjustkrishna/Sruthi?style=flat-square&color=2f5bea)](LICENSE)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS-2f5bea?style=flat-square)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-2f5bea?style=flat-square)
 
 [**Download**](https://github.com/iamjustkrishna/Sruthi/releases/latest) ·
 [Features](#features) ·
@@ -21,13 +21,10 @@ Hold a key, speak, let go. Your words are typed wherever your cursor is, and you
 
 </div>
 
-<!--
-  Add screenshots here once you have them (any size; around 1400 px wide looks best):
+<p align="center">
+  <img src="docs/images/home.png" alt="Sruthi Home: your totals, where you dictate, your speed against typing, and every dictation" width="900" />
+</p>
 
-  <p align="center">
-    <img src="docs/images/home.png" alt="Sruthi home: today's words, speed against typing, and every dictation, day by day" width="860" />
-  </p>
--->
 
 ## Why Sruthi
 
@@ -67,6 +64,10 @@ The default shortcut is <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Space</kbd>, a
 
 ### Everything you said, day by day
 
+<p align="center">
+  <img src="docs/images/history.png" alt="Filter Home to a single day and see everything you dictated that day" width="900" />
+</p>
+
 - **A home for every dictation.** See what you said, which app it went into and when. Filter by day, or search across all of it.
 - **Replay and correct.** Listen to any recording, fix a mishearing, or run it through another model to compare. See exactly what formatting changed.
 - **Your speed, honestly measured.** Words, words per minute against typing, time saved, streaks and the apps you dictate into.
@@ -74,13 +75,25 @@ The default shortcut is <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Space</kbd>, a
 
 ### Share your stats
 
+<p align="center">
+  <img src="docs/images/share.png" alt="The Share your stats sheet with the My week card" width="900" />
+</p>
+
 Make a picture of your own numbers: **Time saved**, **My week**, **Speed** or a **Milestone** card. They are drawn on your PC, you choose what appears (streak, speed, app names), and no dictated text is ever on them. Save as a PNG, copy the image, or open X, LinkedIn or WhatsApp with a caption ready to paste.
 
 ### In control of your storage
 
+<p align="center">
+  <img src="docs/images/storage.png" alt="History and storage settings: usage, reminder level, keep-audio choices and Free up space" width="900" />
+</p>
+
 Audio takes space, so you decide what stays: keep it for 90, 30 or 7 days, or not at all. Sruthi reminds you when audio passes a size you choose, and **Free up space** can zip it, move it to another drive, or delete it. Your words and stats always stay.
 
 ### Made for daily use
+
+<p align="center">
+  <img src="docs/images/home-dark.png" alt="Sruthi in dark mode" width="900" />
+</p>
 
 - **Runs on your graphics card** for the larger models, with an automatic fall back to the CPU and a clear note about where it is running.
 - **Microphone check** finds out whether a microphone is actually delivering sound.
@@ -107,8 +120,8 @@ Each model keeps its own license. Check the license on its download page.
 
 | Platform | File | Notes |
 | --- | --- | --- |
-| Windows 10 / 11 (64-bit) | `.exe` or `.msi` | A standard installer. |
-| macOS 12+ (Apple Silicon) | `.dmg` | Unsigned. On first launch, right-click the app and choose **Open**, or allow it in System Settings → Privacy & Security. |
+| Windows 10 / 11 (64-bit) | `.exe` or `.msi` | Primary platform. Everything in this page works here. |
+| macOS 12+ (Apple Silicon) | `.dmg` | Early support. Dictation works, but features that need to know which app you are in (per-app tone, the app list and logos, per-app send keys) are Windows-only for now. The app is unsigned: right-click it and choose **Open** on first launch, or allow it in System Settings → Privacy & Security. |
 
 Download from the [latest release](https://github.com/iamjustkrishna/Sruthi/releases/latest). Using a graphics card for the larger models is optional: see [docs/GPU.md](docs/GPU.md).
 
@@ -129,6 +142,9 @@ Sruthi is built so you don't have to take its word for it.
 **Does it really work offline?**
 Yes. After a model is downloaded, dictation needs no internet at all.
 
+**Windows says "Windows protected your PC". Is that safe?**
+The installer is not code-signed yet, so Windows shows this for any new app from an independent developer. Choose **More info**, then **Run anyway**. The source is public if you would like to check it or build it yourself.
+
 **Where is my data?**
 In your user data folder (`%LOCALAPPDATA%\Sruthi` on Windows). Saved share cards go to `Pictures\Sruthi` and zipped audio to `Documents\Sruthi`. Open the recordings folder from Settings → History and storage.
 
@@ -146,6 +162,10 @@ Parakeet V3 covers English and 24 European languages, Whisper models cover many 
 
 **Is it as good as the cloud services?**
 It's close for everyday dictation, and it improves with your dictionary and corrections. The Models page has a speed test that scores each installed model on your own voice, so you can see for yourself.
+
+## Acknowledgements
+
+Sruthi stands on open work: the Parakeet speech models from NVIDIA, Whisper from OpenAI, the Moonshine models from Useful Sensors, and the open-source engines that run them. App logos on Home are from [Simple Icons](https://simpleicons.org). Every model and asset keeps its own license.
 
 ## Roadmap
 
