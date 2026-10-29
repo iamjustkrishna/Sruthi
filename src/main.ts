@@ -8,6 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { appInfo, iconUrl } from "./appIcons";
 import sruthiLogo from "./assets/sruthi-logo.png";
 import { type DaySummary, initDayPicker, renderDayPicker } from "./dayPicker";
+import { initOnboarding } from "./onboarding";
 import { openShare } from "./shareSheet";
 import { fmtBytes, initStorage, refreshUsage, render as renderStorage, usage as audioUsage } from "./storage";
 
@@ -41,6 +42,11 @@ interface LlmEntry {
 }
 
 interface Status {
+  /** First run: true until setup is finished or skipped. */
+  onboarding: boolean;
+  /** What to call the user, from setup. */
+  name: string | null;
+  languages: string[];
   model: ModelState;
   detail: string | null;
   active: string;
@@ -188,6 +194,10 @@ interface DownloadProgress {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+/** First-run setup, a layer over the window; it opens itself on a fresh install. */
+const onboarding = initOnboarding(sruthiLogo);
+$("run-setup").addEventListener("click", () => onboarding.replay());
 
 const badge = $("model-badge");
 const modelText = $("model-text");
@@ -570,6 +580,7 @@ function renderSummaries(s: Status, activeModel: string | undefined) {
 
 function render(s: Status) {
   status = s;
+  onboarding.update(s);
   document.documentElement.dataset.theme = s.theme;
   const active = s.models.find((m) => m.id === s.active);
   const [label, text] = STATE_COPY[s.model];
@@ -1880,7 +1891,8 @@ $("share-open").addEventListener("click", () => {
 
 function renderGlance(u: Usage) {
   $<HTMLButtonElement>("share-open").disabled = u.dictations === 0;
-  $("banner-greet").textContent = u.streak > 1 ? `${greeting()} · ${u.streak}-day streak` : greeting();
+  const hello = status?.name ? `${greeting()}, ${status.name}` : greeting();
+  $("banner-greet").textContent = u.streak > 1 ? `${hello} · ${u.streak}-day streak` : hello;
 
   const minutes = Math.max(1, Math.round(u.words_today / TYPING_WPM));
   $("banner-line").textContent =

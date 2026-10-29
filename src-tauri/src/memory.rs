@@ -75,6 +75,28 @@ pub fn free_ram_mb() -> Option<u64> {
     None
 }
 
+/// Installed RAM in MiB, for the first-run hardware check.
+#[cfg(windows)]
+pub fn total_ram_mb() -> Option<u64> {
+    let mut status: MEMORYSTATUSEX = unsafe { std::mem::zeroed() };
+    status.dwLength = std::mem::size_of::<MEMORYSTATUSEX>() as u32;
+    // SAFETY: as in `free_ram_mb`; the call only fills in the struct.
+    if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
+        return None;
+    }
+    Some(status.ullTotalPhys >> 20)
+}
+
+#[cfg(target_os = "macos")]
+pub fn total_ram_mb() -> Option<u64> {
+    sysctl_u64("hw.memsize").map(|bytes| bytes >> 20)
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+pub fn total_ram_mb() -> Option<u64> {
+    None
+}
+
 /// Room above the model file for the runtime and its working set — the
 /// free RAM a CPU load wants before it's fair to the rest of the PC.
 const CPU_HEADROOM_MB: u64 = 512;

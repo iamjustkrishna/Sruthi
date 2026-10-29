@@ -108,6 +108,12 @@ pub struct Settings {
     pub cloud_models: HashMap<String, String>,
     /// Where the speech model runs: the graphics card, the CPU, or auto.
     pub device: Device,
+    /// What to call the user on Home (None: no name given).
+    pub name: Option<String>,
+    /// Languages picked in setup ("english", "hinglish", "european", "other").
+    pub languages: Vec<String>,
+    /// Setup finished or skipped (None: never decided; see `onboarding`).
+    pub onboarded: Option<bool>,
 }
 
 impl Default for Settings {
@@ -131,6 +137,9 @@ impl Default for Settings {
             cloud_models: HashMap::new(),
             theme: Theme::default(),
             device: Device::default(),
+            name: None,
+            languages: Vec::new(),
+            onboarded: None,
         }
     }
 }
@@ -177,6 +186,16 @@ pub fn save(settings: &Settings) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_saved_before_setup_existed_still_load() {
+        let old = r#"{"model":"parakeet-v3","hotkey":"Alt"}"#;
+        let settings: Settings = serde_json::from_str(old).unwrap();
+        assert_eq!(settings.onboarded, None);
+        assert_eq!(settings.name, None);
+        assert!(settings.languages.is_empty());
+        assert_eq!(settings.model.as_deref(), Some("parakeet-v3"));
+    }
 
     #[test]
     fn theme_defaults_to_following_the_system() {

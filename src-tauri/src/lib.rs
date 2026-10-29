@@ -14,6 +14,7 @@ mod holdkey;
 mod memory;
 mod mic_check;
 mod model;
+mod onboarding;
 mod paste;
 mod process;
 mod recordings;
@@ -149,6 +150,12 @@ struct Status {
     history: Vec<recordings::Entry>,
     /// The "Your dictation" card numbers.
     usage: stats::Usage,
+    /// What to call the user (from setup), if they said.
+    name: Option<String>,
+    /// The languages picked in setup.
+    languages: Vec<String>,
+    /// True on a fresh install, until setup is finished or skipped.
+    onboarding: bool,
 }
 
 /// Where the active whisper model runs.
@@ -366,6 +373,7 @@ impl AppState {
 
     fn status(&self) -> Status {
         let inner = self.inner.lock().unwrap();
+        let saved = settings::load();
         Status {
             model: inner.model_state,
             detail: inner.detail.clone(),
@@ -428,6 +436,12 @@ impl AppState {
             gpu_downloading: self.gpu_downloading.load(Ordering::SeqCst),
             history: inner.history.clone(),
             usage: self.stats.lock().unwrap().usage(&stats::today_key()),
+            name: saved.name.clone(),
+            languages: saved.languages.clone(),
+            onboarding: onboarding::needs_onboarding(
+                saved.onboarded,
+                model::CATALOG.iter().any(|m| m.is_installed()),
+            ),
         }
     }
 }
@@ -1348,6 +1362,52 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
     settings::save(&saved).map_err(|e| e.to_string())?;
     app.state::<AppState>().inner.lock().unwrap().active = info;
     load_model(app, info, true);
+    Ok(())
+}
+
+/// First run: make `id` the active model even though it is not on disk yet,
+/// so that `download_model` loads it the moment it finishes. An installed
+/// model is simply selected and loaded.
+#[tauri::command]
+fn choose_model(app: AppHandle, id: String) -> Result<(), String> {
+    let info = lookup(&id)?;
+    let mut saved = settings::load();
+    saved.model = Some(info.id.to_string());
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    app.state::<AppState>().inner.lock().unwrap().active = info;
+    if info.is_installed() {
+        load_model(app, info, true);
+    } else {
+        set_model_state(&app, ModelState::Missing, None);
+    }
+    Ok(())
+}
+
+/// What the first-run screens show: this PC's hardware and the model that
+/// fits it, for the languages picked.
+#[tauri::command]
+async fn onboarding_plan(languages: Vec<String>) -> Result<onboarding::Plan, String> {
+    tauri::async_runtime::spawn_blocking(move || onboarding::plan(&languages))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Ends first-run setup, whether it was finished or skipped, and keeps what
+/// was entered. An empty name clears it.
+#[tauri::command]
+fn finish_onboarding(
+    app: AppHandle,
+    name: Option<String>,
+    languages: Vec<String>,
+) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.name = name
+        .map(|n| n.trim().chars().take(40).collect::<String>())
+        .filter(|n| !n.is_empty());
+    saved.languages = languages;
+    saved.onboarded = Some(true);
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    emit_status(&app);
     Ok(())
 }
 
@@ -2617,6 +2677,16 @@ pub fn run() {
                 });
             }
 
+            // Someone who already has a model is not new: remember that, so
+            // deleting every model later never brings the setup back.
+            let saved = settings::load();
+            if saved.onboarded.is_none() && model::CATALOG.iter().any(|m| m.is_installed()) {
+                let _ = settings::save(&settings::Settings {
+                    onboarded: Some(true),
+                    ..saved
+                });
+            }
+
             let active = app.state::<AppState>().inner.lock().unwrap().active;
             if active.is_installed() {
                 load_model(handle.clone(), active, false);
@@ -2641,6 +2711,9 @@ pub fn run() {
             get_status,
             download_model,
             select_model,
+            choose_model,
+            onboarding_plan,
+            finish_onboarding,
             delete_model,
             download_gpu_runtime,
             set_device,

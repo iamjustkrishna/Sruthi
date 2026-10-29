@@ -15,22 +15,30 @@ use ash::vk;
 
 /// Vulkan's index of the dedicated graphics card, if there is one.
 pub fn dedicated() -> Option<usize> {
-    info().map(|(index, _)| index)
+    info().map(|(index, _, _)| index)
 }
 
 /// The dedicated card's name ("AMD Radeon RX 6500M"), for the main window.
 pub fn device_name() -> Option<String> {
-    info().map(|(_, name)| name)
+    info().map(|(_, name, _)| name)
 }
 
-/// The dedicated card, found once and cached: Vulkan device index + name.
-fn info() -> Option<(usize, String)> {
-    static INFO: OnceLock<Option<(usize, String)>> = OnceLock::new();
+/// The dedicated card's own memory in MiB (what a model has to fit in).
+pub fn vram_mb() -> Option<u64> {
+    info().map(|(_, _, vram)| vram)
+}
+
+/// The dedicated card, found once and cached: Vulkan device index, name and
+/// graphics memory in MiB.
+fn info() -> Option<(usize, String, u64)> {
+    static INFO: OnceLock<Option<(usize, String, u64)>> = OnceLock::new();
     let found = INFO.get_or_init(|| {
         let found = find_dedicated();
         match &found {
-            Some((index, name)) => {
-                log::info!("Graphics card for Whisper and the AI: {name} (Vulkan device {index})")
+            Some((index, name, vram)) => {
+                log::info!(
+                    "Graphics card for Whisper and the AI: {name}, {vram} MB (Vulkan device {index})"
+                )
             }
             None => log::info!(
                 "No dedicated graphics card found; whisper.cpp and llama.cpp pick their own"
@@ -52,7 +60,7 @@ pub fn use_dedicated(cmd: &mut Command) {
     }
 }
 
-fn find_dedicated() -> Option<(usize, String)> {
+fn find_dedicated() -> Option<(usize, String, u64)> {
     // SAFETY: plain Vulkan queries; the instance is destroyed before
     // returning and nothing created from it outlives it.
     unsafe {
@@ -73,12 +81,19 @@ fn find_dedicated() -> Option<(usize, String)> {
             .find_map(|(index, device)| {
                 let props = instance.get_physical_device_properties(device);
                 (props.device_type == vk::PhysicalDeviceType::DISCRETE_GPU).then(|| {
+                    let memory = instance.get_physical_device_memory_properties(device);
+                    let vram: u64 = memory.memory_heaps[..memory.memory_heap_count as usize]
+                        .iter()
+                        .filter(|heap| heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL))
+                        .map(|heap| heap.size >> 20)
+                        .sum();
                     (
                         index,
                         props
                             .device_name_as_c_str()
                             .map(|n| n.to_string_lossy().into_owned())
                             .unwrap_or_default(),
+                        vram,
                     )
                 })
             });

@@ -658,6 +658,7 @@
                 </span>
               </div>
               <dl class="setup-list" id="setup-list"></dl>
+              <div class="about-links"><button type="button" class="ghost small-btn" id="run-setup">Run setup again</button></div>
             </section>
 
             <section class="card" id="about-card">
@@ -680,6 +681,131 @@
           </div>
         </section>
       </main>
+    </div>
+    <div class="onb" id="onboarding" role="dialog" aria-modal="true" aria-labelledby="onb-title" data-step="0" hidden>
+      <div class="onb-glow" aria-hidden="true"></div>
+      <header class="onb-bar">
+        <span class="onb-brand"><img id="onb-logo-small" alt="" width="18" height="18" />Sruthi</span>
+        <button type="button" class="onb-skip" id="onb-skip">Skip setup</button>
+      </header>
+
+      <section class="onb-splash" data-panel="0" aria-label="Welcome">
+        <svg class="onb-waves" viewBox="0 0 1120 200" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="onb-wave" x1="0" x2="1" y1="0" y2="0">
+              <stop offset="0" stop-color="#7f9bff" stop-opacity="0" />
+              <stop offset="0.5" stop-color="#a5f0ff" />
+              <stop offset="1" stop-color="#c8aaff" stop-opacity="0" />
+            </linearGradient>
+          </defs>
+          <path pathLength="1" stroke="url(#onb-wave)" d="M0 100 C 120 20, 200 180, 320 100 S 520 20, 640 100 S 860 180, 1120 100" />
+          <path pathLength="1" stroke="url(#onb-wave)" d="M0 100 C 140 150, 220 40, 340 100 S 540 160, 660 100 S 880 40, 1120 100" />
+          <path pathLength="1" stroke="url(#onb-wave)" d="M0 100 C 100 60, 220 140, 360 100 S 560 60, 700 100 S 900 140, 1120 100" />
+        </svg>
+        <div class="onb-mark"><span class="onb-ring"></span><img id="onb-logo" alt="" width="132" height="132" /></div>
+        <h1 class="onb-word" id="onb-title">Sruthi</h1>
+        <p class="onb-tag">Speak. It types. Offline.</p>
+        <button type="button" class="onb-go" id="onb-start">Get started</button>
+      </section>
+
+      <section class="onb-stage" data-panel="1" aria-label="About you" hidden>
+        <div class="onb-card">
+          <p class="onb-eyebrow">Welcome</p>
+          <h2 class="onb-h">What should we call you?</h2>
+          <p class="onb-lede">Sruthi turns your voice into text, on this PC. Two quick questions, then you can start talking.</p>
+          <label class="onb-label" for="onb-name">Your name</label>
+          <input id="onb-name" class="onb-input" type="text" maxlength="40" autocomplete="off" placeholder="Optional" />
+          <p class="onb-hint">Used only to greet you on Home. It stays on this PC.</p>
+          <p class="onb-label onb-label-gap" id="onb-lang-label">Which languages will you dictate in?</p>
+          <div class="onb-chips" role="group" aria-labelledby="onb-lang-label">
+            <button type="button" class="onb-chip" data-lang="english" aria-pressed="true">English</button>
+            <button type="button" class="onb-chip" data-lang="hinglish" aria-pressed="false">Hindi + English (Hinglish)</button>
+            <button type="button" class="onb-chip" data-lang="european" aria-pressed="false">Spanish, French, German and other European</button>
+            <button type="button" class="onb-chip" data-lang="other" aria-pressed="false">Something else</button>
+          </div>
+          <p class="onb-hint">Pick all that apply. This only helps choose the right speech model next.</p>
+          <div class="onb-foot">
+            <button type="button" class="onb-ghost" data-next="2" data-clear="1">Skip this step</button>
+            <button type="button" class="onb-primary" data-next="2">Continue</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="onb-stage" data-panel="2" aria-label="Your PC and the model" hidden>
+        <div class="onb-card onb-card-wide">
+          <p class="onb-eyebrow">Your PC</p>
+          <h2 class="onb-h onb-h-small">Here is what we found, and what fits it</h2>
+          <div class="onb-tiles" id="onb-tiles"></div>
+          <p class="onb-label onb-label-gap" id="onb-recommended-label">Recommended for you</p>
+          <div id="onb-pick"></div>
+          <p class="onb-label onb-label-gap" id="onb-others-label">Or choose another</p>
+          <div class="onb-alts" id="onb-alts"></div>
+          <div class="onb-more">
+            <button type="button" class="onb-link" id="onb-all">Show all models</button>
+            <span class="onb-hint">Have your own model? Add it later in Models.</span>
+          </div>
+          <div class="onb-foot">
+            <button type="button" class="onb-ghost" data-next="1">Back</button>
+            <button type="button" class="onb-primary" id="onb-install">Download</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="onb-stage" data-panel="3" aria-label="Getting ready" hidden>
+        <div class="onb-card">
+          <p class="onb-eyebrow">Getting ready</p>
+          <h2 class="onb-h" id="onb-dl-title">Downloading</h2>
+          <p class="onb-lede" id="onb-dl-lede">One download, once. After this Sruthi works without internet. You can set up the rest while it finishes.</p>
+          <div class="onb-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="onb-prog"><i id="onb-prog-fill"></i></div>
+          <div class="onb-hint onb-prog-line"><span id="onb-prog-left"></span><span id="onb-prog-right"></span></div>
+          <p class="onb-error" id="onb-dl-error" role="alert" hidden></p>
+          <div class="onb-row">
+            <div>
+              <p class="onb-label onb-tight">Your shortcut</p>
+              <p class="onb-hint onb-tight">Hold it while you talk, let go to paste.</p>
+            </div>
+            <div class="onb-row-end">
+              <span class="onb-keys" id="onb-keys"></span>
+              <button type="button" class="onb-link" id="onb-keys-change">Change</button>
+            </div>
+          </div>
+          <div class="onb-keyopts" id="onb-keyopts" hidden></div>
+          <p class="onb-error" id="onb-key-error" role="alert" hidden></p>
+          <div class="onb-row">
+            <div>
+              <p class="onb-label onb-tight">Microphone</p>
+              <p class="onb-hint onb-tight" id="onb-mic-hint">You can test it in the next step.</p>
+            </div>
+            <select id="onb-mic" class="onb-select" aria-label="Microphone"></select>
+          </div>
+          <div class="onb-foot">
+            <button type="button" class="onb-ghost" data-next="2">Back</button>
+            <button type="button" class="onb-primary" id="onb-to-try" data-next="4" disabled>Finishing the download&#8230;</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="onb-stage" data-panel="4" aria-label="Try it" hidden>
+        <div class="onb-card">
+          <p class="onb-eyebrow">Try it</p>
+          <h2 class="onb-h">Say something</h2>
+          <p class="onb-lede">Hold <b class="onb-keyname" id="onb-try-key">your shortcut</b>, or the button, talk the way you normally would, then let go.</p>
+          <div class="onb-try">
+            <button type="button" class="onb-hero" id="onb-hold" aria-label="Hold to dictate"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></button>
+            <div class="onb-say" aria-live="polite">
+              <p class="onb-res" id="onb-res">Your words will show up here.</p>
+              <p class="onb-note" id="onb-res-note"></p>
+            </div>
+          </div>
+          <p class="onb-hint">Try: &#8220;remind me to send the invoice on Friday, comma, and copy Priya&#8221;. Sruthi tidies punctuation for you.</p>
+          <div class="onb-foot">
+            <button type="button" class="onb-ghost" data-next="3">Back</button>
+            <button type="button" class="onb-primary" id="onb-finish">Finish and open Sruthi</button>
+          </div>
+        </div>
+      </section>
+
+      <p class="onb-dots" id="onb-dots" aria-hidden="true"></p>
     </div>
     <dialog id="share-dialog" class="dialog share-dialog" aria-labelledby="share-title">
       <div class="dialog-card share-card">
