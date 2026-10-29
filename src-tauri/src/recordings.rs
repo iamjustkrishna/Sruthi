@@ -106,7 +106,13 @@ fn save_index(entries: &[Entry]) -> Result<()> {
 
 /// Saves 16 kHz mono `samples` as a WAV and records the entry.
 pub fn add(samples: &[f32], heard: &str, text: &str, app: &str) -> Result<Entry> {
-    add_with(samples, heard, text, app, crate::settings::load().keep_audio_days)
+    add_with(
+        samples,
+        heard,
+        text,
+        app,
+        crate::settings::load().keep_audio_days,
+    )
 }
 
 fn add_with(
@@ -421,7 +427,11 @@ pub fn audio_usage() -> AudioUsage {
                     path: place.clone(),
                     kind: if zip { "zip" } else { "folder" },
                     count: 1,
-                    bytes: if zip { meta.as_ref().map_or(0, |m| m.len()) } else { 0 },
+                    bytes: if zip {
+                        meta.as_ref().map_or(0, |m| m.len())
+                    } else {
+                        0
+                    },
                     present: meta.is_some(),
                     from_ms: e.time_ms,
                     to_ms: e.time_ms,
@@ -467,7 +477,9 @@ fn candidate_files(entries: &[Entry], days: u32) -> (Vec<(String, PathBuf, u64)>
             continue;
         }
         let Ok(path) = wav_path(&e.id) else { continue };
-        let Ok(meta) = fs::metadata(&path) else { continue };
+        let Ok(meta) = fs::metadata(&path) else {
+            continue;
+        };
         if e.reference.is_some() {
             kept += 1;
             continue;
@@ -604,7 +616,8 @@ fn verify_zip(zip_path: &Path, files: &[(String, PathBuf, u64)]) -> Result<()> {
             .by_name(&format!("{id}.wav"))
             .with_context(|| format!("{id} is not in the zip"))?;
         // Reading to the end checks the stored checksum.
-        let read = io::copy(&mut f, &mut io::sink()).context("A recording in the zip is damaged")?;
+        let read =
+            io::copy(&mut f, &mut io::sink()).context("A recording in the zip is damaged")?;
         if read != *bytes {
             bail!("A recording in the zip has the wrong size");
         }
@@ -779,7 +792,11 @@ mod tests {
         let entries = vec![
             entry("dictation-3", now, "Fresh words about Kubernetes"),
             entry("dictation-2", now - 9 * DAY_MS, "Nine days old"),
-            entry("dictation-1", now - 10 * DAY_MS, "Ten days old, also Kubernetes"),
+            entry(
+                "dictation-1",
+                now - 10 * DAY_MS,
+                "Ten days old, also Kubernetes",
+            ),
         ];
         for e in &entries {
             write_wav(&e.id, 4000);
@@ -826,7 +843,13 @@ mod tests {
     fn a_page_searches_every_entry_and_pages_from_the_oldest_shown() {
         let entries: Vec<Entry> = (0..10)
             .rev()
-            .map(|i| entry(&format!("id-{i}"), 1_000_000 + i * 1_000, &format!("word {i}")))
+            .map(|i| {
+                entry(
+                    &format!("id-{i}"),
+                    1_000_000 + i * 1_000,
+                    &format!("word {i}"),
+                )
+            })
             .collect();
         let first = page_of(
             entries.clone(),
@@ -893,7 +916,11 @@ mod tests {
         let _dir = scratch("delete");
         seed();
         let mut entries = load();
-        entries.iter_mut().find(|e| e.id == "dictation-1").unwrap().reference = Some("fixed".into());
+        entries
+            .iter_mut()
+            .find(|e| e.id == "dictation-1")
+            .unwrap()
+            .reference = Some("fixed".into());
         save_index(&entries).unwrap();
 
         let plan = candidates(7);
@@ -906,7 +933,12 @@ mod tests {
         assert!(by_id("dictation-1").audio && wav_path("dictation-1").unwrap().exists());
         assert!(by_id("dictation-3").audio);
         assert_eq!(load().len(), 3);
-        assert!(read_wav("dictation-2").unwrap_err().to_string().contains("deleted"));
+        assert!(
+            read_wav("dictation-2")
+                .unwrap_err()
+                .to_string()
+                .contains("deleted")
+        );
     }
 
     #[test]
@@ -919,13 +951,27 @@ mod tests {
         assert!(out.bytes_after < out.bytes_before);
         assert!(Path::new(&out.path).exists());
         assert!(!wav_path("dictation-2").unwrap().exists());
-        assert!(wav_path("dictation-3").unwrap().exists(), "today's audio is not zipped");
-        assert_eq!(by_id("dictation-2").stored.as_deref(), Some(out.path.as_str()));
-        assert!(read_wav("dictation-2").unwrap_err().to_string().contains("zip"));
+        assert!(
+            wav_path("dictation-3").unwrap().exists(),
+            "today's audio is not zipped"
+        );
+        assert_eq!(
+            by_id("dictation-2").stored.as_deref(),
+            Some(out.path.as_str())
+        );
+        assert!(
+            read_wav("dictation-2")
+                .unwrap_err()
+                .to_string()
+                .contains("zip")
+        );
 
         let usage = audio_usage();
         assert_eq!(usage.archives.len(), 1);
-        assert_eq!((usage.archives[0].kind, usage.archives[0].count), ("zip", 2));
+        assert_eq!(
+            (usage.archives[0].kind, usage.archives[0].count),
+            ("zip", 2)
+        );
 
         assert_eq!(restore(&out.path).unwrap(), 2);
         assert_eq!(fs::read(wav_path("dictation-2").unwrap()).unwrap(), before);
@@ -941,7 +987,10 @@ mod tests {
         assert_eq!(out.count, 2);
         assert!(!wav_path("dictation-1").unwrap().exists());
         assert!(dest.join("dictation-1.wav").exists());
-        assert!(read_wav("dictation-1").is_ok(), "plays from where it was moved");
+        assert!(
+            read_wav("dictation-1").is_ok(),
+            "plays from where it was moved"
+        );
 
         assert_eq!(restore(&out.path).unwrap(), 2);
         assert!(wav_path("dictation-1").unwrap().exists());

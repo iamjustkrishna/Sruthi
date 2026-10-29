@@ -72,13 +72,19 @@ mod tests {
 
     #[test]
     fn identical_sentences_have_no_errors_whatever_the_punctuation() {
-        assert_eq!(word_errors("Meet at 4 PM, Friday.", "meet at 4 pm friday"), (0, 5));
+        assert_eq!(
+            word_errors("Meet at 4 PM, Friday.", "meet at 4 pm friday"),
+            (0, 5)
+        );
     }
 
     #[test]
     fn counts_substitutions_deletions_and_insertions() {
         // one substituted, one dropped, one extra
-        assert_eq!(word_errors("send the report today", "send a report"), (2, 4));
+        assert_eq!(
+            word_errors("send the report today", "send a report"),
+            (2, 4)
+        );
         assert_eq!(word_errors("hello there", "hello there again"), (1, 2));
         assert_eq!(word_errors("hello there", ""), (2, 2));
     }
@@ -100,12 +106,20 @@ mod tests {
         let engine: crate::dictation::Engine =
             std::sync::Arc::new(std::sync::Mutex::new(Some(loaded)));
         let (mut wrong, mut words) = (0, 0);
-        for entry in crate::recordings::load().into_iter().filter(|e| !e.text.is_empty()).take(5) {
+        for entry in crate::recordings::load()
+            .into_iter()
+            .filter(|e| !e.text.is_empty())
+            .take(5)
+        {
             let audio = crate::recordings::read_samples(&entry.id).unwrap();
             let started = std::time::Instant::now();
             let heard = crate::dictation::transcribe_audio(&engine, &audio).unwrap();
             let (edits, n) = word_errors(&entry.text, &heard);
-            println!("{} ms, {edits} of {n} words differ\n  pasted: {}\n  raw:    {heard}", started.elapsed().as_millis(), entry.text);
+            println!(
+                "{} ms, {edits} of {n} words differ\n  pasted: {}\n  raw:    {heard}",
+                started.elapsed().as_millis(),
+                entry.text
+            );
             wrong += edits;
             words += n;
         }
@@ -115,6 +129,9 @@ mod tests {
 
     #[test]
     fn apostrophes_stay_inside_words() {
-        assert_eq!(normalize("It's Krishna's 'idea'."), ["it's", "krishna's", "idea"]);
+        assert_eq!(
+            normalize("It's Krishna's 'idea'."),
+            ["it's", "krishna's", "idea"]
+        );
     }
 }

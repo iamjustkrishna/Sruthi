@@ -123,7 +123,10 @@ mod tests {
     fn expands_the_phrase_ignoring_case_and_punctuation() {
         let s = [snip("email sign-off", "Thanks,\nKrishna", true)];
         assert_eq!(apply("Email sign off.", &s), "Thanks,\nKrishna");
-        assert_eq!(apply("Cheers, email sign-off", &s), "Cheers, Thanks,\nKrishna");
+        assert_eq!(
+            apply("Cheers, email sign-off", &s),
+            "Cheers, Thanks,\nKrishna"
+        );
     }
 
     #[test]
@@ -141,13 +144,19 @@ mod tests {
             snip("my address", "A", false),
             snip("my address at work", "B my address", false),
         ];
-        assert_eq!(apply("use my address at work today", &s), "use B my address today");
+        assert_eq!(
+            apply("use my address at work today", &s),
+            "use B my address today"
+        );
     }
 
     #[test]
     fn unrelated_text_and_empty_lists_pass_through() {
         let s = [snip("standup", "Yesterday:\nToday:", true)];
-        assert_eq!(apply("Nothing to expand here.", &s), "Nothing to expand here.");
+        assert_eq!(
+            apply("Nothing to expand here.", &s),
+            "Nothing to expand here."
+        );
         assert_eq!(apply("My address.", &[]), "My address.");
         assert_eq!(apply("standups are long", &s), "standups are long");
     }

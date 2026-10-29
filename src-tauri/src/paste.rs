@@ -50,16 +50,13 @@ fn send_paste_shortcut() -> Result<()> {
 
 /// Which key sends, for the app and window title that have focus: the first
 /// rule whose text appears in either wins, then the default.
-pub fn send_key_for(
-    default: SendKey,
-    rules: &[SendRule],
-    process: &str,
-    title: &str,
-) -> SendKey {
+pub fn send_key_for(default: SendKey, rules: &[SendRule], process: &str, title: &str) -> SendKey {
     let haystack = format!("{process} {title}").to_lowercase();
     rules
         .iter()
-        .find(|r| !r.matches.trim().is_empty() && haystack.contains(&r.matches.trim().to_lowercase()))
+        .find(|r| {
+            !r.matches.trim().is_empty() && haystack.contains(&r.matches.trim().to_lowercase())
+        })
         .map_or(default, |r| r.key)
 }
 
@@ -83,7 +80,9 @@ pub fn press_send(key: SendKey) -> Result<()> {
         .map_err(|e| anyhow!("{e}"));
     // Always release the modifier, even if the click failed.
     if let Some(m) = modifier {
-        enigo.key(m, Direction::Release).map_err(|e| anyhow!("{e}"))?;
+        enigo
+            .key(m, Direction::Release)
+            .map_err(|e| anyhow!("{e}"))?;
     }
     clicked
 }
@@ -115,7 +114,12 @@ mod tests {
             rule("code.exe", SendKey::Off),
         ];
         assert_eq!(
-            send_key_for(SendKey::Enter, &rules, "chrome.exe", "Issue #4 · github.com"),
+            send_key_for(
+                SendKey::Enter,
+                &rules,
+                "chrome.exe",
+                "Issue #4 · github.com"
+            ),
             SendKey::CtrlEnter
         );
         assert_eq!(

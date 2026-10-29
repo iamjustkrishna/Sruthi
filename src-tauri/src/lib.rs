@@ -1128,7 +1128,13 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
     }
 
     // record_usage takes the target; the history entry needs it too.
-    let app_name = state.inner.lock().unwrap().app_target.clone().unwrap_or_default();
+    let app_name = state
+        .inner
+        .lock()
+        .unwrap()
+        .app_target
+        .clone()
+        .unwrap_or_default();
     if !outcome.text.is_empty() {
         let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
         if caret::text_field_focused() == Some(false) {
@@ -2021,10 +2027,16 @@ fn set_send_rules(app: AppHandle, rules: Vec<settings::SendRule>) -> Result<(), 
         if matches.is_empty() || matches.len() > 60 {
             continue;
         }
-        if clean.iter().any(|c| c.matches.eq_ignore_ascii_case(&matches)) {
+        if clean
+            .iter()
+            .any(|c| c.matches.eq_ignore_ascii_case(&matches))
+        {
             continue;
         }
-        clean.push(settings::SendRule { matches, key: r.key });
+        clean.push(settings::SendRule {
+            matches,
+            key: r.key,
+        });
     }
     if clean.len() > MAX_SEND_RULES {
         return Err(format!("Up to {MAX_SEND_RULES} rules"));
@@ -2348,7 +2360,11 @@ async fn zip_audio(app: AppHandle, days: u32) -> Result<recordings::Archived, St
 
 /// Moves audio older than `days` to `folder` (copied and checked first).
 #[tauri::command]
-async fn move_audio(app: AppHandle, days: u32, folder: String) -> Result<recordings::Archived, String> {
+async fn move_audio(
+    app: AppHandle,
+    days: u32,
+    folder: String,
+) -> Result<recordings::Archived, String> {
     if folder.trim().is_empty() {
         return Err("Choose a folder first".into());
     }
@@ -2391,7 +2407,11 @@ async fn choose_folder() -> Result<Option<String>, String> {
                 .output()
                 .map_err(|e| e.to_string())?;
             let picked = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            Ok(if picked.is_empty() { None } else { Some(picked) })
+            Ok(if picked.is_empty() {
+                None
+            } else {
+                Some(picked)
+            })
         })
         .await
         .map_err(|e| e.to_string())?
@@ -2448,7 +2468,11 @@ fn save_share_image(request: tauri::ipc::Request<'_>) -> Result<String, String> 
         .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
         .take(60)
         .collect();
-    let name = if name.is_empty() { "sruthi-card".to_string() } else { name };
+    let name = if name.is_empty() {
+        "sruthi-card".to_string()
+    } else {
+        name
+    };
     let folder = dirs::picture_dir()
         .unwrap_or_else(settings::app_root)
         .join("Sruthi");
