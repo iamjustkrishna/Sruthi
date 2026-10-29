@@ -813,12 +813,15 @@ fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         // Coming back from the tray or the taskbar replays the splash.
         let was_away = !w.is_visible().unwrap_or(true) || w.is_minimized().unwrap_or(false);
+        // Tell the page first, so the splash is already up when the window
+        // appears and Home never shows through.
+        if was_away {
+            let _ = app.emit_to("main", "app-opened", ());
+            thread::sleep(Duration::from_millis(90));
+        }
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
-        if was_away {
-            let _ = app.emit_to("main", "app-opened", ());
-        }
     }
 }
 

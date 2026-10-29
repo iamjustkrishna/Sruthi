@@ -9,7 +9,6 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import "./onboarding.css";
 
 interface ModelRow {
   id: string;
@@ -516,7 +515,7 @@ export function initOnboarding(logoUrl: string) {
   // ---- the splash on every launch ---------------------------------------
 
   /** How long the splash plays before it fades out on its own. */
-  const SPLASH_MS = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1400 : 3700;
+  const SPLASH_MS = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1400 : 4000;
   let launching = false;
   let launchTimer = 0;
 

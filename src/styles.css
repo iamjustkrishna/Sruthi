@@ -2,6 +2,7 @@
    Copyright (C) 2026 Sruthi contributors */
 
 @import "./theme.css";
+@import "./onboarding.css";
 
 /*
  * Sruthi — graphite mono, built on the token system in theme.css:
