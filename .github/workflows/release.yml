@@ -14,32 +14,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: windows-latest
-          - platform: macos-latest
-          # Apple Silicon: the runner's own architecture.
-          # Intel Mac: cross-compiled on the same runner. It is marked optional
-          # because the speech engine (ONNX Runtime) may not ship Intel
-          # binaries; if it fails, the release still goes out without it.
-          - platform: macos-latest
-            args: --target x86_64-apple-darwin
-            rust_target: x86_64-apple-darwin
-            optional: true
+        # Apple Silicon only. Intel Macs are not built: the speech engine
+        # (ONNX Runtime through the `ort` crate) ships no prebuilt x86_64
+        # macOS binaries, and building it from source is not worth it yet.
+        platform: [windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
-    continue-on-error: ${{ matrix.optional == true }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.rust_target }}
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -50,10 +39,7 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # The tests run natively; the cross-compiled Intel build shares the
-      # same sources, so running them twice would add nothing.
       - name: Run the Rust tests
-        if: ${{ !matrix.optional }}
         working-directory: src-tauri
         run: cargo test --release --lib
 
@@ -77,7 +63,6 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }}
 
   # Once every installer is attached, publish a SHA256SUMS.txt next to them and
   # sign the list with GitHub's build provenance, so anyone can check that a

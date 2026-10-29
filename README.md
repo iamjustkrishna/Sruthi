@@ -121,7 +121,7 @@ Each model keeps its own license. Check the license on its download page.
 | Platform | File | Notes |
 | --- | --- | --- |
 | Windows 10 / 11 (64-bit) | `.exe` or `.msi` | Primary platform. Everything in this page works here. |
-| macOS 12+ (Apple Silicon) | `.dmg` | Early support. Dictation works, but features that need to know which app you are in (per-app tone, the app list and logos, per-app send keys) are Windows-only for now. The app is unsigned: right-click it and choose **Open** on first launch, or allow it in System Settings → Privacy & Security. |
+| macOS 12+ (Apple Silicon) | `.dmg` | Early support, Apple Silicon only (Intel Macs are not supported yet). Dictation works, but features that need to know which app you are in (per-app tone, the app list and logos, per-app send keys) are Windows-only for now. The app is unsigned: right-click it and choose **Open** on first launch, or allow it in System Settings → Privacy & Security. |
 
 Download from the [latest release](https://github.com/iamjustkrishna/Sruthi/releases/latest). Using a graphics card for the larger models is optional: see [docs/GPU.md](docs/GPU.md).
 
