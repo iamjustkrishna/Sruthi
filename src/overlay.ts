@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 import { listen } from "@tauri-apps/api/event";
 
 type Dictation =

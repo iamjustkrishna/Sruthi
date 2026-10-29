@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! The "Your dictation" numbers for the main window: how many words have
 //! been dictated (lifetime, today, per day), speaking speed, time saved
 //! against typing, streaks, the apps dictations land in, and how long the

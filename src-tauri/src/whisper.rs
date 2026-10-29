@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Whisper models through whisper.cpp: large-v3-turbo (pinned to English,
 //! also the Hybrid second opinion for Parakeet), tiny (multilingual, for a
 //! first look at Hinglish), and Oriserve's Hindi->Hinglish fine-tunes

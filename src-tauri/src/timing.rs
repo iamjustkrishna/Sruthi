@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Where the time goes in each dictation. Each stage reports how long it
 //! took (on the dictation's thread), and one line per dictation is added to
 //! `timings.log` in the app folder:

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! API keys for cloud providers. On Windows they live in Credential Manager
 //! (as "Sruthi/<provider>"), never in settings.json.
 

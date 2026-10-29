@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! The system-memory gate: how much RAM is free, and whether loading a
 //! speech model into it would squeeze an already-busy PC.
 

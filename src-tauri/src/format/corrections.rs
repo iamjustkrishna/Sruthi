@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Spoken self-corrections, fixed by rule so they work instantly, with or
 //! without the AI clean-up:
 //!

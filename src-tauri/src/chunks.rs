@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Splits long dictations into pieces at pauses, so the speech model can
 //! work through them one piece at a time, most of it while the key is still
 //! held (see `dictation.rs`). Parakeet's time grows faster than the audio

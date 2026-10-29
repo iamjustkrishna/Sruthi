@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Turns a raw transcript into well-formatted text: instant rules first,
 //! then (in Smart mode) a small local LLM, with a guard that falls back to
 //! the rules output if the LLM drifts from what was said.

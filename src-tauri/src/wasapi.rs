@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Direct Windows (WASAPI) microphone capture in **raw mode**. Raw mode
 //! asks Windows to skip the driver's audio effects (noise suppression,
 //! noise gates, "enhancements"). On this laptop those effects turned all

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Reads Windows' own volume and mute state for each microphone, so the app
 //! can warn when the one it records from is muted or turned down to
 //! nothing. (A muted mic doesn't fail: it just delivers silence.)

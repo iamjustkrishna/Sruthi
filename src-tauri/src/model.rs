@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Speech model catalog: what can be installed, where it lives, whether it's
 //! installed, and a resumable downloader that survives stalled connections.
 

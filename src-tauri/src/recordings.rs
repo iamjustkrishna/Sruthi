@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! Keeps every dictation: its audio as a WAV file, plus what the model
 //! heard and what was pasted, so Recent dictations can replay them.
 //! Everything stays in the app's folder on this PC.

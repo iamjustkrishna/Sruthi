@@ -184,7 +184,7 @@ Sruthi is free software under the [GNU General Public License v3.0 or later](LIC
 
 Versions 0.4.0 and earlier were released under the MIT license and remain available under it. If you want to use Sruthi in a way the GPL doesn't allow, open an issue to talk about a separate license.
 
-The speech models are downloaded at runtime and stay under their own licenses.
+The speech models are downloaded at runtime and stay under their own licenses. Libraries Sruthi builds on, and the terms they come under, are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <div align="center">
 <sub>Made for people who think faster than they type.</sub>

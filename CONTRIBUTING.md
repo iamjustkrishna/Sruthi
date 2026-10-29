@@ -60,6 +60,11 @@ The first `tauri dev` run downloads a speech model (~478 MB) into
 - Keep pull requests focused; one behavior or fix per PR.
 - CI runs the frontend build and the Rust test suite on Windows and macOS;
   both need to pass before merge.
+- New source files (`.rs`, `.ts`, `.css`) start with the two-line header the others
+  have: `SPDX-License-Identifier: GPL-3.0-or-later` and a copyright line.
+  Code under `src-tauri/vendor/` keeps its original license and gets no header.
+- If you add a dependency, check its license is GPL-compatible (permissive, or
+  MPL-2.0) and update `THIRD_PARTY_NOTICES.md` if it changes the picture.
 
 ## Releasing
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 // Audio on disk: how much there is, a reminder when it grows, how long to
 // keep it, and a way to free space by zipping, moving or deleting it. The
 // words of every dictation stay whatever is chosen here.

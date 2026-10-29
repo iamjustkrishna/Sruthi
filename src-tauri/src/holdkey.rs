@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 //! The bare Alt key as a hold-to-talk dictation key.
 //!
 //! Global shortcut registration can only express "modifier + key" combos,

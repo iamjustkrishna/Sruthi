@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
 // Logos of the apps people dictate into, so a dictation shows where it went.
 // The SVGs in src/assets/apps are from Simple Icons (CC0, https://simpleicons.org);
 // the logos themselves remain trademarks of their owners and are shown only to

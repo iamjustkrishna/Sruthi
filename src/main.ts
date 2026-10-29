@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Sruthi contributors
+
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -2446,6 +2450,16 @@ function renderSetup(s: Status, modelName: string | undefined) {
     ...rows.flatMap(([k, v]) => [el("dt", "", k), el("dd", "", v)]),
   );
 }
+
+/** Settings > About: the version, and where the source and notices live. */
+getVersion()
+  .then((v) => {
+    $("about-version").textContent = `Version ${v}. Free software under the GNU GPL v3 or later.`;
+  })
+  .catch(() => {});
+document.querySelectorAll<HTMLButtonElement>("#about-card [data-url]").forEach((b) => {
+  b.addEventListener("click", () => openUrl(b.dataset.url!));
+});
 
 const wordInput = $<HTMLInputElement>("word-input");
 $<HTMLFormElement>("word-form").addEventListener("submit", async (e) => {
