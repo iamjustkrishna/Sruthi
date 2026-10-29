@@ -10,7 +10,7 @@ Hold a key, speak, let go. Your words are typed wherever your cursor is, and you
 [![Latest release](https://img.shields.io/github/v/release/iamjustkrishna/Sruthi?style=flat-square&color=2f5bea)](https://github.com/iamjustkrishna/Sruthi/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/iamjustkrishna/Sruthi/total?style=flat-square&color=2f5bea)](https://github.com/iamjustkrishna/Sruthi/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/iamjustkrishna/Sruthi/ci.yml?style=flat-square&label=build)](https://github.com/iamjustkrishna/Sruthi/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/iamjustkrishna/Sruthi?style=flat-square&color=2f5bea)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/github/license/iamjustkrishna/Sruthi?style=flat-square&color=2f5bea)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-2f5bea?style=flat-square)
 
 [**Download**](https://github.com/iamjustkrishna/Sruthi/releases/latest) ·
@@ -160,6 +160,9 @@ Start with **Parakeet V3**. Move to a Whisper model for whispers and rare words,
 **Does it work in my language?**
 Parakeet V3 covers English and 24 European languages, Whisper models cover many more, and the Hinglish models handle Hindi and English together.
 
+**What license is Sruthi under?**
+The GNU GPL v3 or later. It is free to use, and anyone who distributes a modified version has to share the source under the same terms. Earlier versions (0.4.0 and before) stay available under MIT.
+
 **Is it as good as the cloud services?**
 It's close for everyday dictation, and it improves with your dictionary and corrections. The Models page has a speed test that scores each installed model on your own voice, so you can see for yourself.
 
@@ -173,11 +176,15 @@ Where Sruthi is headed is in [PLAN.md](PLAN.md). Ideas and bug reports are welco
 
 ## Contributing
 
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the project layout, how to build and test, and the commit conventions.
+Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the project layout, how to build and test, the commit conventions and a short contributor agreement.
 
 ## License
 
-[MIT](LICENSE). The speech models are downloaded at runtime and stay under their own licenses.
+Sruthi is free software under the [GNU General Public License v3.0 or later](LICENSE). You can use it, study it, change it and share it. If you distribute a modified version, you must share its source under the same license.
+
+Versions 0.4.0 and earlier were released under the MIT license and remain available under it. If you want to use Sruthi in a way the GPL doesn't allow, open an issue to talk about a separate license.
+
+The speech models are downloaded at runtime and stay under their own licenses.
 
 <div align="center">
 <sub>Made for people who think faster than they type.</sub>

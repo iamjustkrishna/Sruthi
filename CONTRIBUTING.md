@@ -81,3 +81,21 @@ right-click → Open on first launch.
 Use the bug report or feature request templates. Include your OS, app version
 and the active speech model — most dictation complaints are model choice, and
 some are microphones, so the details usually solve it quickly.
+
+## License and contributor agreement
+
+Sruthi is released under the [GNU GPL v3 or later](LICENSE). By opening a pull
+request you agree that:
+
+1. **You wrote it, or have the right to submit it.** It is your own work, or
+   it comes from something whose license allows this.
+2. **It is licensed under the GPL.** Your contribution is released under
+   GPL-3.0-or-later with the rest of the project.
+3. **The maintainer may also relicense it.** You grant the project owner a
+   perpetual, worldwide, non-exclusive, irrevocable license to use, change and
+   distribute your contribution under other terms as well, including commercial
+   licenses. You keep the copyright in your contribution.
+
+Put "I agree to the contributor agreement in CONTRIBUTING.md" in your pull
+request description (the template has a checkbox). If you can't agree to point
+3, please open an issue to talk before sending code.
