@@ -66,6 +66,8 @@ pub enum Engine {
     Hybrid,
     /// A model added by link; its layout decides which engine actually runs it.
     CustomOnnx,
+    /// AI4Bharat IndicConformer, CTC head only, ONNX CPU.
+    IndicConformer,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -223,6 +225,21 @@ fn builtin() -> Vec<ModelInfo> {
             dir_name: "moonshine-tiny-streaming-en".into(),
             engine: Engine::MoonshineStreaming,
             source: Source::Archive("https://blob.handy.computer/moonshine-tiny-streaming-en.tar.gz".into()),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "indic-conformer".into(),
+            name: "Indic Conformer".into(),
+            description: "Native-script dictation for Hindi and 7 other Indic languages. Large and CPU-only; the script toggle can turn its output into Latin.".into(),
+            languages: "Hindi + 7 Indic languages".into(),
+            size_mb: 190,
+            dir_name: "indic-conformer".into(),
+            engine: Engine::IndicConformer,
+            source: Source::Files(vec![
+                ("https://huggingface.co/meetsync/indic-conformer-onnx-sherpa/resolve/main/model.int8.onnx".into(), "model.int8.onnx".into()),
+                ("https://huggingface.co/meetsync/indic-conformer-onnx-sherpa/resolve/main/tokens.txt".into(), "tokens.txt".into()),
+            ]),
             heat_override: None,
             fallback_override: None,
         },
@@ -570,6 +587,7 @@ impl ModelInfo {
             Engine::Whisper(WhisperKind::Turbo | WhisperKind::HinglishApex) => Heat::Heavy,
             Engine::Hybrid => Heat::Heavy,
             Engine::CustomOnnx => Heat::Moderate,
+            Engine::IndicConformer => Heat::Heavy,
         }
     }
 
@@ -609,6 +627,8 @@ impl ModelInfo {
                 }
             }
             Engine::CustomOnnx => 1_000.0,
+            // CPU-only, even on a machine with a graphics card.
+            Engine::IndicConformer => 1_200.0,
         }
     }
 
@@ -638,6 +658,9 @@ impl ModelInfo {
             )),
             Engine::CustomOnnx => {
                 bail!("This model's layout isn't supported by the offline engine yet")
+            }
+            Engine::IndicConformer => {
+                Box::new(crate::indic::IndicModel::load(&dir).map_err(|e| anyhow!("{e}"))?)
             }
         };
         Ok(model)
@@ -802,6 +825,7 @@ fn has_required_files(engine: &Engine, dir: &Path) -> bool {
                 })
                 .unwrap_or(false)
         }
+        Engine::IndicConformer => has("model.int8.onnx") && has("tokens.txt"),
         Engine::Whisper(_) | Engine::Hybrid => false,
     }
 }
@@ -949,6 +973,15 @@ mod tests {
             Engine::Whisper(WhisperKind::HinglishSwift)
         ));
         assert_eq!(swift.size_mb, whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB);
+    }
+
+    #[test]
+    fn indic_conformer_is_a_heavy_cpu_model() {
+        let m = find("indic-conformer").expect("indic-conformer in the catalog");
+        assert_eq!(m.heat(), Heat::Heavy);
+        assert!(!m.uses_whisper());
+        assert_eq!(m.fallback_ms_per_s(true), 1_200.0);
+        assert!(matches!(m.engine, Engine::IndicConformer));
     }
 
     fn temp_root(tag: &str) -> PathBuf {
