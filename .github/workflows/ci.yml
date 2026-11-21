@@ -32,14 +32,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # ort-sys 2.0.0-rc.12 copies DirectML.dll into target/release/examples
-      # without creating that folder first. On a fresh Windows target it
-      # panics. Create it before Cargo runs the build script.
-      - name: Prepare the ONNX Runtime dylib folder
-        if: runner.os == 'Windows'
-        working-directory: src-tauri
-        run: New-Item -ItemType Directory -Force target/release/examples | Out-Null
-
       - name: Type-check and build the frontend
         run: npm run build
 

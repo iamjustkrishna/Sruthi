@@ -72,3 +72,6 @@ windows = { version = "0.61", features = ["Win32_Devices_FunctionDiscovery", "Wi
 # Patched transcribe-rs: TDT duration-aware decoding (see vendor/transcribe-rs/SRUTHI_PATCH.md)
 [patch.crates-io]
 transcribe-rs = { path = "vendor/transcribe-rs" }
+# Patched ort-sys: copy runtime DLLs into the Cargo profile directory so the
+# Windows app bundle and its tests can find DirectML.dll (see dynamic_link.rs).
+ort-sys = { path = "vendor/ort-sys" }
