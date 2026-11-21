@@ -1606,6 +1606,34 @@ fn delete_model(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Adds a pasted HTTPS link to the model registry. Network work runs on a
+/// blocking thread so the window stays responsive.
+#[tauri::command]
+async fn add_custom_model(
+    app: AppHandle,
+    url: String,
+    name: String,
+    heat: String,
+) -> Result<(), String> {
+    let heat = model::Heat::parse(&heat).ok_or_else(|| format!("Unknown heat class: {heat}"))?;
+    tauri::async_runtime::spawn_blocking(move || model::add_custom(&url, &name, heat))
+        .await
+        .map_err(|e| e.to_string())??;
+    emit_status(&app);
+    Ok(())
+}
+
+/// Removes only the registry row. The downloaded model stays on disk.
+#[tauri::command]
+fn remove_custom_model(app: AppHandle, id: String) -> Result<(), String> {
+    if app.state::<AppState>().inner.lock().unwrap().active.id == id {
+        return Err("Switch to another model before removing this one".into());
+    }
+    model::remove_custom(&id)?;
+    emit_status(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_overlay_position(app: AppHandle, position: OverlayPosition) -> Result<(), String> {
     let mut saved = settings::load();
@@ -2968,6 +2996,8 @@ pub fn run() {
             onboarding_plan,
             finish_onboarding,
             delete_model,
+            add_custom_model,
+            remove_custom_model,
             download_gpu_runtime,
             set_device,
             set_thermal,

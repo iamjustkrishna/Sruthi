@@ -324,6 +324,163 @@ impl ModelInfo {
     }
 }
 
+/// Hosts we accept model links from. Nothing is fetched from anywhere else.
+const CUSTOM_HOSTS: &[&str] = &[
+    "huggingface.co",
+    "github.com",
+    "objects.githubusercontent.com",
+    "blob.handy.computer",
+];
+
+/// Validates a pasted model link and removes the fragment (which is never
+/// part of a download URL). Query parameters are kept.
+pub fn validate_model_url(url: &str) -> Result<String, String> {
+    let mut parsed = reqwest::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
+    if parsed.scheme() != "https" {
+        return Err("Model links must use HTTPS".into());
+    }
+    let host = parsed.host_str().unwrap_or("").to_lowercase();
+    if !CUSTOM_HOSTS.contains(&host.as_str()) {
+        return Err(format!("Model links from {host} aren't allowed"));
+    }
+    parsed.set_fragment(None);
+    Ok(parsed.to_string())
+}
+
+fn custom_models_path() -> PathBuf {
+    crate::settings::app_root().join("custom_models.json")
+}
+
+fn read_customs() -> Vec<ModelInfo> {
+    fs::read_to_string(custom_models_path())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_customs(entries: &[ModelInfo]) -> Result<()> {
+    let root = crate::settings::app_root();
+    fs::create_dir_all(&root)?;
+    let tmp = root.join("custom_models.json.part");
+    fs::write(&tmp, serde_json::to_string_pretty(entries)?)?;
+    fs::rename(&tmp, custom_models_path())?;
+    Ok(())
+}
+
+/// Works out which engine and download layout a link needs. Only ONNX files,
+/// Hugging Face repos and model archives are accepted.
+fn model_layout(url: &str) -> Result<(Engine, Source), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+    let segments: Vec<&str> = parsed
+        .path_segments()
+        .map(|s| s.filter(|x| !x.is_empty()).collect())
+        .unwrap_or_default();
+    let last = segments.last().copied().unwrap_or("");
+    if last.ends_with(".tar.gz") {
+        return Ok((Engine::CustomOnnx, Source::Archive(url.to_owned())));
+    }
+    if last.ends_with(".onnx") {
+        return Ok((
+            Engine::CustomOnnx,
+            Source::SingleFile(url.to_owned(), last.to_owned()),
+        ));
+    }
+    if parsed.host_str() == Some("huggingface.co") && segments.len() == 2 {
+        let api = format!(
+            "https://huggingface.co/api/models/{}/{}/tree/main",
+            segments[0], segments[1]
+        );
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .build()
+            .map_err(|e| e.to_string())?;
+        let body = client
+            .get(&api)
+            .send()
+            .and_then(|r| r.error_for_status())
+            .and_then(|r| r.text())
+            .map_err(|e| format!("Couldn't read that Hugging Face repo: {e}"))?;
+        let entries: Vec<serde_json::Value> = serde_json::from_str(&body)
+            .map_err(|e| format!("Couldn't read that Hugging Face repo: {e}"))?;
+        let mut files = Vec::new();
+        for entry in entries {
+            let Some(path) = entry["path"].as_str() else {
+                continue;
+            };
+            let Ok(file_name) = path.rsplit('/').next().ok_or(()) else {
+                continue;
+            };
+            if [".onnx", ".json", ".txt", ".safetensors"]
+                .iter()
+                .any(|ext| file_name.ends_with(ext))
+            {
+                files.push((
+                    format!(
+                        "https://huggingface.co/{}/{}/resolve/main/{}",
+                        segments[0], segments[1], path
+                    ),
+                    file_name.to_owned(),
+                ));
+                if files.len() >= 20 {
+                    break;
+                }
+            }
+        }
+        if files.is_empty() {
+            return Err("No model files found at that Hugging Face repo".into());
+        }
+        return Ok((Engine::CustomOnnx, Source::Files(files)));
+    }
+    Err("That link doesn't point to an ONNX file, a model archive, or a Hugging Face repo".into())
+}
+
+/// Best-effort size probe. A missing Content-Length simply means 0 MB in the UI.
+fn remote_size_mb(url: &str) -> u32 {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .ok()
+        .and_then(|c| c.head(url).send().ok())
+        .and_then(|r| r.content_length());
+    client.map(|n| (n / 1_048_576) as u32).unwrap_or(0)
+}
+
+/// Adds a link to the custom registry and reloads it. Downloaded files stay
+/// where they are; this only writes `custom_models.json`.
+pub fn add_custom(url: &str, name: &str, heat: Heat) -> Result<Arc<ModelInfo>, String> {
+    let url = validate_model_url(url)?;
+    let id = format!("custom-{}", &short_hash(&url)[..16]);
+    let (engine, source) = model_layout(&url)?;
+    let entry = ModelInfo::custom(&id, name, heat, 1_000.0)
+        .with_engine(engine)
+        .with_source(source)
+        .with_dir(id.clone())
+        .with_details(
+            "Model added by link.".into(),
+            "Custom".into(),
+            remote_size_mb(&url),
+        );
+    let mut customs = read_customs();
+    customs.retain(|m| m.id != id);
+    customs.push(entry);
+    write_customs(&customs).map_err(|e| e.to_string())?;
+    reload_registry();
+    find(&id).ok_or_else(|| "Custom model wasn't registered".into())
+}
+
+/// Removes a link from the registry metadata only — never the downloaded files.
+pub fn remove_custom(id: &str) -> Result<(), String> {
+    let mut customs = read_customs();
+    let before = customs.len();
+    customs.retain(|m| m.id != id);
+    if customs.len() == before {
+        return Err("Custom model not found".into());
+    }
+    write_customs(&customs).map_err(|e| e.to_string())?;
+    reload_registry();
+    Ok(())
+}
+
 /// Short stable id for a custom model's directory name.
 fn short_hash(text: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -790,6 +947,24 @@ mod tests {
         assert!(reg.find("parakeet-v3").is_some());
         assert_eq!(reg.all().len(), BUILTIN.len());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_non_https_and_unknown_hosts() {
+        assert!(validate_model_url("http://huggingface.co/a.onnx").is_err());
+        assert!(validate_model_url("file:///C:/model.onnx").is_err());
+        assert!(validate_model_url("https://evil.example/model.onnx").is_err());
+    }
+
+    #[test]
+    fn accepts_known_hosts_and_strips_fragment() {
+        let u =
+            validate_model_url("https://huggingface.co/org/repo/resolve/main/model.onnx?x=1#frag")
+                .unwrap();
+        assert_eq!(
+            u,
+            "https://huggingface.co/org/repo/resolve/main/model.onnx?x=1"
+        );
     }
 
     #[test]
