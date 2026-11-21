@@ -1,10 +1,10 @@
-**Sruthi 0.7.0: add a model by link.**
+**Sruthi 0.8.0: dictation in native Indian scripts.**
 
-- **Paste a link on the Models page.** Give it a name and an HTTPS link to an ONNX model, a model archive, or a Hugging Face repo. It appears as a normal row with the same heat class, size and wait estimate as the built-in models.
-- **Safe by construction.** Only Hugging Face, GitHub and the model hosts Sruthi already uses are accepted. Plain HTTP, local files and unknown hosts are rejected before anything is fetched. A corrupt saved registry never stops the built-in models from loading.
-- **Removing a link keeps the files.** The Remove action deletes only the row here; downloaded models are never deleted automatically.
-- **A single registry.** Built-in and added models now share one list, so the heat guard, the 90-second stop, memory checks and the benchmark all see them the same way.
+- **Indic Conformer.** A new public, MIT-licensed speech model for Hindi and seven other Indic languages. It runs fully offline on the CPU and writes Devanagari directly. Its CTC decoder is built in — no cloud, no gated checkpoint.
+- **It follows the heat rules.** Indic Conformer is marked as a heavy model, so it shows the heat warning and a wait estimate before first use, and the heat guard can stop a long run. It never uses the graphics card.
+- **Works with the script toggle.** Leave the script on Native to paste Devanagari, or switch to Latin to have the same output romanized at the end of the pipeline.
+- **Experimental accuracy.** The ONNX graph and token set are verified, but the mel settings still need a real Hindi recording on your machine to be certain. If the words come out wrong, tell us — the decoder is isolated and easy to tune.
 
-Everything from 0.6.0 is included: the Latin/Native script toggle, converted saved phrases, and the clipboard copy of the last dictation. From 0.5.0: the heat guard, heavy-model warnings and measured wait estimates.
+Everything from 0.7.0 is included: paste-a-link models, the runtime model registry, and safe link removal. From 0.6.0: the Latin/Native script toggle. From 0.5.0: the heat guard and measured wait estimates.
 
 Windows is the primary platform. The macOS build is Apple Silicon only and unsigned (right-click the app and choose Open on first launch), and the app-aware features need Windows. The Windows installer is not code-signed, so Windows may show "Windows protected your PC"; choose More info, then Run anyway.
