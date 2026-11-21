@@ -2081,6 +2081,39 @@ button.ghost:hover:not(:disabled) {
   color: var(--bg);
 }
 
+/* Add-a-model-by-link form on the Models page. */
+.custom-model {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+}
+.custom-model h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 14px;
+}
+.custom-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.custom-fields input,
+.custom-fields select {
+  flex: 1 1 180px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.custom-fields button {
+  flex: none;
+}
+
 /* Short, transient confirmation for script changes and similar actions. */
 .toast {
   position: fixed;

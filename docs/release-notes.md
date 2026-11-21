@@ -1,10 +1,10 @@
-**Sruthi 0.6.0: choose the script you type in.**
+**Sruthi 0.7.0: add a model by link.**
 
-- **Latin or Native output.** A new switch in Settings decides the script of pasted dictations. Latin is the default and works everywhere. Native turns romanized Hindi into Devanagari with the local AI model, and converts Devanagari speech output back to Latin when you pick Latin.
-- **The script pass runs last.** It happens after corrections and saved phrases, so nothing rewrites the converted text afterwards. English words, numbers and punctuation are left alone.
-- **Your saved words follow the switch.** Changing it converts your saved phrases and recent corrected references too. A converted copy of the last dictation goes to the clipboard with a short toast — you paste it over the old text yourself. Sruthi never selects all in another app, so a long document cannot be destroyed by a setting change.
-- **Offline and local.** Both directions run on this PC. No text is sent anywhere, and no telemetry is collected.
+- **Paste a link on the Models page.** Give it a name and an HTTPS link to an ONNX model, a model archive, or a Hugging Face repo. It appears as a normal row with the same heat class, size and wait estimate as the built-in models.
+- **Safe by construction.** Only Hugging Face, GitHub and the model hosts Sruthi already uses are accepted. Plain HTTP, local files and unknown hosts are rejected before anything is fetched. A corrupt saved registry never stops the built-in models from loading.
+- **Removing a link keeps the files.** The Remove action deletes only the row here; downloaded models are never deleted automatically.
+- **A single registry.** Built-in and added models now share one list, so the heat guard, the 90-second stop, memory checks and the benchmark all see them the same way.
 
-Everything from 0.5.0 is included: the heat guard, heavy-model warnings and measured wait estimates. From 0.4.3: first-run setup with a PC check and model recommendation, models limited to what your system can run, and the My month and All time share cards.
+Everything from 0.6.0 is included: the Latin/Native script toggle, converted saved phrases, and the clipboard copy of the last dictation. From 0.5.0: the heat guard, heavy-model warnings and measured wait estimates.
 
 Windows is the primary platform. The macOS build is Apple Silicon only and unsigned (right-click the app and choose Open on first launch), and the app-aware features need Windows. The Windows installer is not code-signed, so Windows may show "Windows protected your PC"; choose More info, then Run anyway.

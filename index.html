@@ -420,6 +420,24 @@
           <p class="muted" id="model-text">Checking…</p>
           <ul class="models" id="models"></ul>
           <p class="error" id="model-error" aria-live="polite" hidden></p>
+          <div class="custom-model">
+            <h3>Add a model by link</h3>
+            <p class="muted small">
+              Paste an HTTPS link to an ONNX model, a model archive, or a Hugging Face repo.
+              Hugging Face, GitHub and the model hosts Sruthi already uses are accepted.
+            </p>
+            <div class="custom-fields">
+              <input type="url" id="custom-url" placeholder="https://huggingface.co/org/repo" aria-label="Model link" />
+              <input type="text" id="custom-name" placeholder="Display name" aria-label="Display name" />
+              <select id="custom-heat" aria-label="Heat class">
+                <option value="light">Light</option>
+                <option value="moderate" selected>Moderate</option>
+                <option value="heavy">Heavy</option>
+              </select>
+              <button type="button" id="custom-add" class="pill">Add model</button>
+            </div>
+            <p class="muted small">Removing a custom model deletes only its row here, not the downloaded files.</p>
+          </div>
           <div class="device-row">
             <div class="device-switch" role="group" aria-label="Where the speech model runs">
               <button id="device-auto" class="device-tab" title="Try the graphics card, fall back to the CPU">Auto</button>

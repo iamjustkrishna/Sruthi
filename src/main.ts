@@ -312,6 +312,8 @@ interface RowOptions {
   downloading: string | null;
   sizeMb: number;
   commands: { download: string; use: string; remove: string };
+  /** A pasted link: removing it deletes only the row, never the files. */
+  removeIsLinkOnly?: boolean;
   /** Asked before a run that may heat the PC. */
   confirmUse?: () => Promise<boolean>;
 }
@@ -365,13 +367,17 @@ function modelRow(o: RowOptions) {
         run(o.commands.use, { id: o.id });
       }),
       button(
-        "Delete",
+        o.removeIsLinkOnly ? "Remove" : "Delete",
         () => {
-          askConfirm(`Delete ${o.name}?`, `This removes the ${o.sizeMb} MB model from this PC. You can download it again later.`).then(
-            (ok) => {
-              if (ok) run(o.commands.remove, { id: o.id });
-            },
-          );
+          const question = o.removeIsLinkOnly
+            ? `Remove ${o.name}?`
+            : `Delete ${o.name}?`;
+          const detail = o.removeIsLinkOnly
+            ? "This removes only the row here. Downloaded files stay on this PC, and you can add the link again."
+            : `This removes the ${o.sizeMb} MB model from this PC. You can download it again later.`;
+          askConfirm(question, detail).then((ok) => {
+            if (ok) run(o.commands.remove, { id: o.id });
+          });
         },
         "ghost",
       ),
@@ -406,7 +412,12 @@ function renderModels(s: Status) {
         active: m.id === s.active,
         downloading: s.downloading,
         sizeMb: m.size_mb,
-        commands: { download: "download_model", use: "select_model", remove: "delete_model" },
+        commands: {
+          download: "download_model",
+          use: "select_model",
+          remove: m.id.startsWith("custom-") ? "remove_custom_model" : "delete_model",
+        },
+        removeIsLinkOnly: m.id.startsWith("custom-"),
         confirmUse:
           m.heat === "heavy"
             ? () =>
@@ -2665,6 +2676,25 @@ $("gate-card").addEventListener("click", () =>
   }),
 );
 $("gpu-runtime-download").addEventListener("click", () => run("download_gpu_runtime", {}));
+
+$("custom-add").addEventListener("click", async () => {
+  const url = $<HTMLInputElement>("custom-url").value.trim();
+  const name = $<HTMLInputElement>("custom-name").value.trim();
+  const heat = $<HTMLSelectElement>("custom-heat").value;
+  showError(null);
+  if (!url || !name) {
+    showError("Add a link and a display name.");
+    return;
+  }
+  try {
+    await invoke("add_custom_model", { url, name, heat });
+    $<HTMLInputElement>("custom-url").value = "";
+    $<HTMLInputElement>("custom-name").value = "";
+    showNotice("Model added. Download it from its row.");
+  } catch (e) {
+    showError(String(e));
+  }
+});
 
 document.querySelectorAll<HTMLInputElement>('input[name="overlay"]').forEach((input) => {
   input.addEventListener("change", () => {
