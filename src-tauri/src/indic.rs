@@ -24,6 +24,9 @@ const FFT: usize = 512;
 const HOP: usize = 160;
 const MELS: usize = 80;
 const BLANK_TOKEN: &str = "<blk>";
+/// The public 600M multilingual export has 5633 CTC tokens. A partial
+/// download must fail loudly rather than decode with a shifted blank id.
+const VOCAB_SIZE: usize = 5633;
 
 pub struct IndicModel {
     session: Session,
@@ -37,26 +40,7 @@ impl IndicModel {
         let tokens_path = dir.join("tokens.txt");
         let text = fs::read_to_string(&tokens_path)
             .with_context(|| format!("Couldn't read {}", tokens_path.display()))?;
-        let mut tokens: Vec<String> = vec!["<unk>".into()];
-        for line in text.lines() {
-            let Some((token, id)) = line.trim_end().rsplit_once(' ') else {
-                continue;
-            };
-            let Ok(id) = id.trim().parse::<usize>() else {
-                continue;
-            };
-            if tokens.len() <= id {
-                tokens.resize(id + 1, "<unk>".into());
-            }
-            tokens[id] = token.to_owned();
-        }
-        if tokens.iter().all(|t| t == "<unk>") {
-            bail!("tokens.txt is empty or invalid");
-        }
-        let blank = tokens
-            .iter()
-            .position(|t| t == BLANK_TOKEN)
-            .unwrap_or(tokens.len() - 1);
+        let (tokens, blank) = parse_tokens(&text)?;
         let threads = crate::thermal::safe_threads().max(1) as usize;
         let model_path = dir.join("model.int8.onnx");
         let session = Session::builder()
@@ -167,13 +151,53 @@ fn collapse(ids: &[usize], blank: usize) -> Vec<usize> {
     out
 }
 
-/// Token ids to text. Runs are concatenated so Devanagari combining marks
-/// stay attached to their base letter.
+/// Reads the token file into an id-indexed table and finds the CTC blank.
+/// The export is fixed at 5633 tokens; a short or garbled file is an error,
+/// not a reason to paste `<unk>` into someone's document.
+fn parse_tokens(text: &str) -> anyhow::Result<(Vec<String>, usize)> {
+    let mut seen = vec![false; VOCAB_SIZE];
+    let mut tokens = vec![String::new(); VOCAB_SIZE];
+    for line in text.lines() {
+        let Some((token, id)) = line.trim_end().rsplit_once(' ') else {
+            continue;
+        };
+        let Ok(id) = id.trim().parse::<usize>() else {
+            continue;
+        };
+        if id >= VOCAB_SIZE {
+            bail!("tokens.txt has an id outside the model's vocabulary");
+        }
+        seen[id] = true;
+        tokens[id] = token.to_owned();
+    }
+    if seen.iter().any(|ok| !ok) {
+        bail!("tokens.txt is incomplete");
+    }
+    let blank = tokens
+        .iter()
+        .position(|t| t == BLANK_TOKEN)
+        .ok_or_else(|| anyhow!("tokens.txt has no {BLANK_TOKEN} token"))?;
+    Ok((tokens, blank))
+}
+
+/// Token ids to text. SentencePiece marks word starts with `▁` (U+2581);
+/// turn those into spaces. Unknown tokens are dropped, never pasted. Marks
+/// within a word are concatenated so Devanagari combinations stay intact.
 fn decode(ids: &[usize], tokens: &[String]) -> String {
     let mut out = String::new();
     for &id in ids {
-        if let Some(token) = tokens.get(id) {
-            out.push_str(token);
+        let Some(token) = tokens.get(id) else {
+            continue;
+        };
+        if token == "<unk>" || token == BLANK_TOKEN {
+            continue;
+        }
+        for part in token.split('▁') {
+            if part.is_empty() {
+                out.push(' ');
+            } else {
+                out.push_str(part);
+            }
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -309,6 +333,28 @@ mod tests {
     fn tokens_decode_devanagari() {
         let tokens = vec!["<blk>".to_string(), "म".into(), "ै".into()];
         assert_eq!(decode(&[1, 2], &tokens), "मै");
+    }
+
+    #[test]
+    fn sentencepiece_marker_becomes_a_space() {
+        let tokens = vec!["<blk>".into(), "▁मै".into(), "▁gaya".into()];
+        assert_eq!(decode(&[1, 2], &tokens), "मै gaya");
+    }
+
+    #[test]
+    fn unknown_tokens_are_never_pasted() {
+        let tokens = vec!["<blk>".into(), "<unk>".into(), "म".into()];
+        assert_eq!(decode(&[1, 2], &tokens), "म");
+    }
+
+    #[test]
+    fn truncated_token_file_is_rejected() {
+        assert!(parse_tokens("<blk> 5632\n").is_err());
+    }
+
+    #[test]
+    fn token_file_without_blank_is_rejected() {
+        assert!(parse_tokens("म 0\n").is_err());
     }
 
     #[test]
