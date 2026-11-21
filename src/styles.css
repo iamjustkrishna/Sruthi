@@ -2057,6 +2057,48 @@ button.ghost:hover:not(:disabled) {
   flex-direction: column;
 }
 
+/* Latin / Native output-script toggle in Settings. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+  flex: none;
+}
+.segmented button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+}
+.segmented button[data-active="true"] {
+  background: var(--sound);
+  color: var(--bg);
+}
+
+/* Short, transient confirmation for script changes and similar actions. */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 100;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--raise);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+  max-width: 90vw;
+  text-align: center;
+}
+
 /* ------------------------------------------------------------------ */
 /* Scrollbars: thin and quiet, Windows-style                           */
 

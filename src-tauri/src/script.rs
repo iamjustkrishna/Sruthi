@@ -36,22 +36,45 @@ impl Script {
 /// Whether a Devanagari character is a dependent vowel sign. A consonant
 /// before one of these drops its inherent "a" sound.
 fn is_dependent_vowel(c: char) -> bool {
-    matches!(
-        c,
-        'ा' | 'ि' | 'ी' | 'ु' | 'ू' | 'ृ' | 'ो' | 'ौ' | 'े' | 'ै'
-    )
+    matches!(c, 'ा' | 'ि' | 'ी' | 'ु' | 'ू' | 'ृ' | 'ो' | 'ौ' | 'े' | 'ै')
 }
 
 /// The romanized base of a Devanagari consonant (without its inherent vowel).
 fn consonant(c: char) -> Option<&'static str> {
     Some(match c {
-        'क' => "k", 'ख' => "kh", 'ग' => "g", 'घ' => "gh", 'ङ' => "ng",
-        'च' => "ch", 'छ' => "chh", 'ज' => "j", 'झ' => "jh", 'ञ' => "ny",
-        'ट' => "t", 'ठ' => "th", 'ड' => "d", 'ढ' => "dh", 'ण' => "n",
-        'त' => "t", 'थ' => "th", 'द' => "d", 'ध' => "dh", 'न' => "n",
-        'प' => "p", 'फ' => "ph", 'ब' => "b", 'भ' => "bh", 'म' => "m",
-        'य' => "y", 'र' => "r", 'ल' => "l", 'व' => "v", 'श' => "sh",
-        'ष' => "sh", 'स' => "s", 'ह' => "h",
+        'क' => "k",
+        'ख' => "kh",
+        'ग' => "g",
+        'घ' => "gh",
+        'ङ' => "ng",
+        'च' => "ch",
+        'छ' => "chh",
+        'ज' => "j",
+        'झ' => "jh",
+        'ञ' => "ny",
+        'ट' => "t",
+        'ठ' => "th",
+        'ड' => "d",
+        'ढ' => "dh",
+        'ण' => "n",
+        'त' => "t",
+        'थ' => "th",
+        'द' => "d",
+        'ध' => "dh",
+        'न' => "n",
+        'प' => "p",
+        'फ' => "ph",
+        'ब' => "b",
+        'भ' => "bh",
+        'म' => "m",
+        'य' => "y",
+        'र' => "r",
+        'ल' => "l",
+        'व' => "v",
+        'श' => "sh",
+        'ष' => "sh",
+        'स' => "s",
+        'ह' => "h",
         _ => return None,
     })
 }
@@ -191,7 +214,10 @@ mod tests {
     #[test]
     fn script_defaults_to_latin_and_serializes_lowercase() {
         assert_eq!(Script::default(), Script::Latin);
-        assert_eq!(serde_json::to_string(&Script::Native).unwrap(), "\"native\"");
+        assert_eq!(
+            serde_json::to_string(&Script::Native).unwrap(),
+            "\"native\""
+        );
     }
 
     #[test]

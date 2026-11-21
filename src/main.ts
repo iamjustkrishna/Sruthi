@@ -73,6 +73,8 @@ interface Status {
   downloading: string | null;
   overlay: "bottom" | "field";
   smart: boolean;
+  /** Output script: latin | native. */
+  script: "latin" | "native";
   llm: {
     state: LlmState;
     detail: string | null;
@@ -270,6 +272,17 @@ function formatMb(bytes: number) {
 function showError(message: string | null) {
   modelError.hidden = !message;
   modelError.textContent = message ?? "";
+}
+
+let noticeTimer: number | undefined;
+function showNotice(message: string) {
+  const toast = $("notice-toast");
+  toast.textContent = message;
+  toast.hidden = false;
+  if (noticeTimer !== undefined) window.clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 3500);
 }
 
 async function run(command: string, args: Record<string, unknown>) {
@@ -667,6 +680,11 @@ function render(s: Status) {
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   $<HTMLInputElement>("auto-enter-toggle").checked = s.auto_enter;
   $<HTMLInputElement>("thermal-toggle").checked = s.thermal.guard;
+  document.querySelectorAll<HTMLButtonElement>("#script-choices button").forEach((button) => {
+    const active = button.dataset.script === s.script;
+    button.dataset.active = String(active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
@@ -2623,6 +2641,15 @@ instantToggle.addEventListener("change", () => run("set_instant_mic", { enabled:
 const thermalToggle = $<HTMLInputElement>("thermal-toggle");
 thermalToggle.addEventListener("change", () => run("set_thermal", { enabled: thermalToggle.checked }));
 
+// Output script. The backend copies a converted version of the last pasted
+// text to the clipboard; the "notice" event shows that as a short toast.
+document.querySelectorAll<HTMLButtonElement>("#script-choices button").forEach((button) => {
+  button.addEventListener("click", () => {
+    const script = button.dataset.script;
+    if (script === "latin" || script === "native") run("set_script", { script });
+  });
+});
+
 // Where the speech model runs.
 for (const d of ["auto", "gpu", "cpu"] as const) {
   $<HTMLButtonElement>(`device-${d}`).addEventListener("click", () =>
@@ -2658,5 +2685,6 @@ listen<DownloadProgress>("llm-progress", (e) => {
   if (status) renderLlms(status);
 });
 listen<string>("download-error", (e) => showError(e.payload));
+listen<string>("notice", (e) => showNotice(e.payload));
 
 invoke<Status>("get_status").then(render);
