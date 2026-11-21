@@ -9,6 +9,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::format::llm::LlmServer;
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Script {
@@ -132,6 +134,46 @@ pub fn to_latin(text: &str) -> String {
     out
 }
 
+/// Checks a qwen conversion reply. Empty, implausibly long, or unchanged-
+/// Latin replies mean the conversion failed: keep the original text.
+pub fn validate_native(reply: &str, original: &str) -> String {
+    let trimmed = reply.trim();
+    let original_len = original.chars().count();
+    if trimmed.is_empty() || trimmed.chars().count() > original_len.saturating_mul(3) {
+        return original.to_owned();
+    }
+    let has_devanagari = original
+        .chars()
+        .any(|c| ('\u{0900}'..='\u{097F}').contains(&c));
+    if trimmed == original && !has_devanagari {
+        return original.to_owned();
+    }
+    trimmed.to_owned()
+}
+
+/// Converts Latin text to native script via the local qwen model. Falls back
+/// to the original text when the model is missing, stopped, or misbehaves.
+pub fn to_native(text: &str, llm: Option<&LlmServer>) -> String {
+    let Some(llm) = llm else {
+        return text.to_owned();
+    };
+    match llm.to_native(text) {
+        Ok(reply) => validate_native(&reply, text),
+        Err(e) => {
+            log::warn!("Native script conversion failed: {e}");
+            text.to_owned()
+        }
+    }
+}
+
+/// The single entry point for the end-of-pipeline script pass.
+pub fn apply(text: &str, script: Script, llm: Option<&LlmServer>) -> String {
+    match script {
+        Script::Latin => to_latin(text),
+        Script::Native => to_native(text, llm),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +192,22 @@ mod tests {
     fn script_defaults_to_latin_and_serializes_lowercase() {
         assert_eq!(Script::default(), Script::Latin);
         assert_eq!(serde_json::to_string(&Script::Native).unwrap(), "\"native\"");
+    }
+
+    #[test]
+    fn apply_latin_is_a_no_op() {
+        assert_eq!(apply("main gaya", Script::Latin, None), "main gaya");
+    }
+
+    #[test]
+    fn native_without_qwen_falls_back_to_input() {
+        assert_eq!(apply("main gaya", Script::Native, None), "main gaya");
+    }
+
+    #[test]
+    fn native_rejects_an_empty_model_reply() {
+        assert_eq!(validate_native("", "main gaya"), "main gaya");
+        assert_eq!(validate_native("   ", "main gaya"), "main gaya");
+        assert_eq!(validate_native("मैं गया", "main gaya"), "मैं गया");
     }
 }

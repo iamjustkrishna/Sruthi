@@ -258,6 +258,29 @@ impl LlmServer {
     pub fn clean_up(&self, text: &str, glossary: &[String], app: AppKind) -> Result<String> {
         let words = text.split_whitespace().count();
         let (system, examples) = prompt(glossary, app);
+        self.ask(system, examples, text, words * 3 + 48)
+    }
+
+    /// Converts romanized Hindi words to Devanagari. Used by the script pass
+    /// when the user picks Native output; English and digits stay as they are.
+    pub fn to_native(&self, text: &str) -> Result<String> {
+        let system = "You convert Hindi text written in Roman letters into Devanagari script. \
+                      Convert only Hindi words; keep English words, numbers, punctuation and line \
+                      breaks exactly as they are. Do not translate. Output only the converted text, \
+                      with no explanation or quotes."
+            .to_string();
+        self.ask(system, Vec::new(), text, text.chars().count() * 3 + 64)
+    }
+
+    /// The shared chat-completions request. `examples` are few-shot pairs
+    /// (empty for conversion); `max_tokens` bounds the reply.
+    fn ask(
+        &self,
+        system: String,
+        examples: Vec<(&'static str, &'static str)>,
+        text: &str,
+        max_tokens: usize,
+    ) -> Result<String> {
         let mut messages = vec![json!({ "role": "system", "content": system })];
         for (input, output) in examples {
             messages.push(json!({ "role": "user", "content": input }));
@@ -268,7 +291,7 @@ impl LlmServer {
         let body = json!({
             "messages": messages,
             "temperature": 0.0,
-            "max_tokens": words * 3 + 48,
+            "max_tokens": max_tokens,
             // Qwen3 would otherwise "think" first, which only adds latency.
             "chat_template_kwargs": { "enable_thinking": false },
         });
