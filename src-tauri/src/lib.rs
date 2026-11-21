@@ -11,6 +11,7 @@ mod enhance;
 mod format;
 mod gpu;
 mod holdkey;
+mod indic;
 mod memory;
 mod mic_check;
 mod model;
