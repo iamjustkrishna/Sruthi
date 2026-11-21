@@ -35,6 +35,21 @@ jobs:
       - name: Type-check and build the frontend
         run: npm run build
 
+      # A cached target can restore DirectML.dll as a symlink into the ONNX
+      # Runtime cache. tauri-build copies the tracked DLL onto that path, which
+      # fails if the link is dangling, so drop the cached entry first.
+      - name: Clear the cached DirectML DLL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $path = "src-tauri/target/release/DirectML.dll"
+          if ([System.IO.File]::Exists($path)) {
+            Write-Output "$path is a regular file or a working link"
+          } else {
+            Write-Output "$path is absent or a dangling link"
+          }
+          [System.IO.File]::Delete($path)
+
       - name: Run the Rust tests
         working-directory: src-tauri
         run: cargo test --release --lib
