@@ -5,7 +5,7 @@
 //! took (on the dictation's thread), and one line per dictation is added to
 //! `timings.log` in the app folder:
 //!
-//! `2026-10-17 14:20:05  Chat   audio 3.2s  parakeet 240  whisper 610  ai 820  paste 35  total 1710 ms`
+//! `2026-10-17 14:20:05  Chat   audio 3.2s  model parakeet-v3 gpu  thermal normal  parakeet 240  whisper 610  ai 820  paste 35  total 1710 ms`
 
 use std::cell::RefCell;
 use std::fs::OpenOptions;
@@ -70,9 +70,14 @@ pub fn summary() -> String {
 }
 
 /// Writes this dictation's line to the log (and the dev console).
-pub fn write(app: AppKind, audio_secs: f32, total: Duration) {
+pub fn write(app: AppKind, model: &str, backend: &str, audio_secs: f32, total: Duration) {
+    let thermal = match crate::thermal::snapshot().state {
+        crate::thermal::State::Normal => "normal",
+        crate::thermal::State::Warm => "warm",
+        crate::thermal::State::Cooling => "cooling",
+    };
     let line = format!(
-        "{}  {:<8} audio {audio_secs:.1}s  {}  total {} ms",
+        "{}  {:<8} audio {audio_secs:.1}s  model {model} {backend}  thermal {thermal}  {}  total {} ms",
         now(),
         format!("{app:?}"),
         summary(),
@@ -93,6 +98,11 @@ pub fn write(app: AppKind, audio_secs: f32, total: Duration) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
         let _ = writeln!(file, "{line}");
     }
+}
+
+/// Local timestamp shared by the timing and thermal logs.
+pub fn stamp() -> String {
+    now()
 }
 
 #[cfg(windows)]

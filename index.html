@@ -66,6 +66,10 @@
         <p id="mic-fallback-text"></p>
       </section>
 
+      <section class="card warning" id="thermal-warning" role="alert" hidden>
+        <p id="thermal-warning-text"></p>
+      </section>
+
       </div>
 
         <!-- Home -->
@@ -532,6 +536,22 @@
           </span>
           <label class="switch" title="Instant start">
             <input type="checkbox" id="instant-toggle" aria-label="Instant start" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <span>
+            <strong>Heat guard</strong>
+            <span class="muted small">
+              Watches CPU load and throttling while a model runs. If this PC gets too hot, it
+              stops the run, pauses heavy models and restarts the AI clean-up after a cooldown.
+              Windows does not give normal apps a temperature sensor, so this uses load and
+              effective clock instead.
+            </span>
+          </span>
+          <label class="switch" title="Heat guard">
+            <input type="checkbox" id="thermal-toggle" aria-label="Heat guard" />
             <span class="slider"></span>
           </label>
         </div>

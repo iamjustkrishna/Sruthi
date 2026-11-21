@@ -32,6 +32,23 @@ interface ModelEntry {
   installed: boolean;
   /** False when this OS can't run the model (Whisper models off Windows). */
   supported: boolean;
+  /** light | moderate | heavy */
+  heat: "light" | "moderate" | "heavy";
+  /** Whether the model is expected to run on the graphics card. */
+  will_use_gpu: boolean;
+  /** Estimated seconds of waiting per minute of speech. */
+  estimate_secs_per_min: number | null;
+  /** True when the estimate comes from measured runs on this PC. */
+  estimate_measured: boolean;
+}
+
+interface ThermalStatus {
+  state: "normal" | "warm" | "cooling";
+  load: number;
+  clock_pct: number;
+  cooling_left_s: number;
+  message: string | null;
+  guard: boolean;
 }
 
 interface LlmEntry {
@@ -90,6 +107,7 @@ interface Status {
   gpu_downloading: boolean;
   history: HistoryEntry[];
   usage: Usage;
+  thermal: ThermalStatus;
 }
 
 type SendKey = "enter" | "ctrl_enter" | "shift_enter" | "alt_enter" | "off";
@@ -281,6 +299,8 @@ interface RowOptions {
   downloading: string | null;
   sizeMb: number;
   commands: { download: string; use: string; remove: string };
+  /** Asked before a run that may heat the PC. */
+  confirmUse?: () => Promise<boolean>;
 }
 
 /** One row of a model list: name and details, plus Download / Use / Delete. */
@@ -327,7 +347,10 @@ function modelRow(o: RowOptions) {
     actions.append(tag);
   } else {
     actions.append(
-      button("Use", () => run(o.commands.use, { id: o.id })),
+      button("Use", async () => {
+        if (o.confirmUse && !(await o.confirmUse())) return;
+        run(o.commands.use, { id: o.id });
+      }),
       button(
         "Delete",
         () => {
@@ -346,6 +369,18 @@ function modelRow(o: RowOptions) {
   return li;
 }
 
+/** The cost line on a model row: heat and time for a minute of speech. */
+function modelCost(m: ModelEntry) {
+  const heat = m.heat === "heavy" ? "runs hot" : m.heat === "moderate" ? "warms up" : "cool";
+  const parts = [m.languages, `${m.size_mb} MB`, heat];
+  if (m.estimate_secs_per_min !== null) {
+    const lead = m.estimate_measured ? "" : "~";
+    parts.push(`${lead}${m.estimate_secs_per_min} s per min of speech`);
+  }
+  if (m.heat !== "light") parts.push(m.will_use_gpu ? "graphics card" : "CPU");
+  return parts.join(" · ");
+}
+
 function renderModels(s: Status) {
   modelList.replaceChildren(
     ...s.models.filter((m) => m.supported).map((m) =>
@@ -353,12 +388,23 @@ function renderModels(s: Status) {
         id: m.id,
         name: m.name,
         description: m.description,
-        meta: `${m.languages} · ${m.size_mb} MB`,
+        meta: modelCost(m),
         installed: m.installed,
         active: m.id === s.active,
         downloading: s.downloading,
         sizeMb: m.size_mb,
         commands: { download: "download_model", use: "select_model", remove: "delete_model" },
+        confirmUse:
+          m.heat === "heavy"
+            ? () =>
+                askConfirm(
+                  `Use ${m.name}?`,
+                  `This model runs hot${m.will_use_gpu ? " on the graphics card" : " on this PC's CPU"}. ` +
+                    `A minute of speech could take about ${m.estimate_secs_per_min ?? "many"} seconds. ` +
+                    `Sruthi stops a heavy run after 90 seconds and pauses heavy models if the PC gets too hot.`,
+                  "Use anyway",
+                )
+            : undefined,
       }),
     ),
   );
@@ -558,6 +604,18 @@ function renderWarnings(s: Status) {
   const fallback = $("mic-fallback-warning");
   fallback.hidden = !s.mic_fallback;
   $("mic-fallback-text").textContent = s.mic_fallback ?? "";
+
+  const thermal = $("thermal-warning");
+  const hot = s.thermal.guard && s.thermal.state !== "normal";
+  thermal.hidden = !hot;
+  if (hot) {
+    const wait =
+      s.thermal.state === "cooling" && s.thermal.cooling_left_s > 0
+        ? ` Heavy models resume in about ${s.thermal.cooling_left_s} s.`
+        : "";
+    $("thermal-warning-text").textContent =
+      (s.thermal.message ?? "This PC is working hard.") + wait;
+  }
 }
 
 /** The one-line value each foldable card shows while it is collapsed. */
@@ -608,6 +666,7 @@ function render(s: Status) {
   renderSetup(s, active?.name);
   $<HTMLInputElement>("instant-toggle").checked = s.instant_mic;
   $<HTMLInputElement>("auto-enter-toggle").checked = s.auto_enter;
+  $<HTMLInputElement>("thermal-toggle").checked = s.thermal.guard;
   renderMicrophones(s);
   renderUsage(s);
   renderHistory();
@@ -2560,6 +2619,9 @@ autoEnterToggle.addEventListener("change", () => run("set_auto_enter", { enabled
 
 const instantToggle = $<HTMLInputElement>("instant-toggle");
 instantToggle.addEventListener("change", () => run("set_instant_mic", { enabled: instantToggle.checked }));
+
+const thermalToggle = $<HTMLInputElement>("thermal-toggle");
+thermalToggle.addEventListener("change", () => run("set_thermal", { enabled: thermalToggle.checked }));
 
 // Where the speech model runs.
 for (const d of ["auto", "gpu", "cpu"] as const) {

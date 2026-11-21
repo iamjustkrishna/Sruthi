@@ -76,6 +76,12 @@ impl Formatter {
         if !smart || app == AppKind::Code {
             return ruled;
         }
+        // The thermal guard may have stopped a large model, or the machine
+        // may still be busy. Rules output is immediate and never heats a
+        // laptop further.
+        if crate::thermal::is_warm() || crate::thermal::stop_requested() {
+            return ruled;
+        }
         // The small model keeps most filler "like"s, so the clear ones go
         // first (and the AI's output is checked against this).
         let ruled = rules::filler_like(&ruled);

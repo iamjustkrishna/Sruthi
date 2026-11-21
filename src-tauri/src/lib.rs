@@ -16,11 +16,13 @@ mod mic_check;
 mod model;
 mod onboarding;
 mod paste;
+mod perf;
 mod process;
 mod recordings;
 mod secrets;
 mod settings;
 mod stats;
+mod thermal;
 mod timing;
 #[cfg(windows)]
 mod wasapi;
@@ -72,6 +74,14 @@ struct ModelEntry {
     installed: bool,
     /// False when this OS can't run the model (Whisper models off Windows).
     supported: bool,
+    /// light | moderate | heavy
+    heat: &'static str,
+    /// Whether this model is expected to take the graphics card.
+    will_use_gpu: bool,
+    /// Estimated wait for one minute of speech, from this PC's own runs.
+    estimate_secs_per_min: Option<f32>,
+    /// True when the estimate came from measured runs, not the fallback.
+    estimate_measured: bool,
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq)]
@@ -158,6 +168,8 @@ struct Status {
     languages: Vec<String>,
     /// True on a fresh install, until setup is finished or skipped.
     onboarding: bool,
+    /// CPU load, throttling and cooldown state from the thermal guard.
+    thermal: thermal::Snapshot,
 }
 
 /// Where the active whisper model runs.
@@ -191,7 +203,11 @@ enum Dictation {
     Partial {
         text: String,
     },
-    Transcribing,
+    Transcribing {
+        /// Estimated seconds until the text lands, when this PC has enough
+        /// history (or a model-based fallback) to say.
+        eta_s: Option<f32>,
+    },
     Done {
         text: String,
     },
@@ -376,20 +392,40 @@ impl AppState {
     fn status(&self) -> Status {
         let inner = self.inner.lock().unwrap();
         let saved = settings::load();
+        let measured = perf::all();
         Status {
             model: inner.model_state,
             detail: inner.detail.clone(),
             active: inner.active.id,
             models: model::CATALOG
                 .iter()
-                .map(|m| ModelEntry {
-                    id: m.id,
-                    name: m.name,
-                    description: m.description,
-                    languages: m.languages,
-                    size_mb: m.size_mb,
-                    installed: m.is_installed(),
-                    supported: m.available_here(),
+                .map(|m| {
+                    let will_use_gpu = if m.id == inner.active.id && m.uses_whisper() {
+                        whisper::gpu_in_use()
+                    } else {
+                        m.uses_whisper()
+                            && saved.device != settings::Device::Cpu
+                            && whisper::runtime_vulkan_installed()
+                    };
+                    let measured = measured.get(m.id);
+                    let ms_per_s = measured
+                        .map(|e| e.ms_per_s)
+                        .unwrap_or_else(|| m.fallback_ms_per_s(will_use_gpu));
+                    ModelEntry {
+                        id: m.id,
+                        name: m.name,
+                        description: m.description,
+                        languages: m.languages,
+                        size_mb: m.size_mb,
+                        installed: m.is_installed(),
+                        supported: m.available_here(),
+                        heat: m.heat().label(),
+                        will_use_gpu,
+                        estimate_secs_per_min: Some(
+                            (ms_per_s * 60.0 / 1000.0 * 10.0).round() / 10.0,
+                        ),
+                        estimate_measured: measured.is_some(),
+                    }
                 })
                 .collect(),
             downloading: inner.downloading,
@@ -445,11 +481,12 @@ impl AppState {
                 saved.onboarded,
                 model::CATALOG.iter().any(|m| m.is_installed()),
             ),
+            thermal: thermal::snapshot(),
         }
     }
 }
 
-fn emit_status(app: &AppHandle) {
+pub(crate) fn emit_status(app: &AppHandle) {
     let _ = app.emit("status-changed", app.state::<AppState>().status());
 }
 
@@ -642,6 +679,19 @@ fn memory_decision(app: AppHandle, decision: String) -> Result<(), String> {
 /// Moves speech between the card and the CPU and reloads the active model
 /// on the new home.
 #[tauri::command]
+fn set_thermal(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.thermal = enabled;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+    thermal::set_enabled(enabled);
+    // If the guard had paused llama-server, bring Smart back to the state
+    // the settings ask for.
+    sync_llm(app.clone());
+    emit_status(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn set_device(app: AppHandle, device: settings::Device) -> Result<(), String> {
     let mut saved = settings::load();
     saved.device = device;
@@ -726,7 +776,7 @@ fn set_llm_state(app: &AppHandle, llm_state: LlmState, detail: Option<String>) {
 
 /// Starts or stops llama-server to match the Smart formatting setting and
 /// the chosen model.
-fn sync_llm(app: AppHandle) {
+pub(crate) fn sync_llm(app: AppHandle) {
     let state = app.state::<AppState>();
     let info = state.inner.lock().unwrap().llm_active;
     if !settings::load().smart {
@@ -983,6 +1033,36 @@ fn report_error(app: &AppHandle, message: String) {
     schedule_hide(app, Duration::from_millis(2500));
 }
 
+/// Shows the heat stop where the user is already looking: the pill stays
+/// up longer than a normal error, and the main window gets a matching
+/// alert that survives until the guard cools down.
+/// Drops the local LLM after a heat stop. `sync_llm` starts a fresh server
+/// once the guard has cooled down; without dropping the handle the old,
+/// killed server would look alive.
+pub(crate) fn pause_llm_for_heat(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    state.formatter.set_server(None);
+    set_llm_state(
+        app,
+        LlmState::Off,
+        Some("Paused while this PC cools down".into()),
+    );
+}
+
+pub(crate) fn show_thermal_warning(app: &AppHandle, message: &str) {
+    log::warn!("Thermal guard: {message}");
+    let _ = app.emit("thermal-warning", message.to_owned());
+    let _ = app.emit(
+        "dictation",
+        Dictation::Error {
+            message: message.to_owned(),
+        },
+    );
+    show_overlay(app);
+    schedule_hide(app, Duration::from_secs(10));
+    emit_status(app);
+}
+
 fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
     let state = app.state::<AppState>();
     match key_state {
@@ -999,6 +1079,11 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
             if inner.model_state != ModelState::Ready {
                 drop(inner);
                 show_main(app);
+                return;
+            }
+            if thermal::is_cooling() {
+                drop(inner);
+                show_thermal_warning(app, "The PC is still cooling down. Try again in a moment.");
                 return;
             }
             let locked = press.elapsed();
@@ -1043,6 +1128,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                             let _ = app.emit("dictation", Dictation::Partial { text });
                         })
                     };
+                    let previews = thermal::previews_allowed(inner.active.is_heavy());
                     inner.session = Some(dictation::Session::start(
                         rec,
                         state.engine.clone(),
@@ -1054,6 +1140,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                         mode,
                         note,
                         on_partial,
+                        previews,
                     ));
                     drop(inner);
                     // The pill is up before the caret lookup: the press
@@ -1101,7 +1188,7 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                 inner.busy = true;
                 session
             };
-            let _ = app.emit("dictation", Dictation::Transcribing);
+            let _ = app.emit("dictation", Dictation::Transcribing { eta_s: None });
             let app = app.clone();
             thread::spawn(move || {
                 let result = transcribe_and_paste(&app, session);
@@ -1117,7 +1204,13 @@ fn on_hotkey(app: &AppHandle, key_state: ShortcutState) {
                         schedule_hide(&app, linger);
                         emit_status(&app);
                     }
-                    Err(e) => report_error(&app, e.to_string()),
+                    Err(e) => {
+                        if thermal::stop_requested() || thermal::is_cooling() {
+                            show_thermal_warning(&app, &e.to_string());
+                        } else {
+                            report_error(&app, e.to_string());
+                        }
+                    }
                 }
             });
         }
@@ -1135,11 +1228,42 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         timing::add("start", start_delay);
         timing::set_start_mode(&session.start_detail());
     }
-    let outcome = session.finish()?;
+
+    let active = app.state::<AppState>().inner.lock().unwrap().active;
+    let speech_guess = session.audio_secs();
+    // Watch the final transcription, not the recording. If the machine is
+    // still cooling, refuse before touching the model.
+    let _job = thermal::begin_job(active.id, speech_guess, active.is_heavy())
+        .map_err(anyhow::Error::msg)?;
+    let backend = if active.uses_whisper() && whisper::gpu_in_use() {
+        "gpu"
+    } else if active.uses_whisper() {
+        "cpu"
+    } else {
+        "onnx"
+    };
+    if speech_guess >= 1.0 {
+        let ms_per_s = perf::estimate(active.id)
+            .map(|e| e.ms_per_s)
+            .unwrap_or_else(|| active.fallback_ms_per_s(backend == "gpu"));
+        let eta = (ms_per_s * speech_guess / 1000.0).max(0.5);
+        let _ = app.emit("dictation", Dictation::Transcribing { eta_s: Some(eta) });
+    }
+
+    let outcome = match session.finish() {
+        Ok(outcome) => outcome,
+        Err(_) if thermal::stop_requested() => {
+            anyhow::bail!("Stopped: this PC was getting too hot")
+        }
+        Err(e) => return Err(e),
+    };
     log::info!(
         "Final text ready {} ms after release",
         released.elapsed().as_millis()
     );
+    if thermal::stop_requested() {
+        anyhow::bail!("Stopped: this PC was getting too hot");
+    }
 
     let state = app.state::<AppState>();
     if outcome.dead_mic {
@@ -1200,11 +1324,13 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         }
     }
     if !outcome.audio.is_empty() {
-        timing::write(
-            app_kind,
-            outcome.audio.len() as f32 / audio::TARGET_RATE as f32,
-            released.elapsed(),
-        );
+        let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
+        // A stopped or empty run is not representative; successful runs
+        // teach the next estimate.
+        if !outcome.text.is_empty() && !thermal::stop_requested() {
+            perf::record(active.id, speech_s, released.elapsed(), backend);
+        }
+        timing::write(app_kind, active.id, backend, speech_s, released.elapsed());
     }
 
     // Keep the recording (even when nothing was heard, to help tune).
@@ -1372,12 +1498,25 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// A heavy model is not loaded while the guard is cooling the machine.
+fn cooling_check(info: &model::ModelInfo) -> Result<(), String> {
+    if info.is_heavy() && thermal::is_cooling() {
+        let snap = thermal::snapshot();
+        return Err(format!(
+            "Your PC is still cooling down. Try again in about {} s, or choose a lighter model.",
+            snap.cooling_left_s.max(1)
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn select_model(app: AppHandle, id: String) -> Result<(), String> {
     let info = lookup(&id)?;
     if !info.is_installed() {
         return Err(format!("Download {} first", info.name));
     }
+    cooling_check(info)?;
     let mut saved = settings::load();
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;
@@ -1392,6 +1531,7 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 fn choose_model(app: AppHandle, id: String) -> Result<(), String> {
     let info = lookup_supported(&id)?;
+    cooling_check(info)?;
     let mut saved = settings::load();
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;
@@ -2708,6 +2848,7 @@ pub fn run() {
                 });
             }
 
+            thermal::start(handle.clone());
             let active = app.state::<AppState>().inner.lock().unwrap().active;
             if active.is_installed() {
                 load_model(handle.clone(), active, false);
@@ -2738,6 +2879,7 @@ pub fn run() {
             delete_model,
             download_gpu_runtime,
             set_device,
+            set_thermal,
             memory_decision,
             set_overlay_position,
             set_smart,

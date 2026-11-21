@@ -6,7 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 type Dictation =
   | { phase: "recording" }
   | { phase: "partial"; text: string }
-  | { phase: "transcribing" }
+  | { phase: "transcribing"; eta_s?: number | null }
   | { phase: "done"; text: string }
   | { phase: "error"; message: string };
 
@@ -138,6 +138,9 @@ listen<Dictation>("dictation", ({ payload }) => {
       mark.style.setProperty("--level", "0");
       bars.forEach((b) => (b.style.transform = ""));
       stopPace();
+      if (payload.eta_s != null) {
+        label.textContent = `~${Math.max(1, Math.ceil(payload.eta_s))} s`;
+      }
       break;
     case "done":
       // Show the final, formatted text for a moment.

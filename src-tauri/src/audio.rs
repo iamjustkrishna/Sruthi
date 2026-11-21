@@ -327,6 +327,11 @@ impl Recording {
         self.buffer.lock().unwrap().len()
     }
 
+    /// Seconds recorded so far, at the device's own rate.
+    pub fn secs(&self) -> f32 {
+        self.len() as f32 / self.rate as f32
+    }
+
     /// Samples `from..to` (device-rate indices), converted to 16 kHz.
     pub fn slice_16k(&self, from: usize, to: usize) -> Vec<f32> {
         let buf = self.buffer.lock().unwrap();

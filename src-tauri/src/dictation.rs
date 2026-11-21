@@ -110,9 +110,10 @@ impl Session {
         start_mode: StartMode,
         press_note: String,
         on_partial: Arc<dyn Fn(String) + Send + Sync>,
+        previews: bool,
     ) -> Self {
         let recording = Arc::new(recording);
-        let early = Early::start(recording.clone(), engine.clone(), on_partial);
+        let early = Early::start(recording.clone(), engine.clone(), on_partial, previews);
         Self {
             recording,
             engine,
@@ -144,6 +145,13 @@ impl Session {
     /// The app the text is going to, as known once the page lookup lands.
     pub fn app(&self) -> AppKind {
         *self.app.lock().unwrap()
+    }
+
+    /// How much speech the guard should assume when the key is released.
+    /// The exact resampled length arrives in `finish`, but the difference is
+    /// negligible for a heat estimate.
+    pub fn audio_secs(&self) -> f32 {
+        self.recording.secs()
     }
 
     /// Stops recording, transcribes and formats. Recordings shorter than
@@ -236,6 +244,9 @@ pub(crate) fn transcribe_audio(engine: &Engine, audio: &[f32]) -> Result<String>
 /// Boosts quiet speech and transcribes one piece; silence comes back empty
 /// without running the model.
 fn transcribe_piece(engine: &Engine, audio: &[f32]) -> Result<String> {
+    if crate::thermal::stop_requested() {
+        return Err(anyhow!("Stopped: this PC was getting too hot"));
+    }
     let Some(prepared) = crate::timing::measure("prepare", || enhance::prepare(audio)) else {
         log::info!(
             "No speech in {:.1}s of audio",
@@ -250,8 +261,13 @@ fn transcribe_piece(engine: &Engine, audio: &[f32]) -> Result<String> {
         let model = engine
             .as_mut()
             .ok_or_else(|| anyhow!("Speech model isn't loaded"))?;
-        model
-            .transcribe(&prepared, &TranscribeOptions::default())
+        let result = model.transcribe(&prepared, &TranscribeOptions::default());
+        // A killed child surfaces as an inference error. Report the real
+        // reason: the PC was hot, not that the model is broken.
+        if crate::thermal::stop_requested() {
+            return Err(anyhow!("Stopped: this PC was getting too hot"));
+        }
+        result
             .map_err(|e| anyhow!("Transcription failed: {e}"))?
             .text
             .trim()
@@ -304,8 +320,19 @@ impl Early {
         recording: Arc<Recording>,
         engine: Engine,
         on_partial: Arc<dyn Fn(String) + Send + Sync>,
+        previews: bool,
     ) -> Self {
         let (stop, stopped) = mpsc::channel::<()>();
+        if !previews {
+            // Heavy models skip work while the key is held: the run starts
+            // after release, when the guard can watch it, and the keyboard
+            // does not heat the machine twice for the same words.
+            let thread = thread::spawn(move || {
+                let _ = stopped.recv();
+                Progress::default()
+            });
+            return Self { stop, thread };
+        }
         let thread = thread::spawn(move || {
             let mut progress = Progress::default();
             while matches!(stopped.recv_timeout(POLL), Err(RecvTimeoutError::Timeout)) {

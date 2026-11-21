@@ -184,6 +184,8 @@ fn find_dir_with(dir: &Path, file: &std::ffi::OsStr) -> Option<PathBuf> {
 
 pub struct LlmServer {
     child: Child,
+    /// Keeps llama-server stoppable when the thermal guard trips.
+    _active: crate::process::ActiveChild,
     base: String,
     client: reqwest::blocking::Client,
     pub model_id: &'static str,
@@ -220,9 +222,11 @@ impl LlmServer {
         crate::process::hide_window(&mut cmd);
         let child = cmd.spawn().context("Couldn't start llama-server")?;
         crate::process::kill_with_app(&child);
+        let active = crate::process::track(&child);
 
         let server = Self {
             child,
+            _active: active,
             base: format!("http://127.0.0.1:{port}"),
             client: reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(30))

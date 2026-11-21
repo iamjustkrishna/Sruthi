@@ -400,11 +400,11 @@ impl WhisperCli {
         if !is_installed(kind) {
             return Err(anyhow!("Whisper {} isn't downloaded", kind.label()));
         }
-        // One thread per physical core: on a 6-core/12-thread CPU, 6
-        // threads took 4.2 s where 10 took 8.0 s (SMT threads just contend).
-        let threads = std::thread::available_parallelism()
-            .map(|n| (n.get() / 2).max(4))
-            .unwrap_or(4);
+        // One thread per physical core, capped by the thermal guard: on a
+        // 6-core/12-thread CPU, 6 threads took 4.2 s where 10 took 8.0 s
+        // (SMT threads just contend). Four threads trade a little speed for
+        // a much cooler machine.
+        let threads = crate::thermal::safe_threads();
         Ok(Self {
             kind,
             threads,
@@ -413,6 +413,9 @@ impl WhisperCli {
     }
 
     fn run(&self, samples: &[f32]) -> Result<String> {
+        if crate::thermal::stop_requested() {
+            return Err(anyhow!("Stopped: this PC was getting too hot"));
+        }
         let wav = root().join(format!("dictation-{}.wav", std::process::id()));
         fs::write(&wav, crate::recordings::encode_wav(samples))?;
         let seconds = samples.len() as f32 / TARGET_RATE as f32;
@@ -446,11 +449,18 @@ impl WhisperCli {
         crate::process::hide_window(&mut cmd);
         let mut child = cmd.spawn().context("Couldn't start whisper.cpp")?;
         crate::process::kill_with_app(&child);
+        let _active = crate::process::track(&child);
 
         // A run past its budget is stuck repeating itself ("Shrutam.
         // Shrutam. ..." until the window ends): stop it and fall back.
         let deadline = std::time::Instant::now() + time_budget(seconds);
         let status = loop {
+            if crate::thermal::stop_requested() {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&wav);
+                return Err(anyhow!("Stopped: this PC was getting too hot"));
+            }
             if let Some(status) = child.try_wait()? {
                 break Some(status);
             }
@@ -462,6 +472,9 @@ impl WhisperCli {
             std::thread::sleep(Duration::from_millis(25));
         };
         let _ = fs::remove_file(&wav);
+        if crate::thermal::stop_requested() {
+            return Err(anyhow!("Stopped: this PC was getting too hot"));
+        }
         let status =
             status.ok_or_else(|| anyhow!("Whisper took too long ({seconds:.1}s of audio)"))?;
         if !status.success() {
@@ -600,6 +613,8 @@ static LOAD_NOTE: Mutex<Option<String>> = Mutex::new(None);
 pub struct WhisperServer {
     kind: WhisperKind,
     child: Child,
+    /// Keeps the server in the thermal guard's kill list.
+    _active: crate::process::ActiveChild,
     base: String,
     client: reqwest::blocking::Client,
     prompt: Option<String>,
@@ -623,9 +638,11 @@ impl WhisperServer {
         crate::process::hide_window(&mut cmd);
         let child = cmd.spawn().context("Couldn't start whisper-server")?;
         crate::process::kill_with_app(&child);
+        let active = crate::process::track(&child);
         let mut server = Self {
             kind,
             child,
+            _active: active,
             base: format!("http://127.0.0.1:{port}"),
             client: reqwest::blocking::Client::builder().build()?,
             prompt: None,
@@ -690,12 +707,21 @@ impl WhisperServer {
     }
 
     fn run(&mut self, samples: &[f32]) -> Result<String> {
+        if crate::thermal::stop_requested() {
+            return Err(anyhow!("Stopped: this PC was getting too hot"));
+        }
         let seconds = samples.len() as f32 / TARGET_RATE as f32;
         // A stuck run (a repetition loop) would also hold up the next
-        // dictation, so give up on it and restart the server.
+        // dictation, so give up on it and restart the server. A thermal
+        // stop must not restart it: the machine needs to cool first.
         let text = match self.request(samples, gpu_time_budget(seconds)) {
             Ok(text) => text,
             Err(e) => {
+                if crate::thermal::stop_requested() {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    return Err(anyhow!("Stopped: this PC was getting too hot"));
+                }
                 let _ = self.child.kill();
                 let prompt = self.prompt.take();
                 *self = Self::start(self.kind)?;
@@ -705,6 +731,9 @@ impl WhisperServer {
                 )));
             }
         };
+        if crate::thermal::stop_requested() {
+            return Err(anyhow!("Stopped: this PC was getting too hot"));
+        }
         let joined = text
             .lines()
             .map(str::trim)

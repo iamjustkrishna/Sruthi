@@ -218,6 +218,7 @@ body[data-align="center"] .pill {
 }
 .pill[data-phase="error"] .label {
   color: #fde68a;
+  max-width: 430px;
 }
 
 /* ---------- Enter / exit: logo pops, then the pill unfurls ---------- */

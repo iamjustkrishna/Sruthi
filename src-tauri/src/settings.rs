@@ -108,6 +108,10 @@ pub struct Settings {
     pub cloud_models: HashMap<String, String>,
     /// Where the speech model runs: the graphics card, the CPU, or auto.
     pub device: Device,
+    /// Stop a run and pause heavy models when this PC is under thermal
+    /// stress. On by default: an unexpected shutdown is worse than a
+    /// slower dictation.
+    pub thermal: bool,
     /// What to call the user on Home (None: no name given).
     pub name: Option<String>,
     /// Languages picked in setup ("english", "hinglish", "european", "other").
@@ -137,6 +141,7 @@ impl Default for Settings {
             cloud_models: HashMap::new(),
             theme: Theme::default(),
             device: Device::default(),
+            thermal: true,
             name: None,
             languages: Vec::new(),
             onboarded: None,
@@ -195,6 +200,7 @@ mod tests {
         assert_eq!(settings.name, None);
         assert!(settings.languages.is_empty());
         assert_eq!(settings.model.as_deref(), Some("parakeet-v3"));
+        assert!(settings.thermal);
     }
 
     #[test]

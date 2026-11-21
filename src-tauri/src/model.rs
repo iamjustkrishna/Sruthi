@@ -11,6 +11,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
+use serde::Serialize;
 use transcribe_rs::SpeechModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::moonshine::{MoonshineModel, MoonshineVariant, StreamingModel};
@@ -23,6 +24,25 @@ pub const DEFAULT_MODEL: &str = "parakeet-v3";
 /// A read that returns nothing for this long counts as a stalled connection.
 const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ATTEMPTS: u32 = 6;
+
+/// How much heat a model can put into a laptop during a run.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Heat {
+    Light,
+    Moderate,
+    Heavy,
+}
+
+impl Heat {
+    pub fn label(self) -> &'static str {
+        match self {
+            Heat::Light => "light",
+            Heat::Moderate => "moderate",
+            Heat::Heavy => "heavy",
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 enum Engine {
@@ -215,6 +235,53 @@ impl ModelInfo {
     /// used for the device row and the timing log.
     pub fn uses_whisper(&self) -> bool {
         matches!(self.engine, Engine::Whisper(_) | Engine::Hybrid)
+    }
+
+    /// The cost of running this model on a laptop. Apex and Turbo are
+    /// large Whisper models; Hybrid can fall back to one on the CPU.
+    pub fn heat(&self) -> Heat {
+        match self.engine {
+            Engine::Parakeet | Engine::MoonshineBase | Engine::MoonshineStreaming => Heat::Light,
+            Engine::Whisper(WhisperKind::Tiny) => Heat::Light,
+            Engine::Whisper(WhisperKind::HinglishSwift) => Heat::Moderate,
+            Engine::Whisper(WhisperKind::Turbo | WhisperKind::HinglishApex) => Heat::Heavy,
+            Engine::Hybrid => Heat::Heavy,
+        }
+    }
+
+    pub fn is_heavy(&self) -> bool {
+        self.heat() == Heat::Heavy
+    }
+
+    /// Fallback wait estimate in milliseconds per audio second, used until
+    /// this PC has measured the model itself.
+    pub fn fallback_ms_per_s(&self, on_gpu: bool) -> f32 {
+        match self.engine {
+            Engine::Parakeet => 160.0,
+            Engine::MoonshineBase | Engine::MoonshineStreaming => 110.0,
+            Engine::Whisper(WhisperKind::Tiny) => 260.0,
+            Engine::Whisper(WhisperKind::HinglishSwift) => {
+                if on_gpu {
+                    300.0
+                } else {
+                    1_100.0
+                }
+            }
+            Engine::Whisper(WhisperKind::Turbo | WhisperKind::HinglishApex) => {
+                if on_gpu {
+                    450.0
+                } else {
+                    2_600.0
+                }
+            }
+            Engine::Hybrid => {
+                if on_gpu {
+                    500.0
+                } else {
+                    2_800.0
+                }
+            }
+        }
     }
 
     pub fn load(&self) -> Result<Box<dyn SpeechModel + Send>> {
