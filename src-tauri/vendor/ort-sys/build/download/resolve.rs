@@ -6,7 +6,7 @@ const DIST_TABLE: &str = include_str!("dist.txt");
 
 fn find_dist(target: &str, feature_set: &str) -> Option<Distribution> {
 	DIST_TABLE
-		.split('\n')
+		.lines()
 		.filter(|c| !c.is_empty() && !c.starts_with('#'))
 		.map(|c| c.split('\t').collect::<Vec<_>>())
 		.find(|c| c[0] == feature_set && c[1] == target)

@@ -1,0 +1,4 @@
+# Vendored crates are read byte-for-byte by their build scripts. Do not let
+# core.autocrlf rewrite their line endings on Windows checkouts: ort-sys parses
+# build/download/dist.txt and a trailing \r makes its hash parser panic.
+src-tauri/vendor/** -text
