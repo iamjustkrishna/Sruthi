@@ -27,11 +27,25 @@ pub struct Formatter {
     cloud: Mutex<Option<cloud::Cloud>>,
     /// Spoken phrases that expand to saved text, applied last.
     snippets: Mutex<Vec<snippets::Snippet>>,
+    /// The script for pasted text, applied after snippets.
+    script: Mutex<crate::script::Script>,
 }
 
 impl Formatter {
     pub fn set_snippets(&self, snippets: Vec<snippets::Snippet>) {
         *self.snippets.lock().unwrap() = snippets;
+    }
+
+    /// Sets the script for the end-of-pipeline pass.
+    pub fn set_script(&self, script: crate::script::Script) {
+        *self.script.lock().unwrap() = script;
+    }
+
+    /// Converts standalone text using the current model. Used when the user
+    /// changes the script and we offer a converted copy of past text.
+    pub fn script_apply(&self, text: &str, script: crate::script::Script) -> String {
+        let server = self.server.lock().unwrap();
+        crate::script::apply(text, script, server.as_ref())
     }
 
     pub fn set_server(&self, server: Option<llm::LlmServer>) {
@@ -53,6 +67,9 @@ impl Formatter {
     /// chat, document), and code editors and terminals skip the AI so the
     /// words arrive exactly as spoken.
     pub fn format(&self, raw: &str, smart: bool, words: &[String], app: AppKind) -> String {
+        // Capture the script at the start: changing the setting mid-dictation
+        // must not switch the script of a pass already in progress.
+        let script = *self.script.lock().unwrap();
         let ruled = rules::apply(&dictionary::apply(raw, words));
         let text = self.polish(ruled, smart, words, app);
         let text = if app == AppKind::Email {
@@ -61,7 +78,10 @@ impl Formatter {
             text
         };
         let text = rules::tidy_lines(&text);
-        snippets::apply(&text, &self.snippets.lock().unwrap())
+        let text = snippets::apply(&text, &self.snippets.lock().unwrap());
+        // Script is the very last step: it sees the final, snippet-expanded
+        // text and nothing rewrites it afterwards.
+        self.script_apply(&text, script)
     }
 
     /// The AI clean-up step (falls back to `ruled` whenever it shouldn't run
@@ -321,6 +341,22 @@ fn join_pieces(pieces: &[(&str, &str)], mut outs: Vec<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::{AppKind, CHUNK_WORDS, Formatter, chunks, llm};
+    use crate::format::snippets::Snippet;
+    use crate::script::Script;
+
+    #[test]
+    fn script_pass_runs_after_snippets() {
+        let f = Formatter::default();
+        f.set_snippets(vec![Snippet {
+            trigger: "send".into(),
+            text: "मैं गया".into(),
+            exact: true,
+        }]);
+        f.set_script(Script::Native);
+        // No LLM: Native falls back, so the snippet text arrives unchanged.
+        let out = f.format("send", false, &[], AppKind::Other);
+        assert_eq!(out, "मैं गया");
+    }
 
     fn joined(pieces: &[(&str, &str)]) -> String {
         pieces.iter().map(|(p, gap)| format!("{p}{gap}")).collect()

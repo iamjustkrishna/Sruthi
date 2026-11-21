@@ -128,6 +128,8 @@ struct Status {
     downloading: Option<&'static str>,
     overlay: OverlayPosition,
     smart: bool,
+    /// Script for pasted text: latin | native.
+    script: &'static str,
     llm: LlmStatus,
     cloud: CloudStatus,
     dictionary: Vec<String>,
@@ -312,6 +314,8 @@ struct Inner {
     session: Option<dictation::Session>,
     /// True from key release until the text has been pasted.
     busy: bool,
+    /// The last text pasted, kept so a script change can offer a converted copy.
+    last_pasted: Option<String>,
     /// Process name of the app this dictation is going into, captured at
     /// press time for the usage stats (the session keeps only the kind).
     app_target: Option<String>,
@@ -371,6 +375,7 @@ impl AppState {
                 memory_gate: None,
                 session: None,
                 busy: false,
+                last_pasted: None,
                 app_target: None,
                 llm_active: selected_llm(),
                 llm_state: LlmState::Missing,
@@ -380,7 +385,9 @@ impl AppState {
             engine: Arc::new(Mutex::new(None)),
             formatter: {
                 let formatter = format::Formatter::default();
-                formatter.set_snippets(settings::load().snippets);
+                let saved = settings::load();
+                formatter.set_script(saved.script);
+                formatter.set_snippets(saved.snippets);
                 Arc::new(formatter)
             },
             overlay_generation: AtomicU64::new(0),
@@ -432,6 +439,7 @@ impl AppState {
             downloading: inner.downloading,
             overlay: settings::load().overlay,
             smart: settings::load().smart,
+            script: saved.script.label(),
             dictionary: settings::load().dictionary,
             snippets: settings::load().snippets,
             llm: LlmStatus {
@@ -1289,6 +1297,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         .clone()
         .unwrap_or_default();
     if !outcome.text.is_empty() {
+        state.inner.lock().unwrap().last_pasted = Some(outcome.text.clone());
         let speech_s = outcome.audio.len() as f32 / audio::TARGET_RATE as f32;
         if caret::text_field_focused() == Some(false) {
             // Nowhere to type: show the text with a Copy button instead.
@@ -1617,6 +1626,67 @@ fn set_smart(app: AppHandle, enabled: bool) -> Result<(), String> {
     settings::save(&saved).map_err(|e| e.to_string())?;
     sync_cloud(&app);
     sync_llm(app);
+    Ok(())
+}
+
+/// Changes the output script. New dictations use it immediately; our own
+/// stored snippets and recent references are converted, and a converted copy
+/// of the last pasted dictation goes to the clipboard. We never select-all in
+/// another app — the user pastes over the old text deliberately.
+#[tauri::command]
+fn set_script(app: AppHandle, script: script::Script) -> Result<(), String> {
+    let mut saved = settings::load();
+    saved.script = script;
+    settings::save(&saved).map_err(|e| e.to_string())?;
+
+    let state = app.state::<AppState>();
+    // A pass already in progress captured the old script at its start.
+    state.formatter.set_script(script);
+
+    for snippet in &mut saved.snippets {
+        if snippet.text.trim().is_empty() {
+            continue;
+        }
+        let converted = state.formatter.script_apply(&snippet.text, script);
+        if !converted.trim().is_empty() {
+            snippet.text = converted;
+        }
+    }
+    if let Err(e) = settings::save(&saved) {
+        log::warn!("Couldn't save converted snippets: {e}");
+    }
+
+    // Cap the qwen calls so a large history doesn't stall the window.
+    let mut entries = recordings::load();
+    let mut changed = 0;
+    for entry in entries.iter_mut().take(20) {
+        let Some(reference) = entry.reference.as_deref() else {
+            continue;
+        };
+        if reference.trim().is_empty() {
+            continue;
+        }
+        let converted = state.formatter.script_apply(reference, script);
+        if !converted.trim().is_empty() && converted != reference {
+            entry.reference = Some(converted);
+            changed += 1;
+        }
+    }
+    if changed > 0 {
+        if let Err(e) = recordings::save(&entries) {
+            log::warn!("Couldn't save converted references: {e}");
+        }
+    }
+
+    let last = state.inner.lock().unwrap().last_pasted.clone();
+    if let Some(text) = last.filter(|t| !t.trim().is_empty()) {
+        let converted = state.formatter.script_apply(&text, script);
+        if converted != text {
+            set_clipboard(&converted)?;
+            let _ = app.emit("notice", "Converted copy ready — paste over the old text");
+        }
+    }
+    emit_status(&app);
     Ok(())
 }
 
@@ -2448,8 +2518,13 @@ fn hotkey_options(app: AppHandle) -> Vec<HotkeyOption> {
 
 #[tauri::command]
 fn copy_text(text: String) -> Result<(), String> {
+    set_clipboard(&text)
+}
+
+/// Puts text on the clipboard. Shared with the script-conversion command.
+pub(crate) fn set_clipboard(text: &str) -> Result<(), String> {
     arboard::Clipboard::new()
-        .and_then(|mut c| c.set_text(text))
+        .and_then(|mut c| c.set_text(text.to_owned()))
         .map_err(|e| e.to_string())
 }
 
@@ -2884,6 +2959,7 @@ pub fn run() {
             memory_decision,
             set_overlay_position,
             set_smart,
+            set_script,
             download_llm,
             select_llm,
             delete_llm,

@@ -97,6 +97,11 @@ pub fn load() -> Vec<Entry> {
         .unwrap_or_default()
 }
 
+/// Persists the history index. Used by the script-conversion command.
+pub fn save(entries: &[Entry]) -> Result<()> {
+    save_index(entries)
+}
+
 fn save_index(entries: &[Entry]) -> Result<()> {
     fs::create_dir_all(folder())?;
     // Written beside the index and renamed over it, so a crash mid-write can't
