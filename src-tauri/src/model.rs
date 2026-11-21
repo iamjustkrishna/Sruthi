@@ -3,15 +3,17 @@
 
 //! Speech model catalog: what can be installed, where it lives, whether it's
 //! installed, and a resumable downloader that survives stalled connections.
+//! Built-ins and user-added links share one runtime registry.
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use transcribe_rs::SpeechModel;
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::moonshine::{MoonshineModel, MoonshineVariant, StreamingModel};
@@ -26,7 +28,7 @@ const STALL_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ATTEMPTS: u32 = 6;
 
 /// How much heat a model can put into a laptop during a run.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Heat {
     Light,
@@ -42,10 +44,19 @@ impl Heat {
             Heat::Heavy => "heavy",
         }
     }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "light" => Some(Heat::Light),
+            "moderate" => Some(Heat::Moderate),
+            "heavy" => Some(Heat::Heavy),
+            _ => None,
+        }
+    }
 }
 
-#[derive(Clone, Copy)]
-enum Engine {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Engine {
     Parakeet,
     MoonshineBase,
     MoonshineStreaming,
@@ -53,28 +64,39 @@ enum Engine {
     Whisper(WhisperKind),
     /// Parakeet V3 first, Whisper turbo when Parakeet clearly missed speech.
     Hybrid,
+    /// A model added by link; its layout decides which engine actually runs it.
+    CustomOnnx,
 }
 
-enum Source {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Source {
     /// A .tar.gz holding the model directory.
-    Archive(&'static str),
+    Archive(String),
     /// Individual files: (url, file name inside the model directory).
-    Files(&'static [(&'static str, &'static str)]),
+    Files(Vec<(String, String)>),
     /// whisper.cpp tools + model, managed by whisper.rs.
     Whisper(WhisperKind),
     /// Made of other entries; downloads whichever parts are missing.
     Parts,
+    /// One file at a URL, saved under `name`.
+    SingleFile(String, String),
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ModelInfo {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub description: &'static str,
-    pub languages: &'static str,
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub languages: String,
     pub size_mb: u32,
-    dir_name: &'static str,
+    dir_name: String,
     engine: Engine,
     source: Source,
+    /// Custom entries carry their own heat class and fallback wait estimate.
+    #[serde(default)]
+    heat_override: Option<Heat>,
+    #[serde(default)]
+    fallback_override: Option<f32>,
 }
 
 macro_rules! hf_v2 {
@@ -86,125 +108,240 @@ macro_rules! hf_v2 {
     };
 }
 
-pub const CATALOG: &[ModelInfo] = &[
-    ModelInfo {
-        id: "parakeet-v3",
-        name: "Parakeet V3",
-        description: "Best all-round accuracy. Recommended.",
-        languages: "English + 24 European languages",
-        size_mb: 478,
-        dir_name: "parakeet-tdt-0.6b-v3-int8",
-        engine: Engine::Parakeet,
-        source: Source::Archive("https://blob.handy.computer/parakeet-v3-int8.tar.gz"),
-    },
-    ModelInfo {
-        id: "hybrid",
-        name: "Hybrid: Parakeet + Whisper",
-        description: "Parakeet's speed for normal speech; whispers and missed words get a second pass with Whisper turbo (a few seconds).",
-        languages: "English",
-        size_mb: 478 + whisper::RUNTIME_MB + whisper::MODEL_MB,
-        dir_name: "",
-        engine: Engine::Hybrid,
-        source: Source::Parts,
-    },
-    ModelInfo {
-        id: "whisper-turbo",
-        name: "Whisper Large v3 Turbo",
-        description: "Best with whispers, accents and rare words, but slow on this PC's CPU: about 3-5 s per dictation.",
-        languages: "English",
-        size_mb: whisper::RUNTIME_MB + whisper::MODEL_MB,
-        dir_name: "",
-        engine: Engine::Whisper(WhisperKind::Turbo),
-        source: Source::Whisper(WhisperKind::Turbo),
-    },
-    ModelInfo {
-        id: "whisper-tiny",
-        name: "Whisper Tiny",
-        description: "The smallest Whisper, and quick on any CPU. Multilingual - an experiment for Hinglish, so expect rough results.",
-        languages: "Multilingual (Hindi, English + 97 more)",
-        size_mb: whisper::RUNTIME_MB + whisper::TINY_MODEL_MB,
-        dir_name: "",
-        engine: Engine::Whisper(WhisperKind::Tiny),
-        source: Source::Whisper(WhisperKind::Tiny),
-    },
-    ModelInfo {
-        id: "hinglish-apex",
-        name: "Whisper Hinglish Apex",
-        description: "Fine-tuned for Hindi + English mixed speech; types romanized Hinglish directly (\"Main aaj subah office ja raha hoon\"). Slow like the turbo it's built on, and rough on pure English.",
-        languages: "Romanized Hinglish (Hindi + English)",
-        size_mb: whisper::RUNTIME_MB + whisper::APEX_MODEL_MB,
-        dir_name: "",
-        engine: Engine::Whisper(WhisperKind::HinglishApex),
-        source: Source::Whisper(WhisperKind::HinglishApex),
-    },
-    ModelInfo {
-        id: "hinglish-swift",
-        name: "Whisper Hinglish Swift",
-        description: "Small and quick, types romanized Hinglish the same way. Rougher than Apex on noisy audio, and rough on pure English.",
-        languages: "Romanized Hinglish (Hindi + English)",
-        size_mb: whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB,
-        dir_name: "",
-        engine: Engine::Whisper(WhisperKind::HinglishSwift),
-        source: Source::Whisper(WhisperKind::HinglishSwift),
-    },
-    ModelInfo {
-        id: "parakeet-v2",
-        name: "Parakeet V2",
-        description: "English-only, slightly more accurate on English than V3.",
-        languages: "English",
-        size_mb: 631,
-        dir_name: "parakeet-tdt-0.6b-v2-int8",
-        engine: Engine::Parakeet,
-        source: Source::Files(&[
-            (hf_v2!("encoder-model.int8.onnx"), "encoder-model.int8.onnx"),
-            (
-                hf_v2!("decoder_joint-model.int8.onnx"),
-                "decoder_joint-model.int8.onnx",
-            ),
-            (hf_v2!("nemo128.onnx"), "nemo128.onnx"),
-            (hf_v2!("vocab.txt"), "vocab.txt"),
-        ]),
-    },
-    ModelInfo {
-        id: "moonshine-base",
-        name: "Moonshine Base",
-        description: "Small and fast. A little less accurate than Parakeet.",
-        languages: "English",
-        size_mb: 55,
-        dir_name: "moonshine-base",
-        engine: Engine::MoonshineBase,
-        source: Source::Archive("https://blob.handy.computer/moonshine-base.tar.gz"),
-    },
-    ModelInfo {
-        id: "moonshine-tiny",
-        name: "Moonshine Tiny",
-        description: "Smallest and fastest. Good for older or busy PCs.",
-        languages: "English",
-        size_mb: 31,
-        dir_name: "moonshine-tiny-streaming-en",
-        engine: Engine::MoonshineStreaming,
-        source: Source::Archive("https://blob.handy.computer/moonshine-tiny-streaming-en.tar.gz"),
-    },
-];
+/// The models shipped with the app. Custom links are added on top at runtime.
+pub static BUILTIN: LazyLock<Vec<ModelInfo>> = LazyLock::new(builtin);
+
+fn builtin() -> Vec<ModelInfo> {
+    vec![
+        ModelInfo {
+            id: "parakeet-v3".into(),
+            name: "Parakeet V3".into(),
+            description: "Best all-round accuracy. Recommended.".into(),
+            languages: "English + 24 European languages".into(),
+            size_mb: 478,
+            dir_name: "parakeet-tdt-0.6b-v3-int8".into(),
+            engine: Engine::Parakeet,
+            source: Source::Archive("https://blob.handy.computer/parakeet-v3-int8.tar.gz".into()),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "hybrid".into(),
+            name: "Hybrid: Parakeet + Whisper".into(),
+            description: "Parakeet's speed for normal speech; whispers and missed words get a second pass with Whisper turbo (a few seconds).".into(),
+            languages: "English".into(),
+            size_mb: 478 + whisper::RUNTIME_MB + whisper::MODEL_MB,
+            dir_name: String::new(),
+            engine: Engine::Hybrid,
+            source: Source::Parts,
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "whisper-turbo".into(),
+            name: "Whisper Large v3 Turbo".into(),
+            description: "Best with whispers, accents and rare words, but slow on this PC's CPU: about 3-5 s per dictation.".into(),
+            languages: "English".into(),
+            size_mb: whisper::RUNTIME_MB + whisper::MODEL_MB,
+            dir_name: String::new(),
+            engine: Engine::Whisper(WhisperKind::Turbo),
+            source: Source::Whisper(WhisperKind::Turbo),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "whisper-tiny".into(),
+            name: "Whisper Tiny".into(),
+            description: "The smallest Whisper, and quick on any CPU. Multilingual - an experiment for Hinglish, so expect rough results.".into(),
+            languages: "Multilingual (Hindi, English + 97 more)".into(),
+            size_mb: whisper::RUNTIME_MB + whisper::TINY_MODEL_MB,
+            dir_name: String::new(),
+            engine: Engine::Whisper(WhisperKind::Tiny),
+            source: Source::Whisper(WhisperKind::Tiny),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "hinglish-apex".into(),
+            name: "Whisper Hinglish Apex".into(),
+            description: "Fine-tuned for Hindi + English mixed speech; types romanized Hinglish directly (\"Main aaj subah office ja raha hoon\"). Slow like the turbo it's built on, and rough on pure English.".into(),
+            languages: "Romanized Hinglish (Hindi + English)".into(),
+            size_mb: whisper::RUNTIME_MB + whisper::APEX_MODEL_MB,
+            dir_name: String::new(),
+            engine: Engine::Whisper(WhisperKind::HinglishApex),
+            source: Source::Whisper(WhisperKind::HinglishApex),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "hinglish-swift".into(),
+            name: "Whisper Hinglish Swift".into(),
+            description: "Small and quick, types romanized Hinglish the same way. Rougher than Apex on noisy audio, and rough on pure English.".into(),
+            languages: "Romanized Hinglish (Hindi + English)".into(),
+            size_mb: whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB,
+            dir_name: String::new(),
+            engine: Engine::Whisper(WhisperKind::HinglishSwift),
+            source: Source::Whisper(WhisperKind::HinglishSwift),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "parakeet-v2".into(),
+            name: "Parakeet V2".into(),
+            description: "English-only, slightly more accurate on English than V3.".into(),
+            languages: "English".into(),
+            size_mb: 631,
+            dir_name: "parakeet-tdt-0.6b-v2-int8".into(),
+            engine: Engine::Parakeet,
+            source: Source::Files(vec![
+                (hf_v2!("encoder-model.int8.onnx").into(), "encoder-model.int8.onnx".into()),
+                (hf_v2!("decoder_joint-model.int8.onnx").into(), "decoder_joint-model.int8.onnx".into()),
+                (hf_v2!("nemo128.onnx").into(), "nemo128.onnx".into()),
+                (hf_v2!("vocab.txt").into(), "vocab.txt".into()),
+            ]),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "moonshine-base".into(),
+            name: "Moonshine Base".into(),
+            description: "Small and fast. A little less accurate than Parakeet.".into(),
+            languages: "English".into(),
+            size_mb: 55,
+            dir_name: "moonshine-base".into(),
+            engine: Engine::MoonshineBase,
+            source: Source::Archive("https://blob.handy.computer/moonshine-base.tar.gz".into()),
+            heat_override: None,
+            fallback_override: None,
+        },
+        ModelInfo {
+            id: "moonshine-tiny".into(),
+            name: "Moonshine Tiny".into(),
+            description: "Smallest and fastest. Good for older or busy PCs.".into(),
+            languages: "English".into(),
+            size_mb: 31,
+            dir_name: "moonshine-tiny-streaming-en".into(),
+            engine: Engine::MoonshineStreaming,
+            source: Source::Archive("https://blob.handy.computer/moonshine-tiny-streaming-en.tar.gz".into()),
+            heat_override: None,
+            fallback_override: None,
+        },
+    ]
+}
+
+/// Built-ins plus the user's saved links, shared app-wide.
+pub struct Registry {
+    models: Vec<Arc<ModelInfo>>,
+}
+
+impl Registry {
+    pub fn load() -> Self {
+        Self::load_from(&crate::settings::app_root())
+    }
+
+    /// Loads built-ins and any valid custom entries under `root`. A corrupt
+    /// file drops only the custom entries; built-ins always survive.
+    pub fn load_from(root: &Path) -> Self {
+        let mut models: Vec<Arc<ModelInfo>> = BUILTIN.iter().cloned().map(Arc::new).collect();
+        let path = root.join("custom_models.json");
+        if let Ok(text) = fs::read_to_string(&path) {
+            match serde_json::from_str::<Vec<ModelInfo>>(&text) {
+                Ok(custom) => models.extend(custom.into_iter().map(Arc::new)),
+                Err(e) => log::warn!("Skipping invalid custom models: {e}"),
+            }
+        }
+        Self { models }
+    }
+
+    pub fn all(&self) -> &[Arc<ModelInfo>] {
+        &self.models
+    }
+
+    pub fn find(&self, id: &str) -> Option<Arc<ModelInfo>> {
+        self.models.iter().find(|m| m.id == id).cloned()
+    }
+}
+
+static REGISTRY: OnceLock<RwLock<Registry>> = OnceLock::new();
+
+fn registry() -> &'static RwLock<Registry> {
+    REGISTRY.get_or_init(|| RwLock::new(Registry::load()))
+}
+
+pub fn all() -> Vec<Arc<ModelInfo>> {
+    registry().read().unwrap().all().to_vec()
+}
+
+pub fn find(id: &str) -> Option<Arc<ModelInfo>> {
+    registry().read().unwrap().find(id)
+}
+
+/// Re-reads `custom_models.json` after an add or remove.
+pub fn reload_registry() {
+    *registry().write().unwrap() = Registry::load();
+}
+
+impl ModelInfo {
+    /// A starting point for a user-added model. The downloader fills in the
+    /// source and layout before it is saved.
+    pub fn custom(id: &str, name: &str, heat: Heat, fallback_ms_per_s: f32) -> Self {
+        Self {
+            id: id.into(),
+            name: name.into(),
+            description: String::new(),
+            languages: String::new(),
+            size_mb: 0,
+            dir_name: format!("custom-{}", short_hash(id)),
+            engine: Engine::CustomOnnx,
+            source: Source::SingleFile(String::new(), "model.onnx".into()),
+            heat_override: Some(heat),
+            fallback_override: Some(fallback_ms_per_s),
+        }
+    }
+
+    /// Adds the concrete download layout to a custom entry.
+    pub fn with_source(mut self, source: Source) -> Self {
+        self.source = source;
+        self
+    }
+
+    /// Sets the engine a custom entry will load with.
+    pub fn with_engine(mut self, engine: Engine) -> Self {
+        self.engine = engine;
+        self
+    }
+
+    pub fn with_dir(mut self, dir_name: String) -> Self {
+        self.dir_name = dir_name;
+        self
+    }
+
+    pub fn with_details(mut self, description: String, languages: String, size_mb: u32) -> Self {
+        self.description = description;
+        self.languages = languages;
+        self.size_mb = size_mb;
+        self
+    }
+}
+
+/// Short stable id for a custom model's directory name.
+fn short_hash(text: &str) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in text.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
 
 impl ModelInfo {
     /// Whether this OS can run the model. The Whisper engine (whisper.cpp
-    /// binaries) is Windows-only for now; Parakeet and Moonshine run through
-    /// ONNX Runtime everywhere.
+    /// binaries) is Windows-only for now; ONNX models run everywhere.
     pub fn available_here(&self) -> bool {
         !self.uses_whisper() || cfg!(windows)
     }
 }
 
-pub fn find(id: &str) -> Option<&'static ModelInfo> {
-    CATALOG.iter().find(|m| m.id == id)
-}
-
-fn parakeet_v3() -> &'static ModelInfo {
-    find("parakeet-v3").expect("parakeet-v3 in catalog")
-}
-
-/// Ids of entries that `id` is built from (deleting those would break it).
 pub fn parts_of(id: &str) -> &'static [&'static str] {
     match id {
         "hybrid" => &["parakeet-v3", "whisper-turbo"],
@@ -218,16 +355,16 @@ pub(crate) fn models_root() -> PathBuf {
 
 impl ModelInfo {
     pub fn dir(&self) -> PathBuf {
-        models_root().join(self.dir_name)
+        models_root().join(&self.dir_name)
     }
 
     pub fn is_installed(&self) -> bool {
-        match self.engine {
-            Engine::Whisper(kind) => whisper::is_installed(kind),
+        match &self.engine {
+            Engine::Whisper(kind) => whisper::is_installed(*kind),
             Engine::Hybrid => {
                 parakeet_v3().is_installed() && whisper::is_installed(WhisperKind::Turbo)
             }
-            _ => has_required_files(self.engine, &self.dir()),
+            _ => has_required_files(&self.engine, &self.dir()),
         }
     }
 
@@ -240,12 +377,16 @@ impl ModelInfo {
     /// The cost of running this model on a laptop. Apex and Turbo are
     /// large Whisper models; Hybrid can fall back to one on the CPU.
     pub fn heat(&self) -> Heat {
-        match self.engine {
+        if let Some(heat) = self.heat_override {
+            return heat;
+        }
+        match &self.engine {
             Engine::Parakeet | Engine::MoonshineBase | Engine::MoonshineStreaming => Heat::Light,
             Engine::Whisper(WhisperKind::Tiny) => Heat::Light,
             Engine::Whisper(WhisperKind::HinglishSwift) => Heat::Moderate,
             Engine::Whisper(WhisperKind::Turbo | WhisperKind::HinglishApex) => Heat::Heavy,
             Engine::Hybrid => Heat::Heavy,
+            Engine::CustomOnnx => Heat::Moderate,
         }
     }
 
@@ -256,7 +397,10 @@ impl ModelInfo {
     /// Fallback wait estimate in milliseconds per audio second, used until
     /// this PC has measured the model itself.
     pub fn fallback_ms_per_s(&self, on_gpu: bool) -> f32 {
-        match self.engine {
+        if let Some(ms) = self.fallback_override {
+            return ms;
+        }
+        match &self.engine {
             Engine::Parakeet => 160.0,
             Engine::MoonshineBase | Engine::MoonshineStreaming => 110.0,
             Engine::Whisper(WhisperKind::Tiny) => 260.0,
@@ -281,12 +425,13 @@ impl ModelInfo {
                     2_800.0
                 }
             }
+            Engine::CustomOnnx => 1_000.0,
         }
     }
 
     pub fn load(&self) -> Result<Box<dyn SpeechModel + Send>> {
         let dir = self.dir();
-        let model: Box<dyn SpeechModel + Send> = match self.engine {
+        let model: Box<dyn SpeechModel + Send> = match &self.engine {
             Engine::Parakeet => Box::new(
                 ParakeetModel::load(&dir, &Quantization::Int8).map_err(|e| anyhow!("{e}"))?,
             ),
@@ -303,18 +448,21 @@ impl ModelInfo {
                         .map_err(|e| anyhow!("{e}"))?,
                 )
             }
-            Engine::Whisper(kind) => whisper::load(kind)?,
+            Engine::Whisper(kind) => whisper::load(*kind)?,
             Engine::Hybrid => Box::new(whisper::Hybrid::new(
                 parakeet_v3().load()?,
                 whisper::load(WhisperKind::Turbo)?,
             )),
+            Engine::CustomOnnx => {
+                bail!("This model's layout isn't supported by the offline engine yet")
+            }
         };
         Ok(model)
     }
 
     pub fn remove(&self) -> Result<()> {
-        match self.engine {
-            Engine::Whisper(kind) => return whisper::remove(kind),
+        match &self.engine {
+            Engine::Whisper(kind) => return whisper::remove(*kind),
             Engine::Hybrid => {
                 bail!("Hybrid uses Parakeet V3 and Whisper turbo; delete those instead")
             }
@@ -367,9 +515,21 @@ impl ModelInfo {
                     })?;
                     finished += (*size).max(fs::metadata(&dest).map(|m| m.len()).unwrap_or(0));
                 }
-                if !has_required_files(self.engine, &staging) {
+                if !has_required_files(&self.engine, &staging) {
                     bail!("Downloaded files are incomplete");
                 }
+                let target = self.dir();
+                let _ = fs::remove_dir_all(&target);
+                fs::rename(&staging, &target)?;
+            }
+            Source::SingleFile(url, name) => {
+                if url.is_empty() {
+                    bail!("This model has no download URL");
+                }
+                let staging = models_root().join(format!("{}.part", self.dir_name));
+                fs::create_dir_all(&staging)?;
+                let dest = staging.join(name);
+                fetch_resumable(&client, url, &dest, progress)?;
                 let target = self.dir();
                 let _ = fs::remove_dir_all(&target);
                 fs::rename(&staging, &target)?;
@@ -411,7 +571,7 @@ impl ModelInfo {
             .unpack(&staging)
             .context("Failed to unpack model archive")?;
 
-        let found = find_model_dir(self.engine, &staging)
+        let found = find_model_dir(&self.engine, &staging)
             .ok_or_else(|| anyhow!("Archive doesn't contain the expected model files"))?;
         let target = self.dir();
         let _ = fs::remove_dir_all(&target);
@@ -428,7 +588,7 @@ impl ModelInfo {
     }
 }
 
-fn has_required_files(engine: Engine, dir: &Path) -> bool {
+fn has_required_files(engine: &Engine, dir: &Path) -> bool {
     let has = |name: &str| dir.join(name).is_file();
     match engine {
         Engine::Parakeet => {
@@ -448,11 +608,22 @@ fn has_required_files(engine: Engine, dir: &Path) -> bool {
         Engine::MoonshineStreaming => {
             has("encoder.onnx") && has("decoder.onnx") && has("tokenizer.json")
         }
+        Engine::CustomOnnx => {
+            // A downloaded single-file model is installed once its directory
+            // holds at least one .onnx file.
+            fs::read_dir(dir)
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .any(|e| e.path().extension().is_some_and(|x| x == "onnx"))
+                })
+                .unwrap_or(false)
+        }
         Engine::Whisper(_) | Engine::Hybrid => false,
     }
 }
 
-fn find_model_dir(engine: Engine, dir: &Path) -> Option<PathBuf> {
+fn find_model_dir(engine: &Engine, dir: &Path) -> Option<PathBuf> {
     if has_required_files(engine, dir) {
         return Some(dir.to_path_buf());
     }
@@ -543,12 +714,16 @@ fn fetch_once(
     Ok(())
 }
 
+fn parakeet_v3() -> Arc<ModelInfo> {
+    find(DEFAULT_MODEL).expect("parakeet-v3 in catalog")
+}
+
 /// The model the user picked, falling back to the default.
-pub fn selected_model() -> &'static ModelInfo {
-    crate::settings::load()
+pub fn selected_model() -> Arc<ModelInfo> {
+    let id = crate::settings::load()
         .model
-        .and_then(|id| find(&id))
-        .unwrap_or_else(|| find(DEFAULT_MODEL).expect("default model in catalog"))
+        .unwrap_or_else(|| DEFAULT_MODEL.to_owned());
+    find(&id).unwrap_or_else(parakeet_v3)
 }
 
 #[cfg(test)]
@@ -591,6 +766,37 @@ mod tests {
             Engine::Whisper(WhisperKind::HinglishSwift)
         ));
         assert_eq!(swift.size_mb, whisper::RUNTIME_MB + whisper::SWIFT_MODEL_MB);
+    }
+
+    fn temp_root(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("sruthi-registry-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn builtin_and_custom_entries_share_one_registry() {
+        let reg = Registry::load();
+        assert!(reg.find("parakeet-v3").is_some());
+    }
+
+    #[test]
+    fn corrupt_custom_file_is_skipped() {
+        let root = temp_root("corrupt");
+        fs::write(root.join("custom_models.json"), "{ not json").unwrap();
+        let reg = Registry::load_from(&root);
+        assert!(reg.find("parakeet-v3").is_some());
+        assert_eq!(reg.all().len(), BUILTIN.len());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn custom_heat_and_eta_survive_the_owned_conversion() {
+        let entry = ModelInfo::custom("custom-x", "Custom", Heat::Heavy, 900.0);
+        assert_eq!(entry.heat(), Heat::Heavy);
+        assert_eq!(entry.fallback_ms_per_s(false), 900.0);
     }
 
     /// Runs a real model on a WAV file. Needs the model installed, so it's

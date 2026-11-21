@@ -67,10 +67,10 @@ enum ModelState {
 
 #[derive(Clone, Serialize)]
 struct ModelEntry {
-    id: &'static str,
-    name: &'static str,
-    description: &'static str,
-    languages: &'static str,
+    id: String,
+    name: String,
+    description: String,
+    languages: String,
     size_mb: u32,
     installed: bool,
     /// False when this OS can't run the model (Whisper models off Windows).
@@ -122,10 +122,10 @@ struct Status {
     /// State of the active model.
     model: ModelState,
     detail: Option<String>,
-    active: &'static str,
+    active: String,
     models: Vec<ModelEntry>,
     /// Model currently downloading, if any.
-    downloading: Option<&'static str>,
+    downloading: Option<String>,
     overlay: OverlayPosition,
     smart: bool,
     /// Script for pasted text: latin | native.
@@ -294,14 +294,14 @@ fn sync_cloud(app: &AppHandle) {
 
 #[derive(Clone, Serialize)]
 struct DownloadProgress {
-    id: &'static str,
+    id: String,
     downloaded: u64,
     total: u64,
 }
 
 struct Inner {
-    active: &'static model::ModelInfo,
-    downloading: Option<&'static str>,
+    active: Arc<model::ModelInfo>,
+    downloading: Option<String>,
     model_state: ModelState,
     detail: Option<String>,
     history: Vec<recordings::Entry>,
@@ -404,8 +404,8 @@ impl AppState {
         Status {
             model: inner.model_state,
             detail: inner.detail.clone(),
-            active: inner.active.id,
-            models: model::CATALOG
+            active: inner.active.id.clone(),
+            models: model::all()
                 .iter()
                 .map(|m| {
                     let will_use_gpu = if m.id == inner.active.id && m.uses_whisper() {
@@ -415,15 +415,15 @@ impl AppState {
                             && saved.device != settings::Device::Cpu
                             && whisper::runtime_vulkan_installed()
                     };
-                    let measured = measured.get(m.id);
+                    let measured = measured.get(&m.id);
                     let ms_per_s = measured
                         .map(|e| e.ms_per_s)
                         .unwrap_or_else(|| m.fallback_ms_per_s(will_use_gpu));
                     ModelEntry {
-                        id: m.id,
-                        name: m.name,
-                        description: m.description,
-                        languages: m.languages,
+                        id: m.id.clone(),
+                        name: m.name.clone(),
+                        description: m.description.clone(),
+                        languages: m.languages.clone(),
                         size_mb: m.size_mb,
                         installed: m.is_installed(),
                         supported: m.available_here(),
@@ -436,7 +436,7 @@ impl AppState {
                     }
                 })
                 .collect(),
-            downloading: inner.downloading,
+            downloading: inner.downloading.clone(),
             overlay: settings::load().overlay,
             smart: settings::load().smart,
             script: saved.script.label(),
@@ -488,7 +488,7 @@ impl AppState {
             languages: saved.languages.clone(),
             onboarding: onboarding::needs_onboarding(
                 saved.onboarded,
-                model::CATALOG.iter().any(|m| m.is_installed()),
+                model::all().iter().any(|m| m.is_installed()),
             ),
             thermal: thermal::snapshot(),
         }
@@ -513,7 +513,7 @@ fn set_model_state(app: &AppHandle, model_state: ModelState, detail: Option<Stri
 /// picked a different model while it was loading. `interactive` marks a
 /// load the user asked for (selection, download finish, device switch) —
 /// those may pop the window open when the memory gate has to ask first.
-fn load_model(app: AppHandle, info: &'static model::ModelInfo, interactive: bool) {
+fn load_model(app: AppHandle, info: Arc<model::ModelInfo>, interactive: bool) {
     *app.state::<AppState>().engine.lock().unwrap() = None;
     set_model_state(&app, ModelState::Loading, None);
     thread::spawn(move || {
@@ -706,7 +706,7 @@ fn set_device(app: AppHandle, device: settings::Device) -> Result<(), String> {
     saved.device = device;
     settings::save(&saved).map_err(|e| e.to_string())?;
     emit_status(&app);
-    let active = app.state::<AppState>().inner.lock().unwrap().active;
+    let active = app.state::<AppState>().inner.lock().unwrap().active.clone();
     load_model(app, active, true);
     Ok(())
 }
@@ -737,7 +737,7 @@ fn download_gpu_runtime(app: AppHandle) -> Result<(), String> {
                 let _ = app.emit(
                     "download-progress",
                     DownloadProgress {
-                        id: "gpu-runtime",
+                        id: "gpu-runtime".to_owned(),
                         downloaded,
                         total,
                     },
@@ -749,7 +749,7 @@ fn download_gpu_runtime(app: AppHandle) -> Result<(), String> {
         match result {
             Ok(()) => {
                 emit_status(&app);
-                let active = state.inner.lock().unwrap().active;
+                let active = state.inner.lock().unwrap().active.clone();
                 if active.uses_whisper() {
                     load_model(app, active, true);
                 }
@@ -1238,11 +1238,11 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         timing::set_start_mode(&session.start_detail());
     }
 
-    let active = app.state::<AppState>().inner.lock().unwrap().active;
+    let active = app.state::<AppState>().inner.lock().unwrap().active.clone();
     let speech_guess = session.audio_secs();
     // Watch the final transcription, not the recording. If the machine is
     // still cooling, refuse before touching the model.
-    let _job = thermal::begin_job(active.id, speech_guess, active.is_heavy())
+    let _job = thermal::begin_job(&active.id, speech_guess, active.is_heavy())
         .map_err(anyhow::Error::msg)?;
     let backend = if active.uses_whisper() && whisper::gpu_in_use() {
         "gpu"
@@ -1252,7 +1252,7 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         "onnx"
     };
     if speech_guess >= 1.0 {
-        let ms_per_s = perf::estimate(active.id)
+        let ms_per_s = perf::estimate(&active.id)
             .map(|e| e.ms_per_s)
             .unwrap_or_else(|| active.fallback_ms_per_s(backend == "gpu"));
         let eta = (ms_per_s * speech_guess / 1000.0).max(0.5);
@@ -1338,9 +1338,9 @@ fn transcribe_and_paste(app: &AppHandle, session: dictation::Session) -> anyhow:
         // A stopped or empty run is not representative; successful runs
         // teach the next estimate.
         if !outcome.text.is_empty() && !thermal::stop_requested() {
-            perf::record(active.id, speech_s, released.elapsed(), backend);
+            perf::record(&active.id, speech_s, released.elapsed(), backend);
         }
-        timing::write(app_kind, active.id, backend, speech_s, released.elapsed());
+        timing::write(app_kind, &active.id, backend, speech_s, released.elapsed());
     }
 
     // Keep the recording (even when nothing was heard, to help tune).
@@ -1424,12 +1424,12 @@ fn reset_usage(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn lookup(id: &str) -> Result<&'static model::ModelInfo, String> {
+fn lookup(id: &str) -> Result<Arc<model::ModelInfo>, String> {
     model::find(id).ok_or_else(|| format!("Unknown model: {id}"))
 }
 
 /// A model this OS can actually run (Whisper models are Windows-only for now).
-fn lookup_supported(id: &str) -> Result<&'static model::ModelInfo, String> {
+fn lookup_supported(id: &str) -> Result<Arc<model::ModelInfo>, String> {
     let info = lookup(id)?;
     if info.available_here() {
         Ok(info)
@@ -1449,10 +1449,10 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
     {
         let state = app.state::<AppState>();
         let mut inner = state.inner.lock().unwrap();
-        if let Some(other) = inner.downloading {
+        if let Some(other) = &inner.downloading {
             return Err(format!("Already downloading {other}"));
         }
-        inner.downloading = Some(info.id);
+        inner.downloading = Some(info.id.clone());
         if inner.active.id == info.id {
             inner.model_state = ModelState::Downloading;
             inner.detail = None;
@@ -1474,7 +1474,7 @@ fn download_model(app: AppHandle, id: String) -> Result<(), String> {
                 let _ = app.emit(
                     "download-progress",
                     DownloadProgress {
-                        id: info.id,
+                        id: info.id.clone(),
                         downloaded,
                         total,
                     },
@@ -1526,11 +1526,11 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
     if !info.is_installed() {
         return Err(format!("Download {} first", info.name));
     }
-    cooling_check(info)?;
+    cooling_check(&info)?;
     let mut saved = settings::load();
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;
-    app.state::<AppState>().inner.lock().unwrap().active = info;
+    app.state::<AppState>().inner.lock().unwrap().active = info.clone();
     load_model(app, info, true);
     Ok(())
 }
@@ -1541,11 +1541,11 @@ fn select_model(app: AppHandle, id: String) -> Result<(), String> {
 #[tauri::command]
 fn choose_model(app: AppHandle, id: String) -> Result<(), String> {
     let info = lookup_supported(&id)?;
-    cooling_check(info)?;
+    cooling_check(&info)?;
     let mut saved = settings::load();
     saved.model = Some(info.id.to_string());
     settings::save(&saved).map_err(|e| e.to_string())?;
-    app.state::<AppState>().inner.lock().unwrap().active = info;
+    app.state::<AppState>().inner.lock().unwrap().active = info.clone();
     if info.is_installed() {
         load_model(app, info, true);
     } else {
@@ -1591,13 +1591,13 @@ fn delete_model(app: AppHandle, id: String) -> Result<(), String> {
         if inner.active.id == info.id {
             return Err("Switch to another model before deleting this one".into());
         }
-        if model::parts_of(inner.active.id).contains(&info.id) {
+        if model::parts_of(&inner.active.id).contains(&info.id.as_str()) {
             return Err(format!(
                 "{} is in use by {}; switch models first",
                 info.name, inner.active.name
             ));
         }
-        if inner.downloading == Some(info.id) {
+        if inner.downloading.as_ref() == Some(&info.id) {
             return Err("Wait for the download to finish".into());
         }
     }
@@ -1825,7 +1825,7 @@ fn download_llm(app: AppHandle, id: String) -> Result<(), String> {
                 let _ = app.emit(
                     "llm-progress",
                     DownloadProgress {
-                        id: info.id,
+                        id: info.id.to_owned(),
                         downloaded,
                         total,
                     },
@@ -1962,7 +1962,7 @@ struct RerunResult {
 fn with_engine<T>(
     app: &AppHandle,
     model_id: &str,
-    work: impl FnOnce(&dictation::Engine, &'static model::ModelInfo) -> anyhow::Result<T>,
+    work: impl FnOnce(&dictation::Engine, Arc<model::ModelInfo>) -> anyhow::Result<T>,
 ) -> Result<T, String> {
     let info = model::find(model_id).ok_or("That model isn't in the catalog")?;
     if !info.is_installed() {
@@ -2080,7 +2080,7 @@ async fn run_benchmark(
         let mut first_error = None;
         let mut any_new = false;
         for (step, model_id) in models.iter().enumerate() {
-            let name = model::find(model_id).map_or(model_id.as_str(), |m| m.name);
+            let name = model::find(model_id).map_or(model_id.to_owned(), |m| m.name.clone());
             let _ = app.emit(
                 "benchmark-progress",
                 BenchmarkProgress {
@@ -2932,7 +2932,7 @@ pub fn run() {
             // Someone who already has a model is not new: remember that, so
             // deleting every model later never brings the setup back.
             let saved = settings::load();
-            if saved.onboarded.is_none() && model::CATALOG.iter().any(|m| m.is_installed()) {
+            if saved.onboarded.is_none() && model::all().iter().any(|m| m.is_installed()) {
                 let _ = settings::save(&settings::Settings {
                     onboarded: Some(true),
                     ..saved
@@ -2940,7 +2940,7 @@ pub fn run() {
             }
 
             thermal::start(handle.clone());
-            let active = app.state::<AppState>().inner.lock().unwrap().active;
+            let active = app.state::<AppState>().inner.lock().unwrap().active.clone();
             if active.is_installed() {
                 load_model(handle.clone(), active, false);
             }

@@ -50,7 +50,8 @@ pub const APEX_MODEL_MB: u32 = 834;
 pub const SWIFT_MODEL_MB: u32 = 57;
 
 /// Which of the whisper.cpp models a catalog entry loads.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum WhisperKind {
     /// Whisper large-v3-turbo: the "second opinion" model, pinned to English.
     Turbo,

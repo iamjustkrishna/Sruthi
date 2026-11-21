@@ -75,9 +75,9 @@ impl Default for Snapshot {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct JobInfo {
-    model: &'static str,
+    model: String,
     audio_s: f32,
     heavy: bool,
     started: Instant,
@@ -168,7 +168,7 @@ pub fn stop_requested() -> bool {
 
 /// Starts a guarded dictation. The returned value ends the job when it is
 /// dropped, including on an error path.
-pub fn begin_job(model: &'static str, audio_s: f32, heavy: bool) -> Result<Job, String> {
+pub fn begin_job(model: &str, audio_s: f32, heavy: bool) -> Result<Job, String> {
     if !ENABLED.load(Ordering::SeqCst) {
         // A stop from before the guard was switched off must not poison
         // every later run.
@@ -185,7 +185,7 @@ pub fn begin_job(model: &'static str, audio_s: f32, heavy: bool) -> Result<Job, 
     }
     STOP.store(false, Ordering::SeqCst);
     *JOB.lock().unwrap() = Some(JobInfo {
-        model,
+        model: model.to_owned(),
         audio_s,
         heavy,
         started: Instant::now(),
@@ -281,15 +281,16 @@ fn monitor(app: AppHandle) {
         let (load, clock_pct) = sampler.sample();
         let on_ac = ac_power();
         let now = Instant::now();
-        let job = *JOB.lock().unwrap();
+        let job = JOB.lock().unwrap().clone();
         let job_secs = job
+            .as_ref()
             .map(|j| now.saturating_duration_since(j.started).as_secs_f32())
             .unwrap_or(0.0);
-        let heavy = job.is_some_and(|j| j.heavy);
+        let heavy = job.as_ref().is_some_and(|j| j.heavy);
         // A sample every 30 s during a run, so a stopped or slow job has
         // evidence in thermal.log even when no threshold was crossed.
         if ticks % 15 == 0 {
-            if let Some(j) = job {
+            if let Some(j) = job.as_ref() {
                 note(&format!(
                     "sample load {load}% clock {clock_pct}% ac {} job {} {:.1}s",
                     if on_ac { "yes" } else { "no" },
@@ -333,7 +334,7 @@ fn monitor(app: AppHandle) {
 
         match classify(load, clock_pct, live.hot_streak, job_secs, heavy, on_ac) {
             Verdict::Hot(reason) => {
-                let detail = match job {
+                let detail = match &job {
                     Some(j) => format!(
                         "{reason}. Stopped {} on {:.1} s of speech to protect this PC.",
                         j.model, j.audio_s
@@ -348,7 +349,8 @@ fn monitor(app: AppHandle) {
 
                 note(&format!(
                     "hot: load {load}% clock {clock_pct}% job {}",
-                    job.map(|j| format!("{} {:.1}s", j.model, j.audio_s))
+                    job.as_ref()
+                        .map(|j| format!("{} {:.1}s", j.model, j.audio_s))
                         .unwrap_or_else(|| "none".into())
                 ));
                 if job.is_some() {
