@@ -1629,6 +1629,26 @@ fn set_smart(app: AppHandle, enabled: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Converts saved snippets once, skipping text already in the target script.
+fn convert_stored_snippets(
+    formatter: &format::Formatter,
+    snippets: &mut [format::snippets::Snippet],
+    script: script::Script,
+) {
+    for snippet in snippets.iter_mut() {
+        if snippet.text.trim().is_empty() {
+            continue;
+        }
+        if script == script::Script::Native && !script::needs_native_conversion(&snippet.text) {
+            continue;
+        }
+        let converted = formatter.script_apply(&snippet.text, script);
+        if !converted.trim().is_empty() && converted != snippet.text {
+            snippet.text = converted;
+        }
+    }
+}
+
 /// Changes the output script. New dictations use it immediately; our own
 /// stored snippets and recent references are converted, and a converted copy
 /// of the last pasted dictation goes to the clipboard. We never select-all in
@@ -1643,18 +1663,13 @@ fn set_script(app: AppHandle, script: script::Script) -> Result<(), String> {
     // A pass already in progress captured the old script at its start.
     state.formatter.set_script(script);
 
-    for snippet in &mut saved.snippets {
-        if snippet.text.trim().is_empty() {
-            continue;
-        }
-        let converted = state.formatter.script_apply(&snippet.text, script);
-        if !converted.trim().is_empty() {
-            snippet.text = converted;
-        }
-    }
+    convert_stored_snippets(&state.formatter, &mut saved.snippets, script);
     if let Err(e) = settings::save(&saved) {
         log::warn!("Couldn't save converted snippets: {e}");
     }
+    // The running formatter must use the converted snippets now, not after a
+    // restart — otherwise the next dictation still types the old text.
+    state.formatter.set_snippets(saved.snippets.clone());
 
     // Cap the qwen calls so a large history doesn't stall the window.
     let mut entries = recordings::load();
@@ -3025,7 +3040,25 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOTKEY_CANDIDATES, hotkey_ok_alone, parse_hotkey};
+    use super::{HOTKEY_CANDIDATES, convert_stored_snippets, hotkey_ok_alone, parse_hotkey};
+    use crate::format::Formatter;
+    use crate::format::snippets::Snippet;
+    use crate::script::Script;
+
+    #[test]
+    fn stored_snippets_convert_once_and_are_idempotent() {
+        let formatter = Formatter::default();
+        let mut snippets = vec![Snippet {
+            trigger: "x".into(),
+            text: "मैं गया".into(),
+            exact: true,
+        }];
+        convert_stored_snippets(&formatter, &mut snippets, Script::Latin);
+        assert_eq!(snippets[0].text, "main gaya");
+        // No qwen in this test: a second conversion must leave it alone.
+        convert_stored_snippets(&formatter, &mut snippets, Script::Native);
+        assert_eq!(snippets[0].text, "main gaya");
+    }
 
     #[test]
     fn parses_hotkey_labels_from_the_ui() {

@@ -84,7 +84,8 @@ fn independent_vowel(c: char) -> Option<&'static str> {
     Some(match c {
         'अ' | 'आ' => "a",
         'इ' | 'ई' => "i",
-        'उ' | 'ऊ' => "u",
+        'उ' => "u",
+        'ऊ' | 'ऑ' => "oo",
         'ऋ' => "ri",
         'ए' => "e",
         'ऐ' => "ai",
@@ -98,7 +99,8 @@ fn dependent_vowel(c: char) -> Option<&'static str> {
     Some(match c {
         'ा' => "a",
         'ि' | 'ी' => "i",
-        'ु' | 'ू' => "u",
+        'ु' => "u",
+        'ू' => "oo",
         'ृ' => "ri",
         'ो' => "o",
         'ौ' => "au",
@@ -148,6 +150,20 @@ pub fn to_latin(text: &str) -> String {
                 suppress_inherent = false;
             }
             '़' => {} // nukta: keep the consonant it modifies unchanged
+            'ँ' => {
+                // Candrabindu, common in Hindi (हूँ -> hoon).
+                out.push('n');
+                suppress_inherent = false;
+            }
+            '।' | '॥' => {
+                out.push('.');
+                suppress_inherent = false;
+            }
+            c if ('\u{0900}'..='\u{097F}').contains(&c) => {
+                // Any Devanagari mark we have no romanization for must be
+                // dropped, never leaked into "Latin" output.
+                suppress_inherent = false;
+            }
             _ => {
                 out.push(c);
                 suppress_inherent = false;
@@ -174,9 +190,19 @@ pub fn validate_native(reply: &str, original: &str) -> String {
     trimmed.to_owned()
 }
 
+/// True when `text` still needs a Latin→native pass. Text that already has
+/// Devanagari is already in the target script; re-converting it would let
+/// qwen drift saved phrases a little more on every toggle.
+pub fn needs_native_conversion(text: &str) -> bool {
+    !text.chars().any(|c| ('\u{0900}'..='\u{097F}').contains(&c))
+}
+
 /// Converts Latin text to native script via the local qwen model. Falls back
 /// to the original text when the model is missing, stopped, or misbehaves.
 pub fn to_native(text: &str, llm: Option<&LlmServer>) -> String {
+    if !needs_native_conversion(text) {
+        return text.to_owned();
+    }
     let Some(llm) = llm else {
         return text.to_owned();
     };
@@ -235,5 +261,23 @@ mod tests {
         assert_eq!(validate_native("", "main gaya"), "main gaya");
         assert_eq!(validate_native("   ", "main gaya"), "main gaya");
         assert_eq!(validate_native("मैं गया", "main gaya"), "मैं गया");
+    }
+
+    #[test]
+    fn to_latin_leaves_no_devanagari_characters() {
+        let out = to_latin("मैं office ja रहा हूँ और email भेजूँगा।");
+        assert!(
+            !out.chars().any(|c| ('\u{0900}'..='\u{097F}').contains(&c)),
+            "still Devanagari: {out}"
+        );
+        assert!(out.contains("hoon"), "candrabindu not converted: {out}");
+        assert!(out.ends_with('.'), "danda not converted: {out}");
+    }
+
+    #[test]
+    fn native_skips_text_already_in_devanagari() {
+        assert!(!needs_native_conversion("मैं गया"));
+        assert!(needs_native_conversion("main gaya"));
+        assert!(needs_native_conversion("office 2 main"));
     }
 }
