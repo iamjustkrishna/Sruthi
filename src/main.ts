@@ -40,6 +40,8 @@ interface ModelEntry {
   estimate_secs_per_min: number | null;
   /** True when the estimate comes from measured runs on this PC. */
   estimate_measured: boolean;
+  /** False for a pasted link whose ONNX layout can't be loaded offline. */
+  runnable: boolean;
 }
 
 interface ThermalStatus {
@@ -314,6 +316,8 @@ interface RowOptions {
   commands: { download: string; use: string; remove: string };
   /** A pasted link: removing it deletes only the row, never the files. */
   removeIsLinkOnly?: boolean;
+  /** False when the downloaded layout can't be loaded offline. */
+  runnable?: boolean;
   /** Asked before a run that may heat the PC. */
   confirmUse?: () => Promise<boolean>;
 }
@@ -355,6 +359,12 @@ function modelRow(o: RowOptions) {
     const b = button("Download", () => run(o.commands.download, { id: o.id }));
     b.disabled = o.downloading !== null;
     actions.append(b);
+  } else if (o.runnable === false) {
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "Downloaded · layout not supported";
+    tag.title = "This model's ONNX layout isn't supported by the offline engine yet";
+    actions.append(tag);
   } else if (o.active) {
     const tag = document.createElement("span");
     tag.className = "tag";
@@ -418,6 +428,7 @@ function renderModels(s: Status) {
           remove: m.id.startsWith("custom-") ? "remove_custom_model" : "delete_model",
         },
         removeIsLinkOnly: m.id.startsWith("custom-"),
+        runnable: m.runnable,
         confirmUse:
           m.heat === "heavy"
             ? () =>

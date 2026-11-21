@@ -243,11 +243,10 @@ impl Registry {
     /// file drops only the custom entries; built-ins always survive.
     pub fn load_from(root: &Path) -> Self {
         let mut models: Vec<Arc<ModelInfo>> = BUILTIN.iter().cloned().map(Arc::new).collect();
-        let path = root.join("custom_models.json");
-        if let Ok(text) = fs::read_to_string(&path) {
-            match serde_json::from_str::<Vec<ModelInfo>>(&text) {
-                Ok(custom) => models.extend(custom.into_iter().map(Arc::new)),
-                Err(e) => log::warn!("Skipping invalid custom models: {e}"),
+        for value in read_custom_values_from(root) {
+            match serde_json::from_value::<ModelInfo>(value) {
+                Ok(model) => models.push(Arc::new(model)),
+                Err(e) => log::warn!("Skipping invalid custom model entry: {e}"),
             }
         }
         Self { models }
@@ -351,14 +350,20 @@ fn custom_models_path() -> PathBuf {
     crate::settings::app_root().join("custom_models.json")
 }
 
-fn read_customs() -> Vec<ModelInfo> {
-    fs::read_to_string(custom_models_path())
+fn read_custom_values_from(root: &Path) -> Vec<serde_json::Value> {
+    fs::read_to_string(root.join("custom_models.json"))
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .and_then(|text| serde_json::from_str::<Vec<serde_json::Value>>(&text).ok())
         .unwrap_or_default()
 }
 
-fn write_customs(entries: &[ModelInfo]) -> Result<()> {
+fn read_custom_values() -> Vec<serde_json::Value> {
+    read_custom_values_from(&crate::settings::app_root())
+}
+
+/// Keeps unknown entries verbatim so a schema change or a hand-edited file
+/// cannot silently erase someone's models on the next save.
+fn write_custom_values(entries: &[serde_json::Value]) -> Result<()> {
     let root = crate::settings::app_root();
     fs::create_dir_all(&root)?;
     let tmp = root.join("custom_models.json.part");
@@ -377,7 +382,9 @@ fn model_layout(url: &str) -> Result<(Engine, Source), String> {
         .unwrap_or_default();
     let last = segments.last().copied().unwrap_or("");
     if last.ends_with(".tar.gz") {
-        return Ok((Engine::CustomOnnx, Source::Archive(url.to_owned())));
+        // An archive of model files is only useful if it holds a layout the
+        // offline engine recognises; extraction checks this.
+        return Ok((Engine::Parakeet, Source::Archive(url.to_owned())));
     }
     if last.ends_with(".onnx") {
         return Ok((
@@ -429,7 +436,20 @@ fn model_layout(url: &str) -> Result<(Engine, Source), String> {
         if files.is_empty() {
             return Err("No model files found at that Hugging Face repo".into());
         }
-        return Ok((Engine::CustomOnnx, Source::Files(files)));
+        // Parakeet's ONNX layout is the one layout we can load generically.
+        // Use it when the repo has the expected files, so a pasted link to a
+        // Parakeet-style repo is a real, runnable model.
+        let names: Vec<&str> = files.iter().map(|(_, n)| n.as_str()).collect();
+        let parakeet = names.iter().any(|n| n.starts_with("encoder-model"))
+            && names.iter().any(|n| n.starts_with("decoder_joint"))
+            && names.contains(&"nemo128.onnx")
+            && names.contains(&"vocab.txt");
+        let engine = if parakeet {
+            Engine::Parakeet
+        } else {
+            Engine::CustomOnnx
+        };
+        return Ok((engine, Source::Files(files)));
     }
     Err("That link doesn't point to an ONNX file, a model archive, or a Hugging Face repo".into())
 }
@@ -460,23 +480,23 @@ pub fn add_custom(url: &str, name: &str, heat: Heat) -> Result<Arc<ModelInfo>, S
             "Custom".into(),
             remote_size_mb(&url),
         );
-    let mut customs = read_customs();
-    customs.retain(|m| m.id != id);
-    customs.push(entry);
-    write_customs(&customs).map_err(|e| e.to_string())?;
+    let mut values = read_custom_values();
+    values.retain(|value| value["id"].as_str() != Some(id.as_str()));
+    values.push(serde_json::to_value(&entry).map_err(|e| e.to_string())?);
+    write_custom_values(&values).map_err(|e| e.to_string())?;
     reload_registry();
     find(&id).ok_or_else(|| "Custom model wasn't registered".into())
 }
 
 /// Removes a link from the registry metadata only — never the downloaded files.
 pub fn remove_custom(id: &str) -> Result<(), String> {
-    let mut customs = read_customs();
-    let before = customs.len();
-    customs.retain(|m| m.id != id);
-    if customs.len() == before {
+    let mut values = read_custom_values();
+    let before = values.len();
+    values.retain(|value| value["id"].as_str() != Some(id));
+    if values.len() == before {
         return Err("Custom model not found".into());
     }
-    write_customs(&customs).map_err(|e| e.to_string())?;
+    write_custom_values(&values).map_err(|e| e.to_string())?;
     reload_registry();
     Ok(())
 }
@@ -529,6 +549,12 @@ impl ModelInfo {
     /// used for the device row and the timing log.
     pub fn uses_whisper(&self) -> bool {
         matches!(self.engine, Engine::Whisper(_) | Engine::Hybrid)
+    }
+
+    /// Whether the offline engine can actually load this layout. Pasted links
+    /// with an unknown ONNX layout stay downloadable but cannot run.
+    pub fn runnable(&self) -> bool {
+        !matches!(self.engine, Engine::CustomOnnx)
     }
 
     /// The cost of running this model on a laptop. Apex and Turbo are
@@ -965,6 +991,31 @@ mod tests {
             u,
             "https://huggingface.co/org/repo/resolve/main/model.onnx?x=1"
         );
+    }
+
+    #[test]
+    fn one_bad_custom_entry_does_not_drop_the_others() {
+        let root = temp_root("partial");
+        let good = ModelInfo::custom("custom-good", "Good", Heat::Heavy, 900.0);
+        let text = format!(
+            "[{}, {{\"id\":\"broken\",\"engine\":\"not-an-engine\"}}]",
+            serde_json::to_string(&good).unwrap()
+        );
+        fs::write(root.join("custom_models.json"), text).unwrap();
+        let reg = Registry::load_from(&root);
+        assert!(reg.find("custom-good").is_some());
+        // The bad entry is kept on disk so a later save cannot erase it.
+        assert_eq!(read_custom_values_from(&root).len(), 2);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn custom_heat_and_eta_round_trip_through_json() {
+        let entry = ModelInfo::custom("custom-x", "Custom", Heat::Heavy, 900.0);
+        let json = serde_json::to_string(&entry).unwrap();
+        let back: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.heat(), Heat::Heavy);
+        assert_eq!(back.fallback_ms_per_s(false), 900.0);
     }
 
     #[test]

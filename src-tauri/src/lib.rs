@@ -83,6 +83,8 @@ struct ModelEntry {
     estimate_secs_per_min: Option<f32>,
     /// True when the estimate came from measured runs, not the fallback.
     estimate_measured: bool,
+    /// False for a pasted link whose ONNX layout the offline engine can't load.
+    runnable: bool,
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq)]
@@ -433,6 +435,7 @@ impl AppState {
                             (ms_per_s * 60.0 / 1000.0 * 10.0).round() / 10.0,
                         ),
                         estimate_measured: measured.is_some(),
+                        runnable: m.runnable(),
                     }
                 })
                 .collect(),
