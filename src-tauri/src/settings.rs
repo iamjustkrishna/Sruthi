@@ -108,6 +108,8 @@ pub struct Settings {
     pub cloud_models: HashMap<String, String>,
     /// Where the speech model runs: the graphics card, the CPU, or auto.
     pub device: Device,
+    /// Script for pasted text: Latin (default) or native Devanagari.
+    pub script: crate::script::Script,
     /// Stop a run and pause heavy models when this PC is under thermal
     /// stress. On by default: an unexpected shutdown is worse than a
     /// slower dictation.
@@ -141,6 +143,7 @@ impl Default for Settings {
             cloud_models: HashMap::new(),
             theme: Theme::default(),
             device: Device::default(),
+            script: crate::script::Script::default(),
             thermal: true,
             name: None,
             languages: Vec::new(),
@@ -201,6 +204,7 @@ mod tests {
         assert!(settings.languages.is_empty());
         assert_eq!(settings.model.as_deref(), Some("parakeet-v3"));
         assert!(settings.thermal);
+        assert_eq!(settings.script, crate::script::Script::Latin);
     }
 
     #[test]

@@ -19,6 +19,7 @@ mod paste;
 mod perf;
 mod process;
 mod recordings;
+mod script;
 mod secrets;
 mod settings;
 mod stats;
