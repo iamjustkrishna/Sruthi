@@ -35,6 +35,15 @@ jobs:
       - name: Type-check and build the frontend
         run: npm run build
 
+      # tauri-build validates bundle resources at compile time. The Windows
+      # resource list points at the DirectML.dll that ort-sys installs into the
+      # target directory; force ort-sys to run so the DLL exists even when the
+      # Rust cache restored its compiled output without the copied DLL.
+      - name: Refresh the ONNX Runtime DLLs
+        if: runner.os == 'Windows'
+        working-directory: src-tauri
+        run: cargo clean -p ort-sys
+
       - name: Run the Rust tests
         working-directory: src-tauri
         run: cargo test --release --lib
