@@ -9,6 +9,7 @@ import { appInfo, iconUrl } from "./appIcons";
 import sruthiLogo from "./assets/sruthi-logo.png";
 import { type DaySummary, initDayPicker, renderDayPicker } from "./dayPicker";
 import { initOnboarding } from "./onboarding";
+import { initResources } from "./resources";
 import { openShare } from "./shareSheet";
 import { fmtBytes, initStorage, refreshUsage, render as renderStorage, usage as audioUsage } from "./storage";
 
@@ -40,6 +41,8 @@ interface ModelEntry {
   estimate_secs_per_min: number | null;
   /** True when the estimate comes from measured runs on this PC. */
   estimate_measured: boolean;
+  /** Successful runs behind the measured estimate. */
+  estimate_runs: number;
   /** False for a pasted link whose ONNX layout can't be loaded offline. */
   runnable: boolean;
 }
@@ -715,6 +718,15 @@ function render(s: Status) {
   renderSuggestions(s);
   renderBenchmark(s);
   renderSnippets(s.snippets);
+  resources.setStatus({
+    activeModel: active?.name ?? null,
+    modelReady: s.model === "ready",
+    engineOnGpu: s.engine_on_gpu,
+    estimateSecsPerMin: active?.estimate_secs_per_min ?? null,
+    estimateMeasured: active?.estimate_measured ?? false,
+    estimateRuns: active?.estimate_runs ?? 0,
+    heat: active?.heat ?? "moderate",
+  });
 
   showHoldPhase(holdPhase);
 }
@@ -722,7 +734,7 @@ function render(s: Status) {
 // ---------------------------------------------------------------------------
 // Pages: the sidebar picks one; the window remembers it between launches
 
-const PAGES = ["home", "dictionary", "snippets", "models", "settings"] as const;
+const PAGES = ["home", "dictionary", "snippets", "models", "performance", "settings"] as const;
 type Page = (typeof PAGES)[number];
 
 const mainScroller = $("main");
@@ -735,6 +747,7 @@ function setPage(next: Page) {
     item.setAttribute("aria-current", p === next ? "page" : "false");
   }
   mainScroller.scrollTo({ top: 0 });
+  resources.setPage(next);
   try {
     localStorage.setItem("page", next);
   } catch {
@@ -745,6 +758,8 @@ function setPage(next: Page) {
 for (const p of PAGES) {
   $<HTMLButtonElement>(`nav-${p}`).addEventListener("click", () => setPage(p));
 }
+
+const resources = initResources();
 try {
   const saved = localStorage.getItem("page");
   if (PAGES.includes(saved as Page)) setPage(saved as Page);

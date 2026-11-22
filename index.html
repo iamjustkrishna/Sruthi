@@ -31,6 +31,10 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg>
           <span class="nav-label">Models</span>
         </button>
+        <button type="button" id="nav-performance" class="nav-item" data-page="performance" aria-current="false" title="Performance">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" /></svg>
+          <span class="nav-label">Performance</span>
+        </button>
         <span class="nav-spacer"></span>
         <div class="side-status">
           <span class="status-chip" id="status-chip" data-state="wait" role="status">
@@ -237,6 +241,43 @@
           </label>
         </div>
       </section>
+
+            <section class="card pulse-card" aria-labelledby="pulse-title">
+              <div class="pulse-head">
+                <h2 id="pulse-title">System pulse</h2>
+                <span class="live-pill" id="pulse-live" data-tone="off"><i aria-hidden="true"></i><span data-pill-label>Waiting</span></span>
+              </div>
+              <div class="pulse-rows">
+                <div class="pulse-row">
+                  <span class="pulse-label">GPU</span>
+                  <span class="pulse-bar"><i id="pulse-gpu-bar" class="pulse-fill gpu"></i></span>
+                  <b id="pulse-gpu">—</b>
+                  <span class="spark" data-spark="gpu" aria-hidden="true"></span>
+                </div>
+                <div class="pulse-row">
+                  <span class="pulse-label">VRAM</span>
+                  <span class="pulse-bar"><i id="pulse-vram-bar" class="pulse-fill vram"></i></span>
+                  <b id="pulse-vram">—</b>
+                  <span class="spark" data-spark="vram" aria-hidden="true"></span>
+                </div>
+                <div class="pulse-row">
+                  <span class="pulse-label">CPU</span>
+                  <span class="pulse-bar"><i id="pulse-cpu-bar" class="pulse-fill cpu"></i></span>
+                  <b id="pulse-cpu">—</b>
+                  <span class="spark" data-spark="cpu" aria-hidden="true"></span>
+                </div>
+                <div class="pulse-row">
+                  <span class="pulse-label">RAM</span>
+                  <span class="pulse-bar"><i id="pulse-ram-bar" class="pulse-fill ram"></i></span>
+                  <b id="pulse-ram">—</b>
+                  <span class="spark" data-spark="ram" aria-hidden="true"></span>
+                </div>
+              </div>
+              <div class="pulse-foot">
+                <span id="pulse-foot">Waiting for the first sample…</span>
+                <button type="button" class="link-btn" data-open-performance>Performance →</button>
+              </div>
+            </section>
 
             <section class="card" id="usage-card">
           <div class="card-head">
@@ -509,6 +550,158 @@
       </div>
         </section>
 
+        <!-- Performance -->
+        <section class="page" id="page-performance" aria-label="Performance" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <p class="eyebrow">System</p>
+              <h1>Performance</h1>
+              <p class="muted small">
+                Measured on this PC, once a second. Held in memory only; nothing is uploaded.
+              </p>
+            </div>
+            <div class="head-actions">
+              <span class="live-pill" id="perf-live" data-tone="off">
+                <i aria-hidden="true"></i><span data-pill-label>Waiting for counters</span>
+              </span>
+              <button type="button" id="perf-pause" class="ghost" aria-pressed="false">Pause</button>
+              <button type="button" id="perf-refresh" class="pill">Refresh</button>
+            </div>
+          </header>
+
+          <div class="metric-grid">
+            <article class="metric-card" style="--c: var(--sound)">
+              <div class="metric-head"><span>Graphics card</span><span class="metric-tag">GPU</span></div>
+              <div class="metric-value"><strong id="perf-gpu">—</strong><span id="perf-gpu-unit"></span></div>
+              <p class="metric-sub" id="perf-gpu-sub">Waiting for counters…</p>
+              <div class="spark" data-spark="gpu" aria-hidden="true"></div>
+              <p class="metric-foot" id="perf-gpu-foot">Waiting for samples</p>
+            </article>
+            <article class="metric-card" style="--c: var(--res-teal)">
+              <div class="metric-head"><span>Video memory</span><span class="metric-tag">VRAM</span></div>
+              <div class="metric-value"><strong id="perf-vram">—</strong><span id="perf-vram-unit"></span></div>
+              <p class="metric-sub" id="perf-vram-sub">Dedicated video memory</p>
+              <div class="spark" data-spark="vram" aria-hidden="true"></div>
+              <p class="metric-foot" id="perf-vram-foot">Waiting for samples</p>
+            </article>
+            <article class="metric-card" style="--c: var(--muted)">
+              <div class="metric-head"><span>Processor</span><span class="metric-tag">CPU</span></div>
+              <div class="metric-value"><strong id="perf-cpu">—</strong><span id="perf-cpu-unit"></span></div>
+              <p class="metric-sub" id="perf-cpu-sub">Waiting for counters…</p>
+              <div class="spark" data-spark="cpu" aria-hidden="true"></div>
+              <p class="metric-foot" id="perf-cpu-foot">Waiting for samples</p>
+            </article>
+            <article class="metric-card" style="--c: var(--warn)">
+              <div class="metric-head"><span>Memory</span><span class="metric-tag">RAM</span></div>
+              <div class="metric-value"><strong id="perf-ram">—</strong><span id="perf-ram-unit"></span></div>
+              <p class="metric-sub" id="perf-ram-sub">System memory</p>
+              <div class="spark" data-spark="ram" aria-hidden="true"></div>
+              <p class="metric-foot" id="perf-ram-foot">Waiting for samples</p>
+            </article>
+          </div>
+
+          <section class="card chart-card" aria-labelledby="chart-title">
+            <div class="chart-head">
+              <div>
+                <h2 id="chart-title">Last 60 seconds</h2>
+                <p class="muted small">GPU area, video memory, processor and system memory as percentages. Gaps mean a counter was unavailable.</p>
+              </div>
+              <div class="chart-legend" aria-hidden="true">
+                <span class="chart-key gpu"><i></i>GPU</span>
+                <span class="chart-key vram"><i></i>VRAM</span>
+                <span class="chart-key cpu"><i></i>CPU</span>
+                <span class="chart-key ram"><i></i>RAM</span>
+              </div>
+            </div>
+            <div class="chart-stage" id="perf-chart">
+              <p class="chart-empty" id="perf-chart-empty">Waiting for the first sample…</p>
+              <div id="perf-chart-plot"></div>
+              <div class="chart-tip" id="perf-chart-tip" hidden></div>
+            </div>
+            <div class="chart-foot">
+              <span id="perf-chart-run">No run recorded yet</span>
+              <span id="perf-chart-peak">Peak GPU —</span>
+              <span id="perf-chart-window">0s in memory</span>
+            </div>
+          </section>
+
+          <div class="perf-grid">
+            <section class="card engine-card" aria-labelledby="engine-title">
+              <div class="res-head">
+                <div><p class="eyebrow">Graphics</p><h2 id="engine-title">Who is using the GPU</h2></div>
+                <span class="res-tag" id="perf-engine-total">—</span>
+              </div>
+              <div class="split-bar" aria-hidden="true">
+                <i id="perf-engine-process" class="split-own"></i>
+                <i id="perf-engine-others" class="split-other"></i>
+              </div>
+              <div class="split-legend">
+                <span><i class="dot own"></i><span id="perf-engine-own">— Sruthi</span></span>
+                <span><i class="dot other"></i><span id="perf-engine-other">— other apps</span></span>
+              </div>
+              <div class="engine-list">
+                <div class="engine-row"><span>3D</span><span class="engine-track"><i id="engine-3d-bar"></i></span><b id="engine-3d">—</b></div>
+                <div class="engine-row"><span>Compute</span><span class="engine-track"><i id="engine-compute-bar"></i></span><b id="engine-compute">—</b></div>
+                <div class="engine-row"><span>Copy</span><span class="engine-track"><i id="engine-copy-bar"></i></span><b id="engine-copy">—</b></div>
+                <div class="engine-row"><span>Video</span><span class="engine-track"><i id="engine-video-bar"></i></span><b id="engine-video">—</b></div>
+              </div>
+              <p class="muted small res-note" id="perf-engine-note">Waiting for GPU engine counters…</p>
+            </section>
+
+            <section class="card heat-card" aria-labelledby="heat-title">
+              <div class="res-head">
+                <div><p class="eyebrow">Thermals</p><h2 id="heat-title">Heat guard</h2></div>
+                <span class="live-pill" id="perf-heat-pill" data-tone="off"><i aria-hidden="true"></i><span data-pill-label>Waiting</span></span>
+              </div>
+              <div class="heat-gauge" id="perf-heat-gauge">
+                <div class="heat-track" aria-hidden="true"><i></i><u class="warm"></u><u class="stop"></u></div>
+                <div class="heat-labels"><span>0%</span><span>Warm 88%</span><span>Guard 100%</span></div>
+              </div>
+              <p class="heat-pressure" id="perf-heat-pct">0% pressure</p>
+              <dl class="stat-grid">
+                <div><dt>CPU load</dt><dd id="perf-heat-load">—</dd></div>
+                <div><dt>Effective clock</dt><dd id="perf-heat-clock">—</dd></div>
+                <div><dt>Cooldown</dt><dd id="perf-heat-cooldown">—</dd></div>
+              </dl>
+              <label class="setting-row res-switch">
+                <span><strong>Stop a heavy run if this PC gets too hot</strong><span class="muted small">No temperature is invented; load and clock are the proxy.</span></span>
+                <span class="switch"><input type="checkbox" id="perf-thermal-toggle" aria-label="Heat guard" /><span class="slider"></span></span>
+              </label>
+              <p class="muted small res-note" id="perf-heat-message">Waiting for the heat guard…</p>
+            </section>
+
+            <section class="card runtime-card" aria-labelledby="runtime-title">
+              <div class="res-head">
+                <div><p class="eyebrow">Speech model</p><h2 id="runtime-title">Runtime</h2></div>
+                <span class="res-tag" id="perf-runtime-chip" data-tone="off">No model</span>
+              </div>
+              <p class="runtime-model" id="perf-runtime-model">No speech model selected</p>
+              <p class="muted small res-note" id="perf-runtime-sub">Pick a model on Models to see its runtime.</p>
+              <dl class="stat-grid">
+                <div><dt>Measured speed</dt><dd id="perf-runtime-speed">—</dd></div>
+                <div><dt>Wait per audio second</dt><dd id="perf-runtime-wait">—</dd></div>
+                <div><dt>Successful runs</dt><dd id="perf-runtime-runs">0</dd></div>
+              </dl>
+              <div class="runtime-bars" id="perf-runtime-bars" aria-label="Recent run durations"></div>
+              <p class="muted small res-note" id="perf-runtime-source">Fallback estimate; no measured runs yet.</p>
+            </section>
+          </div>
+
+          <section class="card runs-card" aria-labelledby="runs-title">
+            <div class="res-head">
+              <div><p class="eyebrow">Session</p><h2 id="runs-title">Recent runs</h2></div>
+              <span class="res-tag">Peak per run</span>
+            </div>
+            <div class="runs-table">
+              <table>
+                <thead><tr><th>When</th><th>Model</th><th>Hold + wait</th><th>Peak GPU</th><th>Peak VRAM</th><th>Peak RAM</th></tr></thead>
+                <tbody id="perf-runs"></tbody>
+              </table>
+            </div>
+            <p class="muted small res-note" id="perf-source">Waiting for the resource sampler…</p>
+          </section>
+        </section>
+
         <!-- Settings -->
         <section class="page" id="page-settings" aria-label="Settings" hidden>
           <header class="page-head">
@@ -517,8 +710,72 @@
               <p class="muted small">Shortcut, microphone and what is kept.</p>
             </div>
           </header>
+
+          <div class="settings-toolbar">
+            <label class="search settings-search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+              <input id="settings-search" type="search" placeholder="Search settings" aria-label="Search settings" autocomplete="off" />
+            </label>
+            <div class="settings-filters" id="settings-filters" role="group" aria-label="Filter settings">
+              <button type="button" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-filter="dictation" aria-pressed="false">Dictation</button>
+              <button type="button" data-filter="system" aria-pressed="false">System</button>
+              <button type="button" data-filter="privacy" aria-pressed="false">Privacy</button>
+              <button type="button" data-filter="about" aria-pressed="false">About</button>
+            </div>
+            <span class="muted small settings-count" id="settings-count">7 settings</span>
+          </div>
+          <p class="muted small settings-empty" id="settings-empty" hidden></p>
+
           <div class="page-grid">
-      <details class="card fold" id="shortcut-card" open>
+      <section class="card system-health" id="health-card" data-category="system" data-settings="performance gpu vram cpu ram memory heat thermal guard clock cooldown" aria-labelledby="health-title">
+        <div class="health-top">
+          <div>
+            <p class="eyebrow">This PC</p>
+            <h2 id="health-title">System health</h2>
+            <p class="muted small">Measured once a second while Sruthi is open, kept in memory, and never uploaded.</p>
+          </div>
+          <div class="health-actions">
+            <span class="live-pill" id="health-pill" data-tone="off"><i aria-hidden="true"></i><span data-pill-label>Waiting</span></span>
+            <button type="button" class="ghost small-btn" data-open-performance>Open Performance →</button>
+          </div>
+        </div>
+        <div class="health-grid">
+          <div class="health-metric">
+            <span class="health-label">Graphics card</span>
+            <strong id="health-gpu">—</strong>
+            <span class="muted small" id="health-gpu-sub">Not measured here</span>
+            <span class="spark" data-spark="gpu" aria-hidden="true"></span>
+          </div>
+          <div class="health-metric">
+            <span class="health-label">Video memory</span>
+            <strong id="health-vram">—</strong>
+            <span class="muted small" id="health-vram-sub">Dedicated memory</span>
+            <span class="spark" data-spark="vram" aria-hidden="true"></span>
+          </div>
+          <div class="health-metric">
+            <span class="health-label">Processor</span>
+            <strong id="health-cpu">—</strong>
+            <span class="muted small" id="health-cpu-sub">Not measured here</span>
+            <span class="spark" data-spark="cpu" aria-hidden="true"></span>
+          </div>
+          <div class="health-metric">
+            <span class="health-label">Memory</span>
+            <strong id="health-ram">—</strong>
+            <span class="muted small" id="health-ram-sub">System memory</span>
+            <span class="spark" data-spark="ram" aria-hidden="true"></span>
+          </div>
+        </div>
+        <div class="health-foot">
+          <span class="res-chip" id="health-guard">Heat guard watching</span>
+          <span class="res-chip" id="health-clock">— effective clock</span>
+          <span class="res-chip" id="health-cooldown">No cooldown</span>
+          <span class="grow"></span>
+          <span class="muted small" id="health-source">Measured locally · never uploaded</span>
+        </div>
+      </section>
+
+      <details class="card fold" id="shortcut-card" data-category="dictation system" data-settings="shortcut hotkey key pill instant microphone overlay heat thermal guard output script latin native" open>
         <summary class="fold-head">
           <span class="fold-icon" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 14h10M7 10h.01M11 10h.01M15 10h.01" /></svg>
@@ -609,7 +866,7 @@
         </div>
         </div>
       </details>
-      <details class="card fold" id="mic-card">
+      <details class="card fold" id="mic-card" data-category="dictation" data-settings="microphone mic input device check level mute">
         <summary class="fold-head">
           <span class="fold-icon" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
@@ -628,7 +885,7 @@
         </div>
       </details>
 
-            <section class="card" id="sending-card">
+            <section class="card" id="sending-card" data-category="dictation" data-settings="send enter key rules app site paste auto enter">
               <div class="fold-head">
                 <span class="fold-icon" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></svg>
@@ -656,7 +913,7 @@
               <div class="send-ideas" id="send-ideas"></div>
             </section>
 
-            <section class="card" id="privacy-card">
+            <section class="card" id="privacy-card" data-category="privacy system" data-settings="history storage audio recordings privacy keep delete archive zip free space">
               <div class="fold-head">
                 <span class="fold-icon" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v9H5zM8 11V8a4 4 0 0 1 8 0v3" /></svg>
@@ -701,7 +958,7 @@
               </div>
             </section>
 
-            <section class="card" id="setup-card">
+            <section class="card" id="setup-card" data-category="system" data-settings="setup how it works engine device gpu cpu speech model">
               <div class="fold-head">
                 <span class="fold-icon" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg>
@@ -715,7 +972,7 @@
               <div class="about-links"><button type="button" class="ghost small-btn" id="run-setup">Run setup again</button></div>
             </section>
 
-            <section class="card" id="about-card">
+            <section class="card" id="about-card" data-category="about" data-settings="about version links license source privacy">
               <div class="fold-head">
                 <span class="fold-icon" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>

@@ -7,6 +7,7 @@ mod caret;
 mod chunks;
 mod context;
 mod dictation;
+mod resources;
 mod enhance;
 mod format;
 mod gpu;
@@ -84,6 +85,8 @@ struct ModelEntry {
     estimate_secs_per_min: Option<f32>,
     /// True when the estimate came from measured runs, not the fallback.
     estimate_measured: bool,
+    /// Successful, non-aborted runs behind the measured estimate.
+    estimate_runs: u32,
     /// False for a pasted link whose ONNX layout the offline engine can't load.
     runnable: bool,
 }
@@ -436,6 +439,7 @@ impl AppState {
                             (ms_per_s * 60.0 / 1000.0 * 10.0).round() / 10.0,
                         ),
                         estimate_measured: measured.is_some(),
+                        estimate_runs: measured.map(|e| e.runs).unwrap_or(0),
                         runnable: m.runnable(),
                     }
                 })
@@ -1445,6 +1449,11 @@ fn lookup_supported(id: &str) -> Result<Arc<model::ModelInfo>, String> {
 #[tauri::command]
 fn get_status(state: State<AppState>) -> Status {
     state.status()
+}
+
+#[tauri::command]
+fn resource_snapshot() -> resources::Snapshot {
+    resources::snapshot()
 }
 
 #[tauri::command]
@@ -2972,6 +2981,7 @@ pub fn run() {
             }
 
             thermal::start(handle.clone());
+            resources::start(handle.clone());
             let active = app.state::<AppState>().inner.lock().unwrap().active.clone();
             if active.is_installed() {
                 load_model(handle.clone(), active, false);
@@ -2994,6 +3004,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_status,
+            resource_snapshot,
             download_model,
             select_model,
             choose_model,

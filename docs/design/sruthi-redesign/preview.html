@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sruthi — interface preview</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: #0d0d0f;
+    color: #f2f2ef;
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    padding: 44px 46px 38px;
+  }
+  .board { max-width: 1540px; margin: 0 auto; }
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 26px; flex-wrap: wrap; padding-bottom: 26px; border-bottom: 1px solid #29292c; }
+  .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 14px; }
+  .brand img { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 0 28px rgba(94, 124, 255, .3); }
+  .brand b { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .brand span { margin-left: 2px; padding: 2px 7px; border: 1px solid #34343a; border-radius: 999px; color: #9b9ba6; font-size: 8.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: 36px; line-height: 1.05; letter-spacing: -.04em; font-weight: 600; }
+  h1 span { color: #94a8ff; }
+  .sub { max-width: 680px; margin: 9px 0 0; color: #a1a1aa; font-size: 13px; line-height: 1.5; }
+  .meta { display: flex; gap: 7px; flex-wrap: wrap; justify-content: flex-end; padding-bottom: 4px; }
+  .meta span { padding: 5px 9px; border: 1px solid #303036; border-radius: 999px; background: #17171a; color: #b4b4bd; font-size: 9.5px; font-weight: 600; white-space: nowrap; }
+  .meta span b { color: #f2f2ef; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 17px; margin-top: 22px; }
+  .card { overflow: hidden; border: 1px solid #29292c; border-radius: 15px; background: #151517; }
+  .shot { position: relative; overflow: hidden; aspect-ratio: 16 / 10; border-bottom: 1px solid #29292c; background: #f5f5f4; }
+  .shot img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+  .shot::after { content: ""; position: absolute; inset: 0; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); pointer-events: none; }
+  .card-copy { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px 14px; }
+  .num { flex: 0 0 auto; color: #6e6e7a; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 10px; padding-top: 2px; }
+  .card-copy b { display: block; color: #f2f2ef; font-size: 12px; font-weight: 650; letter-spacing: -.01em; }
+  .card-copy span { display: block; margin-top: 2px; color: #9999a3; font-size: 10px; line-height: 1.4; }
+  .notes { padding: 19px 19px 17px; background: linear-gradient(145deg, #17171a, #121214); }
+  .notes h2 { margin: 0; font-size: 14px; font-weight: 650; letter-spacing: -.01em; }
+  .notes p { margin: 5px 0 0; color: #9b9ba5; font-size: 10.5px; line-height: 1.5; }
+  .notes ul { margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .notes li { display: flex; gap: 8px; color: #bdbdc6; font-size: 10.5px; line-height: 1.4; }
+  .notes li i { width: 4px; height: 4px; flex: 0 0 auto; margin-top: 6px; border-radius: 50%; background: #8aa8ff; }
+  .coverage { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .coverage span { padding: 4px 7px; border: 1px solid #2d2d33; border-radius: 999px; background: #111114; color: #a8a8b3; font-size: 8.5px; font-weight: 600; letter-spacing: .01em; }
+  .notes-spark { display: block; width: 100%; height: 46px; margin-top: 14px; overflow: visible; }
+  .next-list { display: flex; flex-direction: column; gap: 8px; margin: 15px 0 0; padding: 0; list-style: none; }
+  .next-list li { display: flex; align-items: baseline; gap: 9px; color: #d3d9ec; font-size: 10.5px; line-height: 1.4; }
+  .next-list span { flex: 0 0 auto; color: #8fa7ef; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9px; }
+  .next-list b { color: #f1f3fa; font-weight: 600; }
+  .next { display: flex; flex-direction: column; justify-content: space-between; padding: 19px; background: linear-gradient(150deg, #1c2342, #11182e 58%, #0f2022); }
+  .next h2 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.015em; }
+  .next p { margin: 6px 0 0; color: #b9c1dd; font-size: 10.5px; line-height: 1.5; }
+  .next .path { margin-top: 14px; padding: 8px 9px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(0,0,0,.18); color: #cfd7f4; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 9px; line-height: 1.5; word-break: break-all; }
+  .next .tag { display: inline-flex; align-items: center; gap: 6px; width: fit-content; margin-top: 14px; padding: 5px 8px; border: 1px solid rgba(255,255,255,.13); border-radius: 999px; color: #dbe2ff; font-size: 9px; font-weight: 600; }
+  .next .tag i { width: 5px; height: 5px; border-radius: 50%; background: #8aa8ff; }
+  footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; margin-top: 20px; color: #6f6f7a; font-size: 9.5px; }
+  footer b { color: #a9a9b4; font-weight: 600; }
+  @media (max-width: 1100px) { body { padding: 28px 22px; } .grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } h1 { font-size: 29px; } }
+</style>
+</head>
+<body>
+<div class="board">
+  <header>
+    <div>
+      <div class="brand"><img src="./assets/sruthi-logo.png" alt="" /><b>Sruthi</b><span>interface preview</span></div>
+      <h1>Every screen. <span>One instrument panel.</span></h1>
+      <p class="sub">A high-fidelity working preview of the proposed Home, Dictionary, Snippets, Models, Performance, Settings, and separate surfaces. Graphite and blue, measured numbers, no invented temperature.</p>
+    </div>
+    <div class="meta">
+      <span><b>7</b> screens</span>
+      <span><b>GPU · VRAM · CPU · RAM</b></span>
+      <span><b>Local only</b></span>
+      <span><b>Sample data</b></span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <a class="card" href="./index.html?screen=performance&clean=1" aria-label="Open Performance preview">
+      <div class="shot"><img src="./screens/performance.png" alt="Performance screen with live resource dashboard and 60-second GPU chart" /></div>
+      <div class="card-copy"><span class="num">01</span><div><b>Performance</b><span>Exact GPU, VRAM, CPU, and RAM; per-engine and per-run detail.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=home&clean=1" aria-label="Open Home preview">
+      <div class="shot"><img src="./screens/home.png" alt="Home screen with banner, recent dictations, and system pulse" /></div>
+      <div class="card-copy"><span class="num">02</span><div><b>Home</b><span>Dictation feed, held-to-talk action, and a live system pulse.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=settings&clean=1" aria-label="Open Settings preview">
+      <div class="shot"><img src="./screens/settings.png" alt="Settings screen with system health and filterable settings cards" /></div>
+      <div class="card-copy"><span class="num">03</span><div><b>Settings</b><span>System health on top, searchable cards, and real control grouping.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=models&clean=1" aria-label="Open Models preview">
+      <div class="shot"><img src="./screens/models.png" alt="Models screen with active model, memory fit, and model library" /></div>
+      <div class="card-copy"><span class="num">04</span><div><b>Models</b><span>What listens, where it runs, and a measured speed/accuracy benchmark.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=dictionary&clean=1" aria-label="Open Dictionary preview">
+      <div class="shot"><img src="./screens/dictionary.png" alt="Dictionary screen with word list and suggestions" /></div>
+      <div class="card-copy"><span class="num">05</span><div><b>Dictionary</b><span>Your words, hit rate, corrections caught, and what to add next.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=snippets&clean=1" aria-label="Open Snippets preview">
+      <div class="shot"><img src="./screens/snippets.png" alt="Snippets screen with snippet list and editor" /></div>
+      <div class="card-copy"><span class="num">06</span><div><b>Snippets</b><span>Expand a phrase into a block, with usage and words saved attached.</span></div></div>
+    </a>
+    <a class="card" href="./index.html?screen=surfaces&clean=1" aria-label="Open Surfaces preview">
+      <div class="shot"><img src="./screens/surfaces.png" alt="Surfaces preview with onboarding, listening pill, result box, and share card" /></div>
+      <div class="card-copy"><span class="num">07</span><div><b>Surfaces</b><span>First run, listening pill, result box, and share card in the same language.</span></div></div>
+    </a>
+    <article class="card notes">
+      <h2>What changed</h2>
+      <p>Not a re-skin. The resource story is now part of every screen.</p>
+      <ul>
+        <li><i></i>GPU and VRAM have exact numbers, engine split, and a 60-second chart.</li>
+        <li><i></i>CPU, RAM, heat pressure, and model runtime sit beside them.</li>
+        <li><i></i>Settings gained a live health strip, search, and categories.</li>
+        <li><i></i>Home, Dictionary, Snippets, and Models now show the work they do.</li>
+      </ul>
+      <div class="coverage"><span>GPU load</span><span>VRAM</span><span>CPU</span><span>RAM</span><span>Heat pressure</span><span>Run history</span></div>
+      <svg class="notes-spark" viewBox="0 0 320 56" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8aa8ff" stop-opacity=".24"/><stop offset="1" stop-color="#8aa8ff" stop-opacity="0"/></linearGradient></defs>
+        <path d="M0 48 L24 46 L48 47 L72 42 L96 43 L120 35 L144 38 L168 26 L192 29 L216 18 L240 22 L264 12 L288 15 L320 7 L320 56 L0 56 Z" fill="url(#sparkFill)"/>
+        <path d="M0 48 L24 46 L48 47 L72 42 L96 43 L120 35 L144 38 L168 26 L192 29 L216 18 L240 22 L264 12 L288 15 L320 7" fill="none" stroke="#8aa8ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M0 50 L32 48 L64 49 L96 47 L128 44 L160 45 L192 40 L224 42 L256 36 L288 38 L320 31" fill="none" stroke="#66c7c2" stroke-width="1.1" opacity=".8"/>
+      </svg>
+    </article>
+    <article class="card next">
+      <div>
+        <h2>Next: wire the real counters</h2>
+        <p>This preview uses deterministic sample numbers. Production replaces them with Windows GPU Engine counters, GetSystemTimes, GlobalMemoryStatusEx, and the existing heat guard — no fake °C, no telemetry.</p>
+        <ol class="next-list">
+          <li><span>01</span><b>Approve the visual direction</b></li>
+          <li><span>02</span><b>Wire the real resource sampler</b></li>
+          <li><span>03</span><b>Port, test on your PC, release</b></li>
+        </ol>
+      </div>
+      <div>
+        <div class="path">docs/design/sruthi-redesign/index.html</div>
+        <span class="tag"><i></i>Ready to port after review</span>
+      </div>
+    </article>
+  </div>
+
+  <footer>
+    <span><b>Snapshots:</b> 1440 × 900 · full-length versions in <b>screens/</b></span>
+    <span><b>Sample data:</b> shapes and values are design targets, not readings from this PC.</span>
+  </footer>
+</div>
+</body>
+</html>

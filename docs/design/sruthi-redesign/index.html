@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sruthi — Interface preview</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./screens.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Sections">
+        <div class="brand">
+          <img class="brand-logo" src="./assets/sruthi-logo.png" alt="" />
+          <span class="brand-name">Sruthi</span>
+          <span class="brand-tag preview-only">UI preview</span>
+        </div>
+        <nav class="nav" aria-label="Main">
+          <button type="button" class="nav-item" data-screen="home" aria-current="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7M6 10v10h12V10" /></svg>
+            <span class="nav-label">Home</span>
+          </button>
+          <button type="button" class="nav-item" data-screen="dictionary" aria-current="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4zM5 17a3 3 0 0 1 3-3h11" /></svg>
+            <span class="nav-label">Dictionary</span>
+          </button>
+          <button type="button" class="nav-item" data-screen="snippets" aria-current="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3L5 14h6l-1 7 8-11h-6z" /></svg>
+            <span class="nav-label">Snippets</span>
+          </button>
+          <button type="button" class="nav-item" data-screen="models" aria-current="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg>
+            <span class="nav-label">Models</span>
+          </button>
+          <button type="button" class="nav-item" data-screen="performance" aria-current="page">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6" /></svg>
+            <span class="nav-label">Performance</span>
+            <span class="nav-live" aria-label="Live screen"></span>
+          </button>
+          <button type="button" class="nav-item preview-nav" data-screen="surfaces" aria-current="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+            <span class="nav-label">Surfaces</span>
+            <span class="nav-mini">preview</span>
+          </button>
+        </nav>
+        <div class="side-spacer"></div>
+        <div class="side-status">
+          <div class="status-row"><span class="status-dot"></span><span>Ready</span><span class="badge-soft">Offline</span></div>
+          <kbd>Ctrl + Shift + Space</kbd>
+          <div class="side-res"><span>GPU</span><span class="track"><i class="fill" style="--w:34%;--c:var(--sound)"></i></span><b>34%</b></div>
+          <div class="side-res"><span>CPU</span><span class="track"><i class="fill" style="--w:12%;--c:var(--muted)"></i></span><b>12%</b></div>
+          <div class="side-res"><span>RAM</span><span class="track"><i class="fill" style="--w:29%;--c:var(--amber)"></i></span><b>9.4G</b></div>
+          <p class="side-note">All local. No telemetry.</p>
+        </div>
+        <button type="button" class="nav-item" data-screen="settings" aria-current="false">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3.9a7 7 0 0 0-2-1.2L14.2 3h-4.4l-.4 2.6a7 7 0 0 0-2 1.2l-2.3-.9-2 3.4 2 1.5a7 7 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-.9a7 7 0 0 0 2 1.2l.4 2.6h4.4l.4-2.6a7 7 0 0 0 2-1.2l2.3.9 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z" /></svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </aside>
+
+      <main class="main" id="main">
+        <section class="screen" id="screen-home" aria-label="Home" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">Good evening, Krishna</div>
+              <h1>Home</h1>
+              <p class="page-sub">Everything you dictated, kept on this PC.</p>
+            </div>
+            <div class="head-actions">
+              <label class="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+                <input type="search" placeholder="Search dictations" aria-label="Search dictations" />
+              </label>
+              <button type="button" class="btn ghost" data-toast="The share sheet opens with a picture drawn on this PC.">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>
+                Share stats
+              </button>
+            </div>
+          </header>
+
+          <section class="banner" aria-label="Your dictation at a glance">
+            <div class="banner-art" aria-hidden="true">
+              <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i>
+              <div class="banner-dots"></div>
+              <svg class="banner-ribbons" viewBox="0 0 1200 220" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="prb-a" x1="0" x2="1"><stop offset="0" stop-color="#7f9bff" stop-opacity="0" /><stop offset=".4" stop-color="#8fb0ff" /><stop offset=".75" stop-color="#a5f0ff" /><stop offset="1" stop-color="#c8aaff" stop-opacity=".3" /></linearGradient>
+                  <linearGradient id="prb-b" x1="0" x2="1"><stop offset="0" stop-color="#9a8cff" stop-opacity="0" /><stop offset=".55" stop-color="#a99bff" /><stop offset="1" stop-color="#7fd3ff" stop-opacity=".4" /></linearGradient>
+                </defs>
+                <g fill="none" stroke-linecap="round" opacity=".12"><path d="M-40 150 C 150 20, 260 220, 470 110 S 780 20, 980 120 S 1180 180, 1260 80" stroke="#8aa8ff" stroke-width="18" /><path d="M-30 70 C 170 190, 280 20, 520 130 S 820 200, 1010 90 S 1180 40, 1250 130" stroke="#77e0d0" stroke-width="12" /></g>
+                <g fill="none" stroke-linecap="round" stroke-linejoin="round"><path class="rib" d="M-40 150 C 150 20, 260 220, 470 110 S 780 20, 980 120 S 1180 180, 1260 80" stroke="url(#prb-a)" stroke-width="2.2" /><path class="rib" d="M-30 70 C 170 190, 280 20, 520 130 S 820 200, 1010 90 S 1180 40, 1250 130" stroke="url(#prb-b)" stroke-width="1.5" opacity=".8" /><path class="rib" d="M-20 190 C 220 120, 310 200, 560 150 S 900 80, 1100 150 S 1220 180, 1280 140" stroke="#fff" stroke-width=".8" opacity=".22" /></g>
+              </svg>
+            </div>
+            <span class="banner-voice"><i></i> Voice ready</span>
+            <div class="banner-copy">
+              <span class="banner-kicker">Your voice, on this PC</span>
+              <h2>42,180 words.<br /><span>3.1 days given back.</span></h2>
+              <ul class="banner-facts">
+                <li><b>12-day</b> streak</li>
+                <li><b>148 wpm</b> speaking</li>
+                <li><b>3.7×</b> faster than typing</li>
+                <li><b>0</b> bytes uploaded</li>
+              </ul>
+            </div>
+            <div class="banner-wave" aria-hidden="true">
+              <i style="--h:18px;--d:0s"></i><i style="--h:30px;--d:.1s"></i><i style="--h:46px;--d:.2s"></i><i style="--h:32px;--d:.3s"></i><i style="--h:56px;--d:.4s"></i><i style="--h:40px;--d:.5s"></i><i style="--h:60px;--d:.6s"></i><i style="--h:36px;--d:.7s"></i><i style="--h:50px;--d:.8s"></i><i style="--h:28px;--d:.9s"></i><i style="--h:44px;--d:1s"></i><i style="--h:22px;--d:1.1s"></i><i style="--h:34px;--d:1.2s"></i>
+            </div>
+          </section>
+
+          <div class="glance-grid">
+            <section class="glance-card" aria-label="Today">
+              <div class="glance-head"><span>Today</span><span>+18% vs yesterday</span></div>
+              <div class="glance-ring">
+                <div class="ring" style="--p:63%"><span>1.2k</span></div>
+                <div class="ring-copy"><strong>1,284 words</strong><span>17 dictations · 11.2 min spoken</span></div>
+              </div>
+            </section>
+            <section class="glance-card" aria-label="Where you dictate">
+              <div class="glance-head"><span>Where you dictate</span><span>this week</span></div>
+              <div class="glance-rows">
+                <div class="glance-row"><img src="./assets/apps/visualstudiocode.svg" alt="" /><span>VS Code</span><span class="bar"><i style="--w:84%"></i></span><b>5,120</b></div>
+                <div class="glance-row"><img src="./assets/apps/googlechrome.svg" alt="" /><span>Chrome</span><span class="bar"><i style="--w:58%"></i></span><b>3,480</b></div>
+                <div class="glance-row"><img src="./assets/apps/slack.svg" alt="" /><span>Slack</span><span class="bar"><i style="--w:37%"></i></span><b>2,240</b></div>
+                <div class="glance-row"><img src="./assets/apps/notion.svg" alt="" /><span>Notion</span><span class="bar"><i style="--w:25%"></i></span><b>1,510</b></div>
+              </div>
+            </section>
+            <section class="glance-card" aria-label="You versus typing">
+              <div class="glance-head"><span>You and typing</span><span>3.7× faster</span></div>
+              <div class="speed-compare">
+                <div class="speed-row"><span>Talking</span><span class="bar"><i style="--w:100%"></i></span><b>148</b></div>
+                <div class="speed-row"><span>Typing</span><span class="bar"><i class="typing" style="--w:27%"></i></span><b>40</b></div>
+              </div>
+              <p class="note" style="margin-top:9px">About 3.1 days of keyboard time returned. Measured against 40 wpm.</p>
+            </section>
+          </div>
+
+          <div class="home-grid">
+            <section class="card feed-card" aria-labelledby="feed-title">
+              <div class="feed-head">
+                <div><h2 id="feed-title">Recent dictations</h2><p>Search, play back, or correct what landed.</p></div>
+                <div class="feed-filters" role="group" aria-label="Filter dictations">
+                  <button type="button" aria-pressed="true">All</button>
+                  <button type="button" aria-pressed="false">This week</button>
+                  <button type="button" aria-pressed="false">Corrected</button>
+                </div>
+              </div>
+              <div class="history-list">
+                <article class="history-row">
+                  <span class="app-badge"><img src="./assets/apps/visualstudiocode.svg" alt="VS Code" /></span>
+                  <div class="history-main">
+                    <div class="history-top"><strong>Fixed the release checklist and the checksum step</strong><span class="chip sound">Corrected</span><time>2:14 PM</time></div>
+                    <p class="history-text">Let's ship the Windows build first, then check the SHA256 sums before we publish the release notes.</p>
+                    <div class="history-meta"><span>VS Code</span><i class="dot"></i><span>42 words</span><i class="dot"></i><span>8.2 s audio</span><i class="dot"></i><span class="chip gpu">GPU</span><span>1.1 s wait</span><span class="mini-wave" aria-hidden="true"><i style="--h:5px"></i><i style="--h:11px"></i><i style="--h:7px"></i><i style="--h:14px"></i><i style="--h:9px"></i><i style="--h:4px"></i></span></div>
+                  </div>
+                </article>
+                <article class="history-row">
+                  <span class="app-badge"><img src="./assets/apps/slack.svg" alt="Slack" /></span>
+                  <div class="history-main">
+                    <div class="history-top"><strong>Update for the design channel</strong><time>1:48 PM</time></div>
+                    <p class="history-text">The new resource panel is ready for review. I kept the heat warning honest and added the per-run peak numbers.</p>
+                    <div class="history-meta"><span>Slack</span><i class="dot"></i><span>28 words</span><i class="dot"></i><span>5.6 s audio</span><i class="dot"></i><span class="chip gpu">GPU</span><span>0.8 s wait</span></div>
+                  </div>
+                </article>
+                <article class="history-row">
+                  <span class="app-badge"><img src="./assets/apps/googlechrome.svg" alt="Chrome" /></span>
+                  <div class="history-main">
+                    <div class="history-top"><strong>Follow-up to Priya about the invoice</strong><time>12:31 PM</time></div>
+                    <p class="history-text">Hi Priya, the invoice went out this morning. Let me know if the billing address needs to change before Friday.</p>
+                    <div class="history-meta"><span>Chrome</span><i class="dot"></i><span>31 words</span><i class="dot"></i><span>6.9 s audio</span><i class="dot"></i><span class="chip gpu">GPU</span><span>0.9 s wait</span></div>
+                  </div>
+                </article>
+                <article class="history-row">
+                  <span class="app-badge"><img src="./assets/apps/notion.svg" alt="Notion" /></span>
+                  <div class="history-main">
+                    <div class="history-top"><strong>Weekly notes</strong><time>11:06 AM</time></div>
+                    <p class="history-text">Keep the settings search, the system health strip, and the per-model benchmark. Drop the decorative chart labels.</p>
+                    <div class="history-meta"><span>Notion</span><i class="dot"></i><span>24 words</span><i class="dot"></i><span>4.8 s audio</span><i class="dot"></i><span class="chip gpu">GPU</span><span>0.7 s wait</span></div>
+                  </div>
+                </article>
+                <article class="history-row">
+                  <span class="app-badge"><img src="./assets/apps/microsoftoutlook.svg" alt="Outlook" /></span>
+                  <div class="history-main">
+                    <div class="history-top"><strong>Re: Monday handoff</strong><time>9:52 AM</time></div>
+                    <p class="history-text">I'll pick up the Windows installer check first thing tomorrow and post the hashes in the thread.</p>
+                    <div class="history-meta"><span>Outlook</span><i class="dot"></i><span>19 words</span><i class="dot"></i><span>3.7 s audio</span><i class="dot"></i><span class="chip gpu">GPU</span><span>0.6 s wait</span></div>
+                  </div>
+                </article>
+              </div>
+              <div class="feed-foot"><span>Showing 5 of 1,284 dictations · kept on this PC</span><button type="button" class="link-btn" data-toast="The full history view opens here.">View all</button></div>
+            </section>
+
+            <aside class="rail" aria-label="Dictate and system pulse">
+              <section class="dictate-card" aria-label="Hold to dictate">
+                <div class="hold-wrap">
+                  <span class="ring"></span><span class="ring r2"></span>
+                  <button type="button" class="hold-btn" data-toast="Hold the button, speak, release. This is the production behavior." aria-label="Hold to dictate">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+                  </button>
+                </div>
+                <h2>Hold to dictate</h2>
+                <p class="note">Speak naturally. Let go. The text lands at your cursor.</p>
+                <div class="dictate-keys"><kbd>Ctrl + Shift + Space</kbd><span class="tiny muted">in any app</span></div>
+                <label class="auto-enter"><span class="switch"><input type="checkbox" checked aria-label="Send after pasting" /><span class="slider"></span></span> Send after pasting</label>
+              </section>
+
+              <section class="card pulse-card" aria-labelledby="pulse-title">
+                <div class="pulse-head"><h2 id="pulse-title">System pulse</h2><span class="pulse-live"><i></i> Live</span></div>
+                <div class="pulse-rows">
+                  <div class="pulse-row"><span class="label">GPU</span><span class="bar"><i style="--w:34%;--c:var(--sound)"></i></span><b>34%</b><span class="spark" data-spark="gpu"></span></div>
+                  <div class="pulse-row"><span class="label">CPU</span><span class="bar"><i style="--w:12%;--c:var(--muted)"></i></span><b>12%</b><span class="spark" data-spark="cpu"></span></div>
+                  <div class="pulse-row"><span class="label">RAM</span><span class="bar"><i style="--w:29%;--c:var(--amber)"></i></span><b>9.4G</b><span class="spark" data-spark="ram"></span></div>
+                </div>
+                <div class="pulse-foot"><span>1 s samples · sample snapshot</span><button type="button" class="link-btn" data-screen="performance">Open Performance →</button></div>
+              </section>
+
+              <section class="card usage-card" aria-labelledby="usage-title">
+                <div class="usage-top"><h2 id="usage-title">Your dictation</h2><span class="chip">All time</span></div>
+                <div class="usage-grid">
+                  <div class="usage-cell"><strong>42,180</strong><span>words · 1,284 today</span></div>
+                  <div class="usage-cell"><strong>148</strong><span>words/min · 3.7× typing</span></div>
+                  <div class="usage-cell"><strong>3.1 d</strong><span>typing time saved</span></div>
+                  <div class="usage-cell"><strong>12</strong><span>day streak</span></div>
+                </div>
+                <div class="week-bars" aria-label="Words dictated this week"><i style="--h:36%"></i><i style="--h:52%"></i><i style="--h:44%"></i><i style="--h:68%"></i><i style="--h:58%"></i><i style="--h:81%"></i><i class="today" style="--h:100%"></i></div>
+                <div class="week-labels"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+              </section>
+            </aside>
+          </div>
+        </section>
+        <section class="screen" id="screen-dictionary" aria-label="Dictionary" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">24 terms · 312 matches</div>
+              <h1>Dictionary</h1>
+              <p class="page-sub">Names and terms, spelled your way. Counted against your own dictations, not a cloud corpus.</p>
+            </div>
+            <div class="head-actions">
+              <label class="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+                <input type="search" placeholder="Find a word" aria-label="Find a dictionary word" />
+              </label>
+              <button type="button" class="btn primary" data-toast="Focus the word field below to add a term.">Add word</button>
+            </div>
+          </header>
+
+          <div class="stat-grid">
+            <article class="stat-card"><div class="stat-label">Terms in your bank</div><div class="stat-value"><strong>24</strong><span>words</span></div><div class="stat-sub">18 names · 6 product terms</div><div class="stat-spark" data-spark="uses"></div></article>
+            <article class="stat-card"><div class="stat-label">Times matched</div><div class="stat-value"><strong>312</strong><span>this month</span></div><div class="stat-sub">+22% vs last month</div><div class="stat-spark" data-spark="matches"></div></article>
+            <article class="stat-card"><div class="stat-label">Hit rate</div><div class="stat-value"><strong>87</strong><span>%</span></div><div class="stat-sub">when a term sounds close</div><div class="stat-spark" data-spark="gpu"></div></article>
+            <article class="stat-card"><div class="stat-label">Corrections caught</div><div class="stat-value"><strong>12</strong><span>this week</span></div><div class="stat-sub">model heard it differently</div><div class="stat-spark" data-spark="saved"></div></article>
+          </div>
+
+          <div class="dict-layout">
+            <section class="card dict-list-card" aria-labelledby="words-title">
+              <div class="dict-list-head">
+                <div><h2 id="words-title">Your words</h2><p>Sorted by how often they turned up in your latest dictations.</p></div>
+                <span class="chip">24 total</span>
+              </div>
+              <form class="word-form" data-toast="Preview only — production adds the term to your local dictionary.">
+                <input type="text" placeholder="e.g. Bhubaneswar, Kubernetes, Sruthi" maxlength="60" aria-label="New dictionary word" />
+                <button type="submit" class="btn primary sm">Add</button>
+              </form>
+              <div class="dict-table" role="table" aria-label="Dictionary words">
+                <div class="dict-row head" role="row"><span>Word</span><span>Category</span><span>Used</span><span>Last heard</span><span></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">S</span><b>Sruthi</b></span><span class="dict-cat">Product</span><span class="dict-used">84×</span><span class="dict-last">2 min ago</span><span class="dict-spark" data-spark="uses" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">K</span><b>Kubernetes</b></span><span class="dict-cat">Tech</span><span class="dict-used">42×</span><span class="dict-last">18 min ago</span><span class="dict-spark" data-spark="matches" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">B</span><b>Bhubaneswar</b></span><span class="dict-cat">Place</span><span class="dict-used">31×</span><span class="dict-last">1 h ago</span><span class="dict-spark" data-spark="uses" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">P</span><b>Priya</b></span><span class="dict-cat">Person</span><span class="dict-used">28×</span><span class="dict-last">1 h ago</span><span class="dict-spark" data-spark="matches" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">I</span><b>IndicConformer</b></span><span class="dict-cat">Product</span><span class="dict-used">19×</span><span class="dict-last">Yesterday</span><span class="dict-spark" data-spark="uses" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">T</span><b>Tauri</b></span><span class="dict-cat">Tech</span><span class="dict-used">17×</span><span class="dict-last">Yesterday</span><span class="dict-spark" data-spark="matches" data-fill="0"></span></div>
+                <div class="dict-row" role="row"><span class="dict-word"><span class="letter">V</span><b>Vulkan</b></span><span class="dict-cat">Tech</span><span class="dict-used">14×</span><span class="dict-last">2 days ago</span><span class="dict-spark" data-spark="uses" data-fill="0"></span></div>
+              </div>
+            </section>
+
+            <div class="dict-side">
+              <section class="card suggest-card" aria-labelledby="suggest-title">
+                <div class="card-head"><div><h2 id="suggest-title">Suggested from your dictations</h2><p class="note">Words you corrected, and names you keep saying.</p></div><span class="chip sound">3 new</span></div>
+                <div class="suggest-list">
+                  <div class="suggest-row"><div class="suggest-main"><b>Kubernetes</b><span>Heard as <code>cooper netties</code> 4 times this week.</span></div><div class="suggest-actions"><button class="btn primary sm" data-toast="Added to the preview word bank.">Add</button><button class="btn ghost sm" data-toast="Suggestion dismissed for this preview.">Dismiss</button></div></div>
+                  <div class="suggest-row"><div class="suggest-main"><b>Bhubaneswar</b><span>Heard as <code>bhubaneshwar</code> twice. One letter off.</span></div><div class="suggest-actions"><button class="btn primary sm" data-toast="Added to the preview word bank.">Add</button><button class="btn ghost sm" data-toast="Suggestion dismissed for this preview.">Dismiss</button></div></div>
+                  <div class="suggest-row"><div class="suggest-main"><b>Aadhaar</b><span>Heard as <code>aadhar</code> once. Common spelling variant.</span></div><div class="suggest-actions"><button class="btn primary sm" data-toast="Added to the preview word bank.">Add</button><button class="btn ghost sm" data-toast="Suggestion dismissed for this preview.">Dismiss</button></div></div>
+                </div>
+              </section>
+              <section class="card" aria-labelledby="fixed-title">
+                <div class="card-head"><div><h2 id="fixed-title">Fixed for you</h2><p class="note">Where a dictionary word replaced what the model first heard.</p></div><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg></span></div>
+                <div class="fixed-row"><span class="fixed-pill">Fixed</span><span class="mono tiny muted">Shruti</span><span class="muted">→</span><span class="to">Sruthi</span><time>2 min ago</time></div>
+                <div class="fixed-row"><span class="fixed-pill">Fixed</span><span class="mono tiny muted">cooper netties</span><span class="muted">→</span><span class="to">Kubernetes</span><time>18 min ago</time></div>
+                <div class="fixed-row"><span class="fixed-pill">Fixed</span><span class="mono tiny muted">bhubaneshwar</span><span class="muted">→</span><span class="to">Bhubaneswar</span><time>1 h ago</time></div>
+              </section>
+            </div>
+          </div>
+        </section>
+        <section class="screen" id="screen-snippets" aria-label="Snippets" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">8 snippets · 142 uses</div>
+              <h1>Snippets</h1>
+              <p class="page-sub">Say a short phrase, get the whole block. Everything stays local, including the usage counts.</p>
+            </div>
+            <div class="head-actions">
+              <label class="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+                <input type="search" placeholder="Find a snippet" aria-label="Find a snippet" />
+              </label>
+              <button type="button" class="btn primary" data-toast="A blank editor opens for a new snippet.">New snippet</button>
+            </div>
+          </header>
+
+          <div class="stat-grid">
+            <article class="stat-card"><div class="stat-label">Saved snippets</div><div class="stat-value"><strong>8</strong><span>blocks</span></div><div class="stat-sub">3 used this week</div><div class="stat-spark" data-spark="uses"></div></article>
+            <article class="stat-card"><div class="stat-label">Times expanded</div><div class="stat-value"><strong>142</strong><span>uses</span></div><div class="stat-sub">+18 vs last month</div><div class="stat-spark" data-spark="dictations"></div></article>
+            <article class="stat-card"><div class="stat-label">Words saved</div><div class="stat-value"><strong>1,840</strong><span>words</span></div><div class="stat-sub">vs saying the full block</div><div class="stat-spark" data-spark="words"></div></article>
+            <article class="stat-card"><div class="stat-label">Typing time saved</div><div class="stat-value"><strong>12.6</strong><span>min</span></div><div class="stat-sub">at 40 wpm</div><div class="stat-spark" data-spark="saved"></div></article>
+          </div>
+
+          <div class="snippet-layout">
+            <div class="snippet-side card" aria-label="Snippet list">
+              <div class="snippet-list-head"><h2>Your snippets</h2><span>8 saved</span></div>
+              <div class="snippet-search"><label class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg><input type="search" placeholder="Filter snippets" aria-label="Filter snippets" /></label></div>
+              <div class="snippet-list">
+                <button type="button" class="snippet-item active" data-trigger="email sign-off" data-text="Best regards,&#10;Krishna&#10;Sruthi project">
+                  <span class="snippet-trigger"><span class="quote">“</span>email sign-off</span>
+                  <span class="snippet-preview">Best regards,<br />Krishna<br />Sruthi project</span>
+                  <span class="snippet-meta"><b>48</b> uses <i class="dot"></i> saved 1,240 words <i class="dot"></i> 2 h ago</span>
+                </button>
+                <button type="button" class="snippet-item" data-trigger="pr review" data-text="Thanks — I read through this and left a few notes. The main thing is the release checklist: can we confirm the Windows hashes before we publish?">
+                  <span class="snippet-trigger"><span class="quote">“</span>pr review</span>
+                  <span class="snippet-preview">Thanks — I read through this and left a few notes. The main thing is the release checklist…</span>
+                  <span class="snippet-meta"><b>31</b> uses <i class="dot"></i> saved 920 words <i class="dot"></i> 18 min ago</span>
+                </button>
+                <button type="button" class="snippet-item" data-trigger="invoice note" data-text="Hi Priya,&#10;&#10;The invoice went out this morning. Let me know if the billing address needs to change before Friday.&#10;&#10;Best,&#10;Krishna">
+                  <span class="snippet-trigger"><span class="quote">“</span>invoice note</span>
+                  <span class="snippet-preview">Hi Priya, The invoice went out this morning. Let me know if the billing address needs to change…</span>
+                  <span class="snippet-meta"><b>28</b> uses <i class="dot"></i> saved 1,680 words <i class="dot"></i> 1 h ago</span>
+                </button>
+                <button type="button" class="snippet-item" data-trigger="standup" data-text="Yesterday: wrapped the release packaging. Today: resource dashboard and the settings pass. Blocked by: nothing.">
+                  <span class="snippet-trigger"><span class="quote">“</span>standup</span>
+                  <span class="snippet-preview">Yesterday: wrapped the release packaging. Today: resource dashboard and the settings pass…</span>
+                  <span class="snippet-meta"><b>21</b> uses <i class="dot"></i> saved 630 words <i class="dot"></i> yesterday</span>
+                </button>
+                <button type="button" class="snippet-item" data-trigger="handoff" data-text="Handing this over with the test notes in the thread. The open question is the macOS GPU fallback; everything else is green.">
+                  <span class="snippet-trigger"><span class="quote">“</span>handoff</span>
+                  <span class="snippet-preview">Handing this over with the test notes in the thread. The open question is the macOS GPU fallback…</span>
+                  <span class="snippet-meta"><b>14</b> uses <i class="dot"></i> saved 420 words <i class="dot"></i> 2 days ago</span>
+                </button>
+              </div>
+            </div>
+
+            <form class="card snippet-editor" aria-label="Edit snippet">
+              <div class="editor-head"><div><h2>Edit snippet</h2><p>Selected from your list. Saved changes apply to the next dictation.</p></div><span class="chip teal">Used 48×</span></div>
+              <label class="field"><span>When I say</span><input id="snippet-trigger" type="text" value="email sign-off" maxlength="60" /></label>
+              <label class="field"><span>Type this</span><textarea id="snippet-text" rows="7">Best regards,
+Krishna
+Sruthi project</textarea></label>
+              <div class="setting-row"><span><strong>Type exactly as written</strong><span class="muted">Drops the full stop formatting puts after the phrase. Turn off to use it mid-sentence.</span></span><label class="switch"><input type="checkbox" checked aria-label="Type exactly as written" /><span class="slider"></span></label></div>
+              <div class="snippet-preview-box"><b>Preview</b><span id="snippet-preview-text">Best regards,
+Krishna
+Sruthi project</span></div>
+              <div class="snippet-actions"><button type="button" class="btn ghost sm" data-toast="Preview only — delete is disabled.">Delete</button><span class="grow"></span><button type="button" class="btn primary sm" data-toast="Snippet saved to the preview list.">Save snippet</button></div>
+              <p class="note" style="margin-top:8px">Say the phrase inside a sentence and it is swapped for the text, after formatting. 1,240 words typed for you so far.</p>
+            </form>
+          </div>
+        </section>
+        <section class="screen" id="screen-models" aria-label="Models" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">3 models ready · 1.8 GB on disk</div>
+              <h1>Models</h1>
+              <p class="page-sub">What listens, and where it runs. Measured on this PC, with the card and the CPU both visible.</p>
+            </div>
+            <div class="head-actions">
+              <button type="button" class="btn ghost" data-toast="The benchmark runs each installed model against your last recordings.">Score models</button>
+              <button type="button" class="btn primary" data-toast="The model library opens at the add-by-link section.">Add model</button>
+            </div>
+          </header>
+
+          <div class="model-hero">
+            <section class="card model-main" aria-labelledby="active-model-title">
+              <div class="model-kicker"><span class="card-icon sound" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" /></svg></span> Active speech model</div>
+              <div class="model-title"><h2 id="active-model-title">Parakeet TDT 0.6B</h2><span class="chip ok">Ready</span><span class="chip gpu">GPU</span></div>
+              <p class="model-desc">Fast English dictation with punctuation and casing. Runs on the dedicated card and keeps 1.7 GB of VRAM warm between runs. No audio leaves this PC.</p>
+              <div class="model-metrics">
+                <div class="model-metric"><span>Measured speed</span><b>3.4× realtime</b></div>
+                <div class="model-metric"><span>Wait, 4.1 s clip</span><b>1.2 s</b></div>
+                <div class="model-metric"><span>Word accuracy</span><b>98.2%</b></div>
+                <div class="model-metric"><span>Peak VRAM</span><b>3.9 GB</b></div>
+              </div>
+              <div class="model-actions"><button type="button" class="btn primary sm" data-toast="The model switcher opens here.">Change model</button><button type="button" class="btn ghost sm" data-toast="Benchmark queued for the installed models.">Run benchmark</button><span class="note">12 successful runs · last 22 s ago</span></div>
+            </section>
+
+            <section class="card model-fit" aria-labelledby="fit-title">
+              <div class="fit-head"><h2 id="fit-title">Memory fit</h2><span class="chip ok">Comfortable</span></div>
+              <div class="fit-ring" role="img" aria-label="98.2 percent word accuracy on your recordings"><div><strong>98.2%</strong><span>words</span></div></div>
+              <div class="fit-bar" aria-label="1.7 GB of 8 GB dedicated VRAM used"><i class="model"></i><i class="llm"></i><i class="other"></i></div>
+              <div class="fit-legend"><span>Speech <b>1.4 GB</b></span><span>Clean-up <b>0.3 GB</b></span><span>Free <b>6.3 GB</b></span></div>
+              <div class="device-row">
+                <div class="segmented" role="group" aria-label="Where the speech model runs"><button type="button" aria-pressed="false" data-toast="Auto picks the card when the runtime is ready.">Auto</button><button type="button" aria-pressed="true">Graphics card</button><button type="button" aria-pressed="false" data-toast="CPU mode keeps the card out of it, at a speed cost.">CPU</button></div>
+              </div>
+              <p class="fit-note">Vulkan runtime ready. The card is shared with your desktop, so the fit bar includes other apps when they are busy.</p>
+            </section>
+          </div>
+
+          <div class="model-grid" aria-label="Model library">
+            <article class="card model-card active"><div class="model-card-head"><div><b>Parakeet TDT 0.6B</b><span>Fast · English · multilingual punctuation</span></div><span class="chip ok">Active</span></div><div class="model-tags"><span class="chip gpu">GPU</span><span class="chip">Light</span><span class="chip">0.7 GB</span></div><div class="model-stats"><span>3.4× realtime</span><span>98.2% words</span><span>1.7 GB VRAM</span></div><div class="model-card-foot"><span>Measured on this PC · 12 runs</span><button type="button" class="link-btn" data-toast="This model is already active.">In use</button></div></article>
+            <article class="card model-card"><div class="model-card-head"><div><b>Whisper Large v3 Turbo</b><span>Accurate · 99 languages · slower on CPU</span></div><span class="chip">Installed</span></div><div class="model-tags"><span class="chip gpu">GPU</span><span class="chip warn">Moderate</span><span class="chip">1.6 GB</span></div><div class="model-stats"><span>2.1× realtime</span><span>97.8% words</span><span>5.8 GB peak</span></div><div class="model-card-foot"><span>Measured on this PC · 9 runs</span><button type="button" class="link-btn" data-toast="Switching models reloads the runtime. Preview only.">Use model</button></div></article>
+            <article class="card model-card"><div class="model-card-head"><div><b>IndicConformer Hindi</b><span>Hindi · Devanagari output · CPU-first</span></div><span class="chip">Installed</span></div><div class="model-tags"><span class="chip">CPU</span><span class="chip">Light</span><span class="chip">0.6 GB</span></div><div class="model-stats"><span>1.8× realtime</span><span>96.4% words</span><span>0.3 GB RAM</span></div><div class="model-card-foot"><span>Measured on this PC · 4 runs</span><button type="button" class="link-btn" data-toast="Switching models reloads the runtime. Preview only.">Use model</button></div></article>
+            <article class="card model-card"><div class="model-card-head"><div><b>Distil-Whisper</b><span>Fast · English · the low-memory option</span></div><span class="chip">Not installed</span></div><div class="model-tags"><span class="chip">GPU</span><span class="chip">Light</span><span class="chip">0.4 GB</span></div><div class="model-stats"><span>4.1× realtime</span><span>95.1% words</span><span>1.1 GB VRAM</span></div><div class="model-card-foot"><span>Generic estimate · not measured</span><button type="button" class="link-btn" data-toast="Download starts from the model library in production.">Download</button></div></article>
+          </div>
+
+          <section class="card bench-card" aria-labelledby="bench-title">
+            <div class="bench-head"><div><h2 id="bench-title">Your benchmark</h2><p>Speed and word accuracy on your own recordings. Higher and further right is better.</p></div><button type="button" class="btn primary sm" data-toast="Benchmark queued — 12 recorded clips will be replayed locally.">Score models</button></div>
+            <div class="bench-stage" id="bench-chart"></div>
+            <div class="bench-foot"><span class="chip sound">Sample points</span><span>Parakeet leads on both axes for English.</span><span class="grow"></span><span>Measured on this PC · 12 runs</span></div>
+          </section>
+
+          <div class="ai-grid">
+            <section class="card" aria-labelledby="ai-title">
+              <div class="card-head"><div><h2 id="ai-title">AI clean-up</h2><p class="note">Formatting, punctuation, and filler removal.</p></div><label class="switch"><input type="checkbox" checked aria-label="Smart formatting" /><span class="slider"></span></label></div>
+              <div class="ai-row"><span><strong>On this PC</strong><span>Qwen3 0.6B · ~0.3 GB VRAM</span></span><span class="chip ok">Active</span></div>
+              <div class="ai-row"><span><strong>Cloud fallback</strong><span>Off. Text would be sent; audio never is.</span></span><span class="chip">Off</span></div>
+              <p class="note" style="margin-top:9px">If the local clean-up cannot load, Sruthi keeps the raw transcript instead of sending it anywhere.</p>
+            </section>
+            <section class="card custom-model" aria-labelledby="custom-title">
+              <div class="card-head"><div><h2 id="custom-title">Add a model by link</h2><p class="note">HTTPS link to an ONNX model, archive, or Hugging Face repo.</p></div><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" /></svg></span></div>
+              <div class="custom-fields"><input type="url" placeholder="https://huggingface.co/org/repo" aria-label="Model link" /><input type="text" placeholder="Display name" aria-label="Display name" /><select aria-label="Heat class"><option>Light</option><option selected>Moderate</option><option>Heavy</option></select><button type="button" class="btn primary sm" data-toast="Preview only — the production path validates and downloads the link.">Add</button></div>
+              <p class="note" style="margin-top:8px">Removing a custom model deletes its row, never the downloaded files.</p>
+            </section>
+          </div>
+        </section>
+        <section class="screen" id="screen-settings" aria-label="Settings" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">Everything in one place</div>
+              <h1>Settings</h1>
+              <p class="page-sub">Shortcut, microphone, models, and what stays on this PC. Search or narrow by area.</p>
+            </div>
+            <div class="head-actions">
+              <label class="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4" /></svg>
+                <input type="search" id="settings-search" placeholder="Search settings" aria-label="Search settings" />
+              </label>
+            </div>
+          </header>
+
+          <div class="settings-toolbar">
+            <div class="settings-chips" role="group" aria-label="Settings category">
+              <button type="button" data-filter="all" aria-pressed="true">All <span id="settings-count">9</span></button>
+              <button type="button" data-filter="dictation" aria-pressed="false">Dictation</button>
+              <button type="button" data-filter="models" aria-pressed="false">Models</button>
+              <button type="button" data-filter="system" aria-pressed="false">System</button>
+              <button type="button" data-filter="privacy" aria-pressed="false">Privacy</button>
+              <button type="button" data-filter="about" aria-pressed="false">About</button>
+            </div>
+            <span class="grow"></span>
+            <span class="tiny muted">Changes save as you make them.</span>
+          </div>
+
+          <section class="card system-health" data-category="system" aria-labelledby="health-title">
+            <div class="health-top">
+              <div><h2 id="health-title">System health</h2><p>Sample snapshot for review · production samples once a second and keeps it in memory.</p></div>
+              <div class="head-actions"><span class="live-pill"><i></i> All normal</span><button type="button" class="btn ghost sm" data-screen="performance">Open Performance →</button></div>
+            </div>
+            <div class="health-metrics">
+              <div class="health-metric"><span>GPU busy</span><strong>34<em>%</em></strong><div class="spark" data-spark="gpu"></div></div>
+              <div class="health-metric"><span>VRAM</span><strong>3.2<em> / 8 GB</em></strong><div class="spark" data-spark="vram"></div></div>
+              <div class="health-metric"><span>CPU</span><strong>12<em>%</em></strong><div class="spark" data-spark="cpu"></div></div>
+              <div class="health-metric"><span>System RAM</span><strong>9.4<em> / 32 GB</em></strong><div class="spark" data-spark="ram"></div></div>
+            </div>
+            <div class="health-foot"><span class="chip ok">Heat guard watching</span><span>Peak CPU 62%</span><span>Effective clock 98%</span><span>No cooldown</span><span class="grow"></span><span>Windows counters · no fake temperature</span></div>
+          </section>
+
+          <div class="settings-grid">
+            <section class="card setting-card" data-category="dictation" aria-labelledby="shortcut-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 14h10M7 10h.01M11 10h.01M15 10h.01" /></svg></span><div><h2 id="shortcut-title">Shortcut and pill</h2><p>How you start, and where the listening pill appears.</p></div></div>
+              <div class="hotkey-line"><kbd>Ctrl + Shift + Space</kbd><span class="tiny muted">hold, speak, release</span><span class="grow"></span><button type="button" class="btn ghost sm" data-toast="Press the new key combination. Esc cancels.">Change key</button></div>
+              <div class="setting-row"><span><strong>Instant start</strong><span class="muted">Keeps the microphone ready so the first word is not cut off.</span></span><label class="switch"><input type="checkbox" checked aria-label="Instant start" /><span class="slider"></span></label></div>
+              <div class="setting-row"><span><strong>Send after pasting</strong><span class="muted">Presses the send key where the app expects it.</span></span><label class="switch"><input type="checkbox" checked aria-label="Send after pasting" /><span class="slider"></span></label></div>
+              <div class="setting-row"><span><strong>Where the pill appears</strong><span class="muted">Bottom center, or under the field you are typing in.</span></span><div class="choice-row" data-choice-group><button type="button" class="choice-pill active"><i></i>Bottom</button><button type="button" class="choice-pill"><i></i>Under field</button></div></div>
+            </section>
+
+            <section class="card setting-card" data-category="dictation" aria-labelledby="dictation-title">
+              <div class="setting-card-head"><span class="card-icon sound" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" /></svg></span><div><h2 id="dictation-title">Dictation</h2><p>What the transcript looks like when it lands.</p></div></div>
+              <div class="setting-row"><span><strong>Output script</strong><span class="muted">New dictations, saved phrases, and the last clipboard copy.</span></span><div class="segmented sound" role="group" aria-label="Output script"><button type="button" aria-pressed="true">Latin</button><button type="button" aria-pressed="false">Native</button></div></div>
+              <div class="setting-row"><span><strong>Smart formatting</strong><span class="muted">Punctuation, casing, and filler removal on this PC.</span></span><label class="switch"><input type="checkbox" checked aria-label="Smart formatting" /><span class="slider"></span></label></div>
+              <div class="setting-row"><span><strong>Dictionary</strong><span class="muted">24 terms · 312 matches this month.</span></span><button type="button" class="btn ghost sm" data-screen="dictionary">Manage →</button></div>
+              <div class="setting-row"><span><strong>Snippets</strong><span class="muted">8 blocks · 142 expansions · 1,840 words saved.</span></span><button type="button" class="btn ghost sm" data-screen="snippets">Manage →</button></div>
+            </section>
+
+            <section class="card setting-card" data-category="models" aria-labelledby="models-setting-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span><div><h2 id="models-setting-title">Models and device</h2><p>What listens, and which processor carries it.</p></div></div>
+              <div class="setting-row"><span><strong>Active speech model</strong><span class="muted">Parakeet TDT 0.6B · 1.7 GB VRAM.</span></span><span class="chip gpu">GPU</span></div>
+              <div class="setting-row"><span><strong>Run on</strong><span class="muted">Auto picks the card; CPU keeps the card out of it.</span></span><div class="segmented" role="group" aria-label="Run model on"><button type="button" aria-pressed="false">Auto</button><button type="button" aria-pressed="true">GPU</button><button type="button" aria-pressed="false">CPU</button></div></div>
+              <div class="setting-row"><span><strong>Graphics runtime</strong><span class="muted">Vulkan runtime installed · 1.8 GB on disk.</span></span><span class="chip ok">Ready</span></div>
+              <div class="setting-row"><span><strong>AI clean-up</strong><span class="muted">Qwen3 0.6B on this PC · cloud is off.</span></span><button type="button" class="btn ghost sm" data-screen="models">Open models →</button></div>
+            </section>
+
+            <section class="card setting-card" data-category="system" aria-labelledby="mic-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg></span><div><h2 id="mic-title">Microphone</h2><p>The input Sruthi listens to, and a quick level check.</p></div></div>
+              <div class="setting-row"><span><strong>Default device</strong><span class="muted">Microphone Array (Realtek) · system default.</span></span><select aria-label="Microphone"><option>Microphone Array (Realtek)</option><option>Headset microphone</option><option>USB condenser</option></select></div>
+              <div class="setting-row" style="align-items:flex-start"><span><strong>Input level</strong><span class="muted">Speak normally; the meter should peak around 60–80%.</span><div class="mic-meter" aria-label="Input level 38 percent"><i style="--h:22%"></i><i style="--h:30%"></i><i style="--h:26%"></i><i style="--h:38%"></i><i style="--h:34%"></i><i style="--h:46%"></i><i style="--h:40%"></i><i style="--h:52%"></i><i class="hot" style="--h:60%"></i><i style="--h:48%"></i><i class="hot" style="--h:64%"></i><i style="--h:42%"></i><i style="--h:36%"></i><i style="--h:28%"></i></div></span><button type="button" class="btn ghost sm" data-toast="A short microphone test runs locally.">Test mic</button></div>
+              <div class="setting-row"><span><strong>Windows microphone access</strong><span class="muted">Sruthi shows the microphone icon while it is ready.</span></span><span class="chip ok">Allowed</span></div>
+            </section>
+            <section class="card setting-card" data-category="privacy" aria-labelledby="storage-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v9H5zM8 11V8a4 4 0 0 1 8 0v3" /></svg></span><div><h2 id="storage-title">History and storage</h2><p>Audio never leaves this PC. Words and stats stay either way.</p></div></div>
+              <div style="display:flex;justify-content:space-between;gap:8px;font-size:10px"><b>Used by dictations</b><span class="muted">1.8 GB of 5 GB reminder</span></div>
+              <div class="storage-bar" role="img" aria-label="1.8 GB of a 5 GB reminder used"><i></i></div>
+              <div class="storage-legend"><span>Audio <b>1.4 GB</b></span><span>History <b>0.4 GB</b></span><span>Free <b>3.2 GB</b></span></div>
+              <div class="setting-row"><span><strong>Keep audio for</strong><span class="muted">Corrected dictations always keep their audio.</span></span><select aria-label="Keep audio for"><option>30 days</option><option>7 days</option><option>90 days</option><option>Until I delete it</option></select></div>
+              <div class="setting-row"><span><strong>Remind me when audio passes</strong><span class="muted">A note on Home offers to free up space. Nothing is removed without your say.</span></span><select aria-label="Storage reminder"><option>5 GB</option><option>10 GB</option><option>Never</option></select></div>
+              <div class="snippet-actions"><button type="button" class="btn ghost sm" data-toast="The free-up-space dialog opens here.">Free up space…</button><button type="button" class="btn ghost sm" data-toast="This opens the recordings folder.">Open folder</button><span class="grow"></span><span class="tiny muted">Words and stats stay.</span></div>
+            </section>
+
+            <section class="card setting-card" data-category="dictation" aria-labelledby="sending-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z" /></svg></span><div><h2 id="sending-title">Sending</h2><p>Which key sends after pasting, when that is switched on.</p></div></div>
+              <div class="setting-row"><span><strong>Usually send with</strong><span class="muted">Chat boxes usually send with Enter; mail and issue trackers often want Ctrl+Enter.</span></span><select aria-label="Usually send with"><option>Enter</option><option>Ctrl+Enter</option><option>Shift+Enter</option><option>Don't send</option></select></div>
+              <div class="choice-row"><span class="chip">Enter · chat</span><span class="chip">Ctrl+Enter · GitHub</span><span class="chip">Ctrl+Enter · Gmail</span><span class="chip">2 custom rules</span></div>
+              <p class="note" style="margin-top:8px">Rules match the app name, or any word in the window title, which is where a browser shows the site.</p>
+              <button type="button" class="btn ghost sm" data-toast="The per-app send rules open here.">Manage send rules →</button>
+            </section>
+
+            <section class="card setting-card wide" data-category="system" aria-labelledby="pipeline-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8M12 16v4" /></svg></span><div><h2 id="pipeline-title">How it is set up</h2><p>What happens between your voice and the text, right now.</p></div><span class="chip ok">All checks pass</span></div>
+              <div class="pipeline">
+                <div class="pipe-step"><div class="pipe-top"><i></i>Voice</div><span>Microphone Array · 48 kHz</span></div>
+                <div class="pipe-step"><div class="pipe-top"><i></i>Capture</div><span>Instant start on · VAD ready</span></div>
+                <div class="pipe-step"><div class="pipe-top"><i></i>Model</div><span>Parakeet TDT · GPU · 3.4×</span></div>
+                <div class="pipe-step"><div class="pipe-top"><i></i>Format</div><span>Qwen3 0.6B · on this PC</span></div>
+                <div class="pipe-step"><div class="pipe-top"><i></i>Land</div><span>Cursor paste · 1.1 s median</span></div>
+              </div>
+              <div class="snippet-actions"><button type="button" class="btn ghost sm" data-toast="Setup reopens at the first step. Your models and dictionary stay.">Run setup again</button><span class="grow"></span><span class="tiny muted">Last checked 2 min ago · all local</span></div>
+            </section>
+
+            <section class="card setting-card wide" data-category="privacy" aria-labelledby="privacy-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" /></svg></span><div><h2 id="privacy-title">Privacy and data</h2><p>What is local, what is optional, and where it lives.</p></div></div>
+              <div class="privacy-grid">
+                <div class="privacy-item"><b>Audio never leaves</b><span>Recordings, transcripts, and the resource window are stored under %LOCALAPPDATA%\\Sruthi.</span></div>
+                <div class="privacy-item"><b>Text only if you choose</b><span>Cloud clean-up is off. If you turn it on, text is sent; audio is never included.</span></div>
+                <div class="privacy-item"><b>No telemetry</b><span>No analytics, no crash uploads, no account. Resource samples stay in memory and reset on quit.</span></div>
+              </div>
+              <div class="snippet-actions"><button type="button" class="btn ghost sm" data-toast="This opens the local Sruthi data folder.">Open data folder</button><button type="button" class="btn ghost sm" data-toast="Stats reset starts from zero; your dictations stay.">Clear stats…</button><span class="grow"></span><span class="tiny muted">GNU GPL v3 or later.</span></div>
+            </section>
+
+            <section class="card setting-card wide" data-category="about" aria-labelledby="about-title">
+              <div class="setting-card-head"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg></span><div><h2 id="about-title">About Sruthi</h2><p>Version 0.8.0 · free software under the GNU GPL v3 or later.</p></div><span class="chip">Offline by design</span></div>
+              <div class="about-links"><button type="button" class="btn ghost sm" data-toast="Opens the source repository.">Source code</button><button type="button" class="btn ghost sm" data-toast="Opens the releases page.">Releases</button><button type="button" class="btn ghost sm" data-toast="Opens the third-party notices.">Third-party notices</button><button type="button" class="btn ghost sm" data-toast="Opens the issue tracker.">Report a problem</button><span class="grow"></span><span class="tiny muted">Built with Tauri, Rust, and vanilla TypeScript.</span></div>
+            </section>
+          </div>
+          <div class="settings-empty" id="settings-empty" hidden>No setting matches that search. <button type="button" class="link-btn" onclick="document.getElementById('settings-search').value='';filterSettings('all')">Clear the search</button></div>
+        </section>
+        <section class="screen" id="screen-surfaces" aria-label="Surfaces" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">Separate windows · preview</div>
+              <h1>Surfaces</h1>
+              <p class="page-sub">The parts you see while writing, not just the main window. Typography, spacing, and status language now match the rest of the app.</p>
+            </div>
+            <div class="head-actions"><span class="chip">Preview only</span></div>
+          </header>
+
+          <div class="surface-grid">
+            <section class="card surface-card" aria-labelledby="onb-surface-title">
+              <div class="surface-label"><b id="onb-surface-title">First run</b><span>Onboarding splash</span></div>
+              <div class="onb-mock">
+                <svg class="onb-waves" viewBox="0 0 1120 200" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="onb-wave" x1="0" x2="1"><stop offset="0" stop-color="#7f9bff" stop-opacity="0" /><stop offset=".5" stop-color="#a5f0ff" /><stop offset="1" stop-color="#c8aaff" stop-opacity="0" /></linearGradient></defs><path d="M0 100 C 120 20, 200 180, 320 100 S 520 20, 640 100 S 860 180, 1120 100" fill="none" stroke="url(#onb-wave)" stroke-width="2" /><path d="M0 100 C 140 150, 220 40, 340 100 S 540 160, 660 100 S 880 40, 1120 100" fill="none" stroke="url(#onb-wave)" stroke-width="1.2" opacity=".6" /></svg>
+                <span class="onb-skip">Skip setup</span>
+                <img src="./assets/sruthi-logo.png" alt="" />
+                <h3>Sruthi</h3>
+                <p>Speak. It types. Offline.</p>
+                <span class="onb-btn">Get started</span>
+              </div>
+            </section>
+
+            <section class="card surface-card" aria-labelledby="overlay-surface-title">
+              <div class="surface-label"><b id="overlay-surface-title">Listening pill</b><span>Bottom center or under the field</span></div>
+              <div class="mock-window">
+                <div class="mock-titlebar"><i></i><i></i><i></i><span>VS Code — release notes</span></div>
+                <div class="mock-body">
+                  <div class="mock-line w1"></div><div class="mock-line w2"></div><div class="mock-line w3"></div><div class="mock-line w1"></div>
+                  <span class="mock-cursor"></span>
+                </div>
+                <div class="overlay-pill" aria-label="Listening pill preview">
+                  <span class="overlay-wave" aria-hidden="true"><i style="--h:7px;--d:0s"></i><i style="--h:13px;--d:.1s"></i><i style="--h:9px;--d:.2s"></i><i style="--h:17px;--d:.3s"></i><i style="--h:11px;--d:.4s"></i><i style="--h:6px;--d:.5s"></i></span>
+                  <span class="overlay-text">Listening…</span>
+                  <span class="overlay-time">0:04</span>
+                  <span class="overlay-btn stop" aria-hidden="true"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg></span>
+                  <span class="overlay-btn" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M20 6 9 17l-5-5" /></svg></span>
+                </div>
+              </div>
+            </section>
+
+            <section class="card surface-card" aria-labelledby="result-surface-title">
+              <div class="surface-label"><b id="result-surface-title">Result box</b><span>When the words land</span></div>
+              <div class="result-mock">
+                <div class="result-head"><span class="app-badge" style="width:21px;height:21px"><img src="./assets/apps/visualstudiocode.svg" alt="" style="width:13px;height:13px" /></span><span>Pasted to VS Code</span><span class="chip ok">1.1 s</span></div>
+                <p class="result-text">Let's ship the Windows build first, then check the SHA256 sums before we publish the release notes.</p>
+                <div class="result-actions"><button class="btn primary sm" data-toast="Same text pasted again at the cursor.">Paste again</button><button class="btn ghost sm" data-toast="Copied to the clipboard.">Copy</button><button class="btn ghost sm" data-toast="The last recording is replayed.">Retry</button></div>
+                <p class="result-note">42 words · 8.2 s audio · GPU · 1.1 s wait. Press <b>Esc</b> to dismiss.</p>
+              </div>
+            </section>
+
+            <section class="card surface-card" aria-labelledby="share-surface-title">
+              <div class="surface-label"><b id="share-surface-title">Share card</b><span>Drawn on this PC</span></div>
+              <div class="share-mock">
+                <div class="share-brand"><img src="./assets/sruthi-logo.png" alt="" /> Sruthi · my dictation</div>
+                <div><p class="share-big">42,180 words.<br /><span>3.1 days given back.</span></p><div class="share-facts"><span>148 wpm</span><span>12-day streak</span><span>3.7× typing</span></div></div>
+                <div class="share-foot"><span>Saved locally · nothing posted automatically</span><b>Save PNG</b></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="card" aria-label="Surface notes">
+            <div class="provenance-card">
+              <div class="provenance-item"><span class="card-icon sound" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" /></svg></span><div><b>Voice stays the signal</b><span>The blue waveform is the only decorative color in the pill. Everything else is graphite so it disappears into your editor.</span></div></div>
+              <div class="provenance-item"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z" /></svg></span><div><b>No new permissions</b><span>Surfaces reuse the existing windows. The resource view adds no network calls and no account.</span></div></div>
+              <div class="provenance-item"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg></span><div><b>Same tokens everywhere</b><span>Type scale, radius ladder, switch states, and motion rules come from the existing theme. No one-off styling.</span></div></div>
+            </div>
+          </section>
+        </section>
+        <section class="screen" id="screen-performance" aria-label="Performance" hidden>
+          <header class="page-head">
+            <div class="page-title">
+              <div class="eyebrow">System</div>
+              <h1>Performance</h1>
+              <p class="page-sub">A live view of what Sruthi is using on this PC. Sampled once a second, held in memory, never uploaded.</p>
+            </div>
+            <div class="head-actions">
+              <span class="live-pill sample"><i></i> Sample snapshot</span>
+              <button type="button" class="btn ghost" id="perf-pause">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
+                Pause
+              </button>
+              <button type="button" class="btn primary" data-toast="Sample run started — watch the 3D engine and VRAM rise.">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18M3 12h18" /></svg>
+                Simulate dictation
+              </button>
+            </div>
+          </header>
+
+          <div class="metric-grid">
+            <article class="metric-card" style="--c:var(--sound)">
+              <div class="metric-head"><span>Graphics card</span><span class="chip sound">3D engine</span></div>
+              <div class="metric-value"><strong>34<span>%</span></strong></div>
+              <p class="metric-sub">NVIDIA GeForce RTX 4060 Laptop GPU · 8 GB dedicated</p>
+              <div class="spark" data-spark="gpu"></div>
+              <div class="metric-foot"><span>Peak 71%</span><span>Idle 17%</span></div>
+            </article>
+            <article class="metric-card" style="--c:var(--teal)">
+              <div class="metric-head"><span>Graphics memory</span><span class="chip teal">VRAM</span></div>
+              <div class="metric-value"><strong>3.2<span>GB</span></strong><span class="slash">/ 8.0 GB</span></div>
+              <p class="metric-sub">Sruthi 1.7 GB · other apps 1.5 GB</p>
+              <div class="spark" data-spark="vram"></div>
+              <div class="metric-foot"><span>Peak 4.0 GB</span><span>4.8 GB free</span></div>
+            </article>
+            <article class="metric-card" style="--c:var(--muted)">
+              <div class="metric-head"><span>Processor</span><span class="chip">16 threads</span></div>
+              <div class="metric-value"><strong>12<span>%</span></strong></div>
+              <p class="metric-sub">AMD Ryzen 7 7840HS · effective clock 98%</p>
+              <div class="spark" data-spark="cpu"></div>
+              <div class="metric-foot"><span>Peak 62%</span><span>Idle 11%</span></div>
+            </article>
+            <article class="metric-card" style="--c:var(--amber)">
+              <div class="metric-head"><span>System memory</span><span class="chip">32 GB</span></div>
+              <div class="metric-value"><strong>9.4<span>GB</span></strong><span class="slash">/ 32 GB</span></div>
+              <p class="metric-sub">Sruthi 620 MB · Windows and other apps 8.8 GB</p>
+              <div class="spark" data-spark="ram"></div>
+              <div class="metric-foot"><span>Peak 9.8 GB</span><span>22.6 GB free</span></div>
+            </article>
+          </div>
+
+          <section class="chart-card" aria-labelledby="gpu-chart-title">
+            <div class="chart-head">
+              <div>
+                <div class="eyebrow">Last 60 seconds · 1 s samples</div>
+                <h2 id="gpu-chart-title">GPU activity</h2>
+                <p>Busy time on the dedicated card, with VRAM and CPU for context.</p>
+              </div>
+              <div class="chart-legend" aria-label="Chart legend">
+                <span class="legend-item"><i class="legend-dot"></i>GPU busy</span>
+                <span class="legend-item"><i class="legend-dot vram"></i>VRAM</span>
+                <span class="legend-item"><i class="legend-dot cpu"></i>CPU</span>
+              </div>
+            </div>
+            <div class="chart-stage" id="gpu-chart"></div>
+            <div class="chart-foot">
+              <span class="chart-stat">Peak <b>71%</b></span>
+              <span class="chart-stat">Average <b>41%</b></span>
+              <span class="chart-stat">Run <b>18.4 s</b></span>
+              <span class="chart-note">Windows GPU Engine counters · hover for exact values</span>
+            </div>
+          </section>
+
+          <div class="perf-grid">
+            <section class="card" aria-labelledby="engine-title">
+              <div class="card-head">
+                <div><h2 id="engine-title">Who is using the GPU</h2><p class="note">Sruthi's own processes vs everything else, right now.</p></div>
+                <span class="card-icon sound" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span>
+              </div>
+              <div class="engine-split" role="img" aria-label="Sruthi uses 27.4 percent of GPU, other apps use 6.1 percent."><i class="sruthi"></i><i class="other"></i></div>
+              <div class="engine-legend"><span>Sruthi <b>27.4%</b></span><span>Other apps <b>6.1%</b></span></div>
+              <div class="engine-list">
+                <div class="engine-row"><span>3D</span><span class="bar"><i style="--w:28.4%;--c:var(--sound)"></i></span><b>28.4%</b></div>
+                <div class="engine-row"><span>Compute</span><span class="bar"><i style="--w:4.1%;--c:var(--violet)"></i></span><b>4.1%</b></div>
+                <div class="engine-row"><span>Copy</span><span class="bar"><i style="--w:1.2%;--c:var(--teal)"></i></span><b>1.2%</b></div>
+                <div class="engine-row"><span>Video</span><span class="bar"><i style="--w:0%;--c:var(--muted)"></i></span><b>0.0%</b></div>
+              </div>
+              <p class="note" style="margin-top:10px">The 3D engine carries the speech model; Compute is the AI clean-up. Engine percentages can overlap, so they are not added together.</p>
+            </section>
+
+            <section class="card" aria-labelledby="heat-title">
+              <div class="card-head">
+                <div><h2 id="heat-title">Heat guard</h2><p class="note">Load and throttling, not a made-up temperature.</p></div>
+                <label class="switch" title="Heat guard">
+                  <input type="checkbox" checked aria-label="Heat guard" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="heat-state"><strong>Normal</strong><span class="chip ok">Watching</span></div>
+              <div class="heat-gauge" role="img" aria-label="Thermal pressure 22 out of 100; warm threshold 70, stop threshold 96."><i style="--p:22%"></i></div>
+              <div class="heat-scale"><span>Cool</span><span>Warm 70</span><span>Stop 96</span></div>
+              <div class="heat-stats">
+                <div class="heat-stat"><span>Peak CPU load</span><b>62%</b></div>
+                <div class="heat-stat"><span>Effective clock</span><b>98%</b></div>
+                <div class="heat-stat"><span>Cooling cooldown</span><b>None</b></div>
+                <div class="heat-stat"><span>Last warm event</span><b>3 days ago</b></div>
+              </div>
+              <p class="note" style="margin-top:9px">Windows does not expose a temperature sensor to normal apps. Sruthi watches the two signals it does get and stops a run before the machine cooks.</p>
+            </section>
+
+            <section class="card" aria-labelledby="runtime-title">
+              <div class="card-head">
+                <div><h2 id="runtime-title">Model runtime</h2><p class="note">Measured on this PC, not a generic benchmark.</p></div>
+                <span class="chip gpu">GPU · Vulkan</span>
+              </div>
+              <div class="runtime-head"><span class="card-icon sound" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2M8 8v8M12 5v14M16 8v8M20 12h-2" /></svg></span><div><p class="runtime-name">Parakeet TDT 0.6B</p><span class="tiny muted">Fast · English · 1.7 GB VRAM</span></div></div>
+              <div class="runtime-stats">
+                <div class="runtime-stat"><span>Measured speed</span><b>3.4× realtime</b></div>
+                <div class="runtime-stat"><span>Wait per audio second</span><b>293 ms</b></div>
+                <div class="runtime-stat"><span>Successful runs</span><b>12</b></div>
+                <div class="runtime-stat"><span>Last run</span><b>22 s ago</b></div>
+              </div>
+              <div class="runtime-bars" aria-label="Recent run timings">
+                <i style="--h:42%"></i><i style="--h:51%"></i><i style="--h:47%"></i><i style="--h:58%"></i><i style="--h:55%"></i><i style="--h:49%"></i><i style="--h:62%"></i><i style="--h:57%"></i><i style="--h:54%"></i><i style="--h:61%"></i><i style="--h:59%"></i><i style="--h:70%"></i>
+              </div>
+              <div class="runtime-note"><span>median 293 ms / audio s</span><span>12 runs kept</span></div>
+            </section>
+          </div>
+
+          <section class="card runs-card" aria-labelledby="runs-title">
+            <div class="runs-head">
+              <div><h2 id="runs-title">Recent runs</h2><p>Peak resource use per dictation. New rows will be recorded by the same path that writes the measured ETA.</p></div>
+              <div class="head-actions">
+                <button type="button" class="btn ghost sm" data-toast="Diagnostics copied as text. Nothing was uploaded.">Copy diagnostics</button>
+                <button type="button" class="btn ghost sm" data-toast="This will open %LOCALAPPDATA%\\Sruthi\\timings.log in the app.">Open timings.log</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto">
+              <table class="runs-table">
+                <thead><tr><th>When</th><th>Model</th><th>Audio</th><th>Wait</th><th>Device</th><th>Peak GPU</th><th>Peak VRAM</th><th>Heat</th></tr></thead>
+                <tbody>
+                  <tr><td>22 s ago</td><td class="table-model">Parakeet TDT 0.6B</td><td class="num">18.4 s</td><td class="num">1.2 s</td><td><span class="chip gpu">GPU</span></td><td class="num">71%</td><td class="num">3.9 GB</td><td><span class="chip ok">Normal</span></td></tr>
+                  <tr><td>18 min ago</td><td class="table-model">Parakeet TDT 0.6B</td><td class="num">12.8 s</td><td class="num">3.1 s</td><td><span class="chip gpu">GPU</span></td><td class="num">64%</td><td class="num">4.1 GB</td><td><span class="chip ok">Normal</span></td></tr>
+                  <tr><td>42 min ago</td><td class="table-model">Whisper Large v3 Turbo</td><td class="num">8.4 s</td><td class="num">4.8 s</td><td><span class="chip gpu">GPU</span></td><td class="num">78%</td><td class="num">5.8 GB</td><td><span class="chip warn">Warm</span></td></tr>
+                  <tr><td>1 h 12 m ago</td><td class="table-model">Parakeet TDT 0.6B</td><td class="num">2.7 s</td><td class="num">0.9 s</td><td><span class="chip gpu">GPU</span></td><td class="num">52%</td><td class="num">3.6 GB</td><td><span class="chip ok">Normal</span></td></tr>
+                  <tr><td>Yesterday</td><td class="table-model">IndicConformer Hindi</td><td class="num">6.2 s</td><td class="num">2.4 s</td><td><span class="chip">CPU</span></td><td class="num">0%</td><td class="num">0.3 GB</td><td><span class="chip ok">Normal</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="card provenance-card" aria-label="Where these numbers come from">
+            <div class="provenance-item"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4" /></svg></span><div><b>GPU busy and VRAM</b><span>Windows GPU Engine counters (PDH), per process and engine.</span></div></div>
+            <div class="provenance-item"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg></span><div><b>CPU and RAM</b><span>GetSystemTimes and GlobalMemoryStatusEx, once a second.</span></div></div>
+            <div class="provenance-item"><span class="card-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" /><circle cx="12" cy="12" r="3" /></svg></span><div><b>Heat</b><span>Sruthi's heat guard: CPU load + effective clock. No fake °C.</span></div></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="preview-tools preview-only" aria-label="Preview tools">
+      <span class="sample">Sample data</span>
+      <button type="button" id="theme-toggle" aria-label="Switch to dark theme"></button>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

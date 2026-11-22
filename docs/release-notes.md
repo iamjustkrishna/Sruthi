@@ -1,10 +1,11 @@
-**Sruthi 0.8.0: dictation in native Indian scripts.**
+**Sruthi 0.9.0: see what your PC is doing.**
 
-- **Indic Conformer.** A new public, MIT-licensed speech model for Hindi and seven other Indic languages. It runs fully offline on the CPU and writes Devanagari directly. Its CTC decoder is built in — no cloud, no gated checkpoint.
-- **It follows the heat rules.** Indic Conformer is marked as a heavy model, so it shows the heat warning and a wait estimate before first use, and the heat guard can stop a long run. It never uses the graphics card.
-- **Works with the script toggle.** Leave the script on Native to paste Devanagari, or switch to Latin to have the same output romanized at the end of the pipeline.
-- **Experimental accuracy.** The ONNX graph and token set are verified, but the mel settings still need a real Hindi recording on your machine to be certain. If the words come out wrong, tell us — the decoder is isolated and easy to tune.
+- **Performance screen.** A live, one-second view of the graphics card, dedicated video memory, processor and system memory. GPU activity and its engine split come from the same Windows counters Task Manager uses; video memory comes from DXGI; CPU and RAM come from Windows system calls. Sruthi's own share is measured separately so you can see what it costs.
+- **A chart that means something.** The last 60 seconds are drawn from real samples held in memory. There is no sample data, no simulated load and no uploaded telemetry. If a counter is missing, the card shows an em dash and says why instead of showing a made-up zero.
+- **Heat and runtime, side by side.** The Performance screen shows the heat guard's load/clock pressure, effective clock and cooldown, plus the active model's measured speed, wait per audio second and successful-run count. Recent dictations show their own peak GPU, VRAM and RAM.
+- **Glanceable anywhere.** Home now has a compact System pulse with the same live numbers, and Settings has a System health card. Settings also gained free-text search and category filters, so "hotkey", "mic" or "heat" find the right card immediately.
+- **Honest platforms.** Windows gets the full counter view. macOS builds show explicit "unavailable" states rather than borrowing Windows values. Windows still does not expose a normal-app temperature sensor, so the heat display keeps using load and effective clock — never an invented °C.
 
-Everything from 0.7.0 is included: paste-a-link models, the runtime model registry, and safe link removal. From 0.6.0: the Latin/Native script toggle. From 0.5.0: the heat guard and measured wait estimates.
+Everything from 0.8.0 is included: Indic Conformer, the Latin/Native script toggle, paste-a-link models and the runtime model registry. From 0.7.0: the model runtime registry and safe link removal. From 0.6.0: native Indic scripts. From 0.5.0: the heat guard and measured wait estimates.
 
-Windows is the primary platform. The macOS build is Apple Silicon only and unsigned (right-click the app and choose Open on first launch), and the app-aware features need Windows. The Windows installer is not code-signed, so Windows may show "Windows protected your PC"; choose More info, then Run anyway.
+Downloads are published for Windows and Apple Silicon macOS, with `SHA256SUMS.txt` beside the installers.
