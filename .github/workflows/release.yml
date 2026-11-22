@@ -52,7 +52,12 @@ jobs:
           } else {
             Write-Output "$path is absent or a dangling link"
           }
-          [System.IO.File]::Delete($path)
+          # Remove-Item works on a dangling link; File::Delete throws when the
+          # parent directory does not exist, which is the common fresh-cache case.
+          $parent = Split-Path -Path $path -Parent
+          if (Test-Path -LiteralPath $parent) {
+            Remove-Item -LiteralPath $path -Force -Recurse -ErrorAction SilentlyContinue
+          }
 
       - name: Run the Rust tests
         working-directory: src-tauri

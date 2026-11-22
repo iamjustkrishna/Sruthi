@@ -18,8 +18,8 @@
 //! normal apps one; the heat guard keeps using load and effective clock.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -340,9 +340,7 @@ impl WindowsSampler {
         let sample = Sample {
             ago_s: 0,
             gpu_pct: gpu.as_ref().and_then(|g| g.load_pct),
-            vram_pct: vram
-                .as_ref()
-                .and_then(|v| pct(v.used_mb?, v.total_mb?)),
+            vram_pct: vram.as_ref().and_then(|v| pct(v.used_mb?, v.total_mb?)),
             cpu_pct: cpu.as_ref().and_then(|c| c.load_pct),
             ram_pct: ram.as_ref().and_then(|r| pct(r.used_mb?, r.total_mb?)),
         };
@@ -409,10 +407,10 @@ struct DxgiVram {
 #[cfg(windows)]
 impl DxgiVram {
     fn new() -> Option<Self> {
-        use windows::core::Interface;
         use windows::Win32::Graphics::Dxgi::{
-            CreateDXGIFactory1, IDXGIAdapter1, IDXGIFactory1, DXGI_ADAPTER_DESC1,
+            CreateDXGIFactory1, DXGI_ADAPTER_DESC1, IDXGIAdapter1, IDXGIFactory1,
         };
+        use windows::core::Interface;
 
         // SAFETY: CreateDXGIFactory1 returns a valid factory or an error. The
         // adapter is kept alive by this struct, and its descendants are
@@ -451,8 +449,8 @@ impl DxgiVram {
                 "luid_0x{:08x}_0x{:08x}",
                 desc.AdapterLuid.HighPart, desc.AdapterLuid.LowPart
             ));
-            let total_mb = (desc.DedicatedVideoMemory > 0)
-                .then_some(desc.DedicatedVideoMemory as u64 / MIB);
+            let total_mb =
+                (desc.DedicatedVideoMemory > 0).then_some(desc.DedicatedVideoMemory as u64 / MIB);
             Some(Self {
                 adapter,
                 name: (!name.is_empty()).then_some(name),
@@ -512,17 +510,18 @@ struct GpuCounters {
 #[cfg(windows)]
 impl GpuCounters {
     fn new(luid: Option<&str>) -> Option<Self> {
-        use windows::core::PCWSTR;
         use windows::Win32::System::Performance::{
             PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData,
             PdhOpenQueryW,
         };
+        use windows::core::PCWSTR;
 
         let add = |query: PDH_HQUERY, path: &str| {
             let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
             let mut counter = PDH_HCOUNTER::default();
             // SAFETY: the path is NUL-terminated and the query is live.
-            if unsafe { PdhAddEnglishCounterW(query, PCWSTR(wide.as_ptr()), 0, &mut counter) } == 0 {
+            if unsafe { PdhAddEnglishCounterW(query, PCWSTR(wide.as_ptr()), 0, &mut counter) } == 0
+            {
                 Some(counter)
             } else {
                 None
@@ -644,10 +643,7 @@ impl Drop for GpuCounters {
 }
 
 #[cfg(windows)]
-fn filter_luid(
-    items: Vec<(String, f64)>,
-    luid: Option<&str>,
-) -> Vec<(String, f64)> {
+fn filter_luid(items: Vec<(String, f64)>, luid: Option<&str>) -> Vec<(String, f64)> {
     let Some(luid) = luid else {
         return items;
     };
@@ -658,11 +654,7 @@ fn filter_luid(
         .collect();
     // Some drivers spell the LUID differently. If the filter finds nothing,
     // aggregate all engines and let the page call the source "system-wide".
-    if filtered.is_empty() {
-        items
-    } else {
-        filtered
-    }
+    if filtered.is_empty() { items } else { filtered }
 }
 
 #[cfg(windows)]
@@ -690,8 +682,8 @@ fn read_counter_array(
 ) -> Option<Vec<(String, f64)>> {
     use std::mem::size_of;
     use windows::Win32::System::Performance::{
-        PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE_ITEM_W,
-        PDH_FMT_DOUBLE, PDH_INSUFFICIENT_BUFFER, PDH_MORE_DATA, PdhGetFormattedCounterArrayW,
+        PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE,
+        PDH_INSUFFICIENT_BUFFER, PDH_MORE_DATA, PdhGetFormattedCounterArrayW,
     };
 
     let mut size = 0u32;
@@ -757,7 +749,10 @@ fn read_ram() -> Option<(u64, u64)> {
     if unsafe { GlobalMemoryStatusEx(&mut status) } == 0 {
         return None;
     }
-    Some((status.ullTotalPhys - status.ullAvailPhys, status.ullTotalPhys))
+    Some((
+        status.ullTotalPhys - status.ullAvailPhys,
+        status.ullTotalPhys,
+    ))
 }
 
 #[cfg(windows)]
